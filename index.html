@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>小小遊戲樂園</title>
+  <link rel="stylesheet" href="shared/style.css">
+  <style>
+    body {
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 28px;
+      padding: 40px 16px;
+      min-height: 100%;
+    }
+
+    h1 {
+      font-size: clamp(36px, 6vw, 64px);
+      text-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
+    }
+
+    .cards {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 28px;
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎪 小小遊戲樂園 🎪</h1>
+
+  <div class="cards">
+    <a class="game-card" href="games/math-balloons/">
+      <div class="icon">🎈</div>
+      <h2>數學氣球</h2>
+      <p>點破正確答案的氣球！</p>
+    </a>
+
+    <a class="game-card" href="games/robot-commands/">
+      <div class="icon">🤖</div>
+      <h2>指令小機器人</h2>
+      <p>排好指令，帶機器人找寶物！</p>
+    </a>
+  </div>
+</body>
+</html>

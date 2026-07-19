@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>指令小機器人</title>
+  <link rel="stylesheet" href="../../shared/style.css">
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      overflow: auto;
+    }
+
+    #title {
+      font-size: clamp(24px, 4vw, 40px);
+      font-weight: bold;
+      text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+    }
+
+    #playfield {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ===== 5x5 地圖 ===== */
+    #grid {
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      grid-template-rows: repeat(5, 1fr);
+      width: min(88vw, 52vh, 480px);
+      aspect-ratio: 1;
+      background: #244a2c;
+      border-radius: 16px;
+      padding: 6px;
+      gap: 6px;
+      box-shadow: 0 8px 0 rgba(0, 0, 0, 0.3);
+    }
+
+    .cell {
+      background: #3e7a49;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: min(9vw, 5.5vh, 48px);
+    }
+
+    /* 機器人蓋在格子上面，用 transform 移動才有滑順的動畫 */
+    #robot {
+      position: absolute;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: min(9vw, 5.5vh, 48px);
+      transition: transform 0.45s ease;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    /* 機器人面向的方向（小箭頭戴在頭上） */
+    #robot .face {
+      position: absolute;
+      top: -6px;
+      font-size: 0.45em;
+      transition: transform 0.3s ease;
+    }
+
+    /* ===== 指令區 ===== */
+    #controls {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      width: min(94vw, 480px);
+    }
+
+    #queue {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      align-content: flex-start;
+      min-height: 56px;
+      width: 100%;
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 16px;
+      padding: 8px;
+    }
+
+    #queue .hint {
+      color: rgba(255, 255, 255, 0.6);
+      font-size: 18px;
+      align-self: center;
+      margin: auto;
+    }
+
+    .cmd-chip {
+      font-size: 30px;
+      background: #fff;
+      border-radius: 12px;
+      padding: 4px 10px;
+      cursor: pointer;
+      box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25);
+    }
+
+    .cmd-chip.running {
+      background: var(--star);
+      transform: scale(1.15);
+    }
+
+    .cmd-buttons, .action-buttons {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .cmd-buttons .big-btn {
+      font-size: 34px;
+      padding: 12px 22px;
+    }
+
+    #message {
+      font-size: 22px;
+      min-height: 1.4em;
+      font-weight: bold;
+      color: var(--star);
+      text-align: center;
+    }
+
+    .home-link {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 18px;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="title">🤖 指令小機器人</div>
+  <div id="message"></div>
+
+  <div id="playfield">
+    <div id="grid"></div>
+
+    <div id="controls">
+      <!-- 排好的指令會出現在這裡，點一下可以拿掉 -->
+      <div id="queue"></div>
+
+      <div class="cmd-buttons">
+        <button class="big-btn blue" onclick="addCommand('forward')">⬆️</button>
+        <button class="big-btn blue" onclick="addCommand('left')">↩️</button>
+        <button class="big-btn blue" onclick="addCommand('right')">↪️</button>
+      </div>
+
+      <div class="action-buttons">
+        <button class="big-btn green" id="run-btn" onclick="runProgram()">▶️ 執行！</button>
+        <button class="big-btn gray" onclick="clearQueue()">🗑️ 清除</button>
+      </div>
+
+      <a class="home-link" href="../../">⬅ 回遊戲樂園</a>
+    </div>
+  </div>
+
+  <script src="../../shared/game-utils.js"></script>
+  <script>
+    /* ===== 關卡設計 =====
+       x 是第幾行（0～4，往右），y 是第幾列（0～4，往下）
+       dir 是機器人面向：0=上、1=右、2=下、3=左
+       想跟小孩一起加新關卡？照樣子多加一個 { ... } 就可以了！ */
+    const LEVELS = [
+      { name: "第 1 關：往前走！",   start: { x: 0, y: 2, dir: 1 }, goal: { x: 3, y: 2 }, obstacles: [] },
+      { name: "第 2 關：轉個彎",     start: { x: 0, y: 4, dir: 1 }, goal: { x: 2, y: 1 }, obstacles: [] },
+      { name: "第 3 關：小心石頭！", start: { x: 0, y: 2, dir: 1 }, goal: { x: 4, y: 2 }, obstacles: [[2, 2]] },
+      { name: "第 4 關：繞過去",     start: { x: 0, y: 0, dir: 2 }, goal: { x: 3, y: 3 }, obstacles: [[1, 1], [2, 3], [1, 3]] },
+      { name: "第 5 關：大迷宮！",   start: { x: 0, y: 4, dir: 0 }, goal: { x: 4, y: 0 }, obstacles: [[1, 3], [1, 1], [3, 2], [2, 0], [3, 4]] },
+    ];
+
+    const GRID_SIZE = 5;
+    const MAX_COMMANDS = 12;                 // 指令最多排幾個
+    const CMD_ICONS = { forward: "⬆️", left: "↩️", right: "↪️" };
+    const DIR_ARROWS = ["⬆️", "➡️", "⬇️", "⬅️"];
+    // 面向每個方向時，前進一步 x 和 y 要怎麼變
+    const DIR_MOVES = [{ x: 0, y: -1 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }];
+
+    /* ===== 遊戲狀態 ===== */
+    let levelIndex = 0;
+    let robot = { x: 0, y: 0, dir: 1 };   // 機器人現在的位置和方向
+    let queue = [];                        // 排好的指令，例如 ["forward", "left"]
+    let running = false;                   // 正在執行中就不能亂按
+
+    const gridEl = document.getElementById("grid");
+    const queueEl = document.getElementById("queue");
+    const messageEl = document.getElementById("message");
+    let robotEl = null;
+
+    /* ===== 畫地圖 ===== */
+
+    function currentLevel() {
+      return LEVELS[levelIndex];
+    }
+
+    function drawGrid() {
+      const level = currentLevel();
+      gridEl.innerHTML = "";
+
+      for (let y = 0; y < GRID_SIZE; y++) {
+        for (let x = 0; x < GRID_SIZE; x++) {
+          const cell = document.createElement("div");
+          cell.className = "cell";
+          if (level.goal.x === x && level.goal.y === y) cell.textContent = "🎁";
+          if (level.obstacles.some(([ox, oy]) => ox === x && oy === y)) cell.textContent = "🪨";
+          gridEl.appendChild(cell);
+        }
+      }
+
+      // 機器人另外畫，蓋在格子上面
+      robotEl = document.createElement("div");
+      robotEl.id = "robot";
+      robotEl.innerHTML = `<span class="face"></span>🤖`;
+      gridEl.appendChild(robotEl);
+      placeRobot();
+    }
+
+    // 依 robot 的 x, y 把機器人移到正確的格子上（transform 會自動有滑順動畫）
+    function placeRobot() {
+      const cell = gridEl.children[0];                    // 用第一格量出格子多大
+      const step = cell.offsetWidth + 6;                  // 6 是格子間距
+      robotEl.style.width = cell.offsetWidth + "px";
+      robotEl.style.height = cell.offsetHeight + "px";
+      robotEl.style.transform = `translate(${6 + robot.x * step}px, ${6 + robot.y * step}px)`;
+      robotEl.querySelector(".face").textContent = DIR_ARROWS[robot.dir];
+    }
+
+    function resetRobot() {
+      const s = currentLevel().start;
+      robot = { x: s.x, y: s.y, dir: s.dir };
+      placeRobot();
+    }
+
+    /* ===== 指令佇列 ===== */
+
+    function addCommand(cmd) {
+      if (running || queue.length >= MAX_COMMANDS) return;
+      playSound("click");
+      queue.push(cmd);
+      drawQueue();
+    }
+
+    function removeCommand(index) {
+      if (running) return;
+      playSound("click");
+      queue.splice(index, 1);
+      drawQueue();
+    }
+
+    function clearQueue() {
+      if (running) return;
+      playSound("click");
+      queue = [];
+      drawQueue();
+    }
+
+    function drawQueue() {
+      queueEl.innerHTML = "";
+      if (queue.length === 0) {
+        queueEl.innerHTML = `<span class="hint">按下面的按鈕排指令 👇</span>`;
+        return;
+      }
+      queue.forEach((cmd, i) => {
+        const chip = document.createElement("span");
+        chip.className = "cmd-chip";
+        chip.textContent = CMD_ICONS[cmd];
+        chip.onclick = () => removeCommand(i);
+        queueEl.appendChild(chip);
+      });
+    }
+
+    /* ===== 執行程式（一步一步做） ===== */
+
+    async function runProgram() {
+      if (running || queue.length === 0) return;
+      running = true;
+      messageEl.textContent = "";
+      resetRobot();
+      await wait(500);
+
+      const chips = queueEl.children;
+
+      for (let i = 0; i < queue.length; i++) {
+        // 亮起現在執行到哪一個指令
+        [...chips].forEach((c) => c.classList.remove("running"));
+        chips[i].classList.add("running");
+
+        const ok = doCommand(queue[i]);
+        await wait(600);
+
+        if (!ok) {
+          // 撞到東西了！回到起點，指令保留，讓小孩修改再試（這就是除錯！）
+          playSound("crash");
+          robotEl.classList.add("shake");
+          messageEl.textContent = "💥 撞到了！改一改指令再試一次！";
+          await wait(700);
+          robotEl.classList.remove("shake");
+          resetRobot();
+          running = false;
+          return;
+        }
+
+        // 走到寶物就過關（不用等指令全部做完）
+        const goal = currentLevel().goal;
+        if (robot.x === goal.x && robot.y === goal.y) {
+          [...chips].forEach((c) => c.classList.remove("running"));
+          running = false;
+          levelClear();
+          return;
+        }
+      }
+
+      // 指令做完了，但還沒走到寶物
+      [...chips].forEach((c) => c.classList.remove("running"));
+      playSound("wrong");
+      messageEl.textContent = "還沒拿到寶物，再加幾個指令試試看！";
+      running = false;
+    }
+
+    // 做一個指令；回傳 false 表示撞牆或撞石頭
+    function doCommand(cmd) {
+      if (cmd === "left")  { robot.dir = (robot.dir + 3) % 4; playSound("step"); placeRobot(); return true; }
+      if (cmd === "right") { robot.dir = (robot.dir + 1) % 4; playSound("step"); placeRobot(); return true; }
+
+      // forward：先算出下一格在哪
+      const move = DIR_MOVES[robot.dir];
+      const nextX = robot.x + move.x;
+      const nextY = robot.y + move.y;
+
+      const outside = nextX < 0 || nextX >= GRID_SIZE || nextY < 0 || nextY >= GRID_SIZE;
+      const hitRock = currentLevel().obstacles.some(([ox, oy]) => ox === nextX && oy === nextY);
+      if (outside || hitRock) return false;
+
+      robot.x = nextX;
+      robot.y = nextY;
+      playSound("step");
+      placeRobot();
+      return true;
+    }
+
+    function levelClear() {
+      if (levelIndex === LEVELS.length - 1) {
+        celebrate("🏆 全部破關！你是程式大師！", "從頭再玩", () => loadLevel(0));
+        /* 之後的計畫：在這裡通知 SwitchBot 按下實體按鈕！ */
+      } else {
+        celebrate("🎉 過關！", "下一關", () => loadLevel(levelIndex + 1));
+      }
+    }
+
+    function loadLevel(index) {
+      levelIndex = index;
+      queue = [];
+      messageEl.textContent = "";
+      document.getElementById("title").textContent = "🤖 " + currentLevel().name;
+      drawGrid();
+      resetRobot();
+      drawQueue();
+    }
+
+    function wait(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    // 轉直/轉橫的時候重新把機器人放到正確位置
+    window.addEventListener("resize", placeRobot);
+
+    loadLevel(0);
+  </script>
+</body>
+</html>

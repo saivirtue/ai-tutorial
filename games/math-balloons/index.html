@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>數學氣球</title>
+  <link rel="stylesheet" href="../../shared/style.css">
+  <style>
+    /* ===== 畫面版型：上面是題目，下面是天空（氣球飄的地方） ===== */
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+
+    #top-bar {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 14px;
+      background: rgba(0, 0, 0, 0.25);
+    }
+
+    #question {
+      font-size: clamp(34px, 6vw, 70px);
+      font-weight: bold;
+      text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+      text-align: center;
+      min-height: 1.2em;
+      line-height: 1.2;
+    }
+
+    #sky {
+      position: relative;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ===== 氣球 ===== */
+    .balloon {
+      position: absolute;
+      width: min(110px, 23vw);   /* 手機窄螢幕時氣球縮小一點 */
+      height: min(140px, 29vw);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: min(44px, 9vw);
+      font-weight: bold;
+      color: #fff;
+      text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+      border-radius: 50% 50% 50% 50% / 45% 45% 55% 55%;
+      cursor: pointer;
+      will-change: transform;
+    }
+
+    /* 氣球下面的線 */
+    .balloon::after {
+      content: "";
+      position: absolute;
+      bottom: -34px;
+      width: 2px;
+      height: 34px;
+      background: rgba(255, 255, 255, 0.7);
+    }
+
+    /* 氣球爆掉的動畫 */
+    .balloon.popping {
+      animation: pop 0.35s ease forwards;
+      pointer-events: none;
+    }
+
+    @keyframes pop {
+      40%  { transform: scale(1.35); opacity: 1; }
+      100% { transform: scale(0.1); opacity: 0; }
+    }
+
+    /* ===== 開始畫面（選難度） ===== */
+    #menu {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 22px;
+      background: var(--bg);
+      z-index: 10;
+      padding: 16px;
+    }
+
+    #menu h1 {
+      font-size: clamp(38px, 7vw, 64px);
+      text-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
+    }
+
+    #menu .big-btn {
+      width: min(360px, 85vw);
+    }
+
+    .home-link {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 20px;
+      text-decoration: none;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <!-- 開始畫面：選難度 -->
+  <div id="menu">
+    <h1>🎈 數學氣球 🎈</h1>
+    <button class="big-btn green" onclick="startGame('count')">🐣 數一數（1～10）</button>
+    <button class="big-btn"       onclick="startGame('add')">🐥 加法（10 以內）</button>
+    <button class="big-btn blue"  onclick="startGame('addsub')">🦉 加減（20 以內）</button>
+    <a class="home-link" href="../../">⬅ 回遊戲樂園</a>
+  </div>
+
+  <!-- 遊戲畫面 -->
+  <div id="top-bar">
+    <div id="question"></div>
+    <div id="stars"></div>
+  </div>
+  <div id="sky"></div>
+
+  <script src="../../shared/game-utils.js"></script>
+  <script>
+    /* ===== 遊戲設定 ===== */
+    const STARS_TO_WIN = 10;         // 集滿幾顆星星就獲勝
+    const BALLOON_COUNT = 4;         // 一次幾顆氣球
+    const BALLOON_COLORS = ["#ff5a5a", "#4a7bff", "#3ecf6b", "#ff8a3d", "#c77dff"];
+    const ANIMALS = ["🐱", "🐶", "🐰", "🐸", "🐷", "🐤"];
+
+    /* ===== 遊戲狀態 ===== */
+    let mode = "count";   // 現在玩哪種難度
+    let stars = 0;        // 拿到幾顆星星
+    let answer = 0;       // 正確答案
+    let locked = false;   // 答對後短暫鎖住，避免連點
+    let balloons = [];    // 天上所有的氣球 { element, x, y, speed }
+
+    const sky = document.getElementById("sky");
+    const questionEl = document.getElementById("question");
+    const setStars = createStarBar(document.getElementById("stars"), STARS_TO_WIN);
+
+    /* ===== 出題 ===== */
+
+    // 依難度出一題，回傳 { text: 題目文字, answer: 正確答案, max: 答案最大可能值 }
+    function makeQuestion() {
+      if (mode === "count") {
+        const n = randomInt(10);
+        const animal = ANIMALS[Math.floor(Math.random() * ANIMALS.length)];
+        return { text: animal.repeat(n) + " 有幾隻？", answer: n, max: 10 };
+      }
+      if (mode === "add") {
+        const a = randomInt(9);
+        const b = randomInt(10 - a);
+        return { text: `${a} + ${b} = ?`, answer: a + b, max: 10 };
+      }
+      // addsub：一半機率加法、一半機率減法（答案都在 0～20）
+      if (Math.random() < 0.5) {
+        const a = randomInt(19);
+        const b = randomInt(20 - a);
+        return { text: `${a} + ${b} = ?`, answer: a + b, max: 20 };
+      } else {
+        const a = randomInt(19) + 1;   // 2～20
+        const b = randomInt(a - 1);    // 1～(a-1)，答案不會是負數
+        return { text: `${a} - ${b} = ?`, answer: a - b, max: 20 };
+      }
+    }
+
+    // 產生 3 個跟正確答案不一樣的錯誤選項
+    function makeWrongOptions(correct, max) {
+      const options = new Set();
+      while (options.size < BALLOON_COUNT - 1) {
+        // 在正確答案附近挑，比較有挑戰性
+        let wrong = correct + (randomInt(6) - 3);
+        if (wrong === correct || wrong < 0 || wrong > max) {
+          wrong = Math.floor(Math.random() * (max + 1));
+        }
+        if (wrong !== correct) options.add(wrong);
+      }
+      return [...options];
+    }
+
+    /* ===== 氣球 ===== */
+
+    function clearBalloons() {
+      balloons.forEach((b) => b.element.remove());
+      balloons = [];
+    }
+
+    function spawnBalloons(values) {
+      clearBalloons();
+      const shuffled = shuffle(values);
+      const laneWidth = sky.clientWidth / shuffled.length;
+
+      shuffled.forEach((value, i) => {
+        const el = document.createElement("div");
+        el.className = "balloon";
+        el.textContent = value;
+        el.style.background = `radial-gradient(circle at 35% 30%, #ffffff55, transparent 40%), ${BALLOON_COLORS[i % BALLOON_COLORS.length]}`;
+        el.onpointerdown = () => tapBalloon(value, el);
+        sky.appendChild(el);
+
+        // 每顆氣球一條「跑道」，高度錯開、一出題就看得到，慢慢往上飄
+        const balloon = {
+          element: el,
+          x: laneWidth * i + (laneWidth - el.offsetWidth) / 2,
+          y: sky.clientHeight * (0.2 + 0.6 * (i / shuffled.length)) + randomInt(40),
+          speed: 0.5 + Math.random() * 0.5,   // 每一格畫面往上飄的速度
+        };
+        el.style.transform = `translate(${balloon.x}px, ${balloon.y}px)`;
+        balloons.push(balloon);
+      });
+    }
+
+    // 動畫迴圈：每一格畫面讓所有氣球往上飄一點點
+    function floatBalloons() {
+      balloons.forEach((b) => {
+        b.y -= b.speed;
+        // 飄出天空上面，就回到最下面重新來
+        if (b.y < -180) b.y = sky.clientHeight + 40;
+        b.element.style.transform = `translate(${b.x}px, ${b.y}px)`;
+      });
+      requestAnimationFrame(floatBalloons);
+    }
+
+    /* ===== 玩家點氣球 ===== */
+
+    function tapBalloon(value, element) {
+      if (locked) return;
+
+      if (value === answer) {
+        // 答對！氣球爆掉、得一顆星
+        locked = true;
+        playSound("pop");
+        element.classList.add("popping");
+        stars++;
+        setStars(stars);
+
+        setTimeout(() => {
+          locked = false;
+          if (stars >= STARS_TO_WIN) {
+            celebrate("🎉 太棒了！全部答對！", "再玩一次", showMenu);
+            /* 之後的計畫：在這裡通知 SwitchBot 按下實體按鈕！ */
+          } else {
+            nextQuestion();
+          }
+        }, 500);
+      } else {
+        // 答錯：氣球晃一晃，再想想看
+        playSound("wrong");
+        element.classList.add("shake");
+        setTimeout(() => element.classList.remove("shake"), 450);
+      }
+    }
+
+    /* ===== 遊戲流程 ===== */
+
+    function nextQuestion() {
+      const q = makeQuestion();
+      answer = q.answer;
+      questionEl.textContent = q.text;
+      spawnBalloons([q.answer, ...makeWrongOptions(q.answer, q.max)]);
+    }
+
+    function startGame(selectedMode) {
+      playSound("click");
+      mode = selectedMode;
+      stars = 0;
+      setStars(0);
+      document.getElementById("menu").style.display = "none";
+      nextQuestion();
+    }
+
+    function showMenu() {
+      clearBalloons();
+      questionEl.textContent = "";
+      document.getElementById("menu").style.display = "flex";
+    }
+
+    setStars(0);
+    floatBalloons();
+  </script>
+</body>
+</html>

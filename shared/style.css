@@ -1,0 +1,150 @@
+/* 共用風格：給電視距離觀看＋7 歲手指設計（大字、大按鈕、高對比） */
+
+:root {
+  --bg: #1a2a5e;          /* 深藍夜空背景，投影到電視對比清楚 */
+  --panel: #ffffff;
+  --text: #2b2b2b;
+  --accent: #ff8a3d;      /* 橘色：主要按鈕 */
+  --good: #3ecf6b;        /* 綠色：答對、成功 */
+  --bad: #ff5a5a;         /* 紅色：答錯、失敗 */
+  --star: #ffd93d;        /* 星星黃 */
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  /* 遊戲頁面不要出現長按選字、藍色點擊框 */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: #fff;
+  font-family: "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+  overflow: hidden;
+  touch-action: manipulation; /* 取消雙擊縮放，點擊反應更快 */
+}
+
+/* ===== 大按鈕 ===== */
+.big-btn {
+  display: inline-block;
+  border: none;
+  border-radius: 24px;
+  padding: 18px 32px;
+  font-size: 28px;
+  font-weight: bold;
+  font-family: inherit;
+  color: #fff;
+  background: var(--accent);
+  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
+.big-btn:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+}
+
+.big-btn.green { background: var(--good); }
+.big-btn.blue  { background: #4a7bff; }
+.big-btn.gray  { background: #8a93a8; }
+
+/* ===== 首頁遊戲卡片 ===== */
+.game-card {
+  display: block;
+  width: min(420px, 90vw);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 28px;
+  padding: 28px;
+  text-align: center;
+  text-decoration: none;
+  box-shadow: 0 8px 0 rgba(0, 0, 0, 0.25);
+}
+
+.game-card:active {
+  transform: translateY(4px);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.25);
+}
+
+.game-card .icon { font-size: 80px; }
+.game-card h2 { font-size: 34px; margin-top: 8px; }
+.game-card p { font-size: 20px; margin-top: 6px; color: #666; }
+
+/* ===== 星星計分列 ===== */
+.star-bar {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  font-size: min(30px, 7vw); /* 手機窄螢幕時縮小，10 顆星星才放得下 */
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.4));
+}
+
+.star-bar .off { opacity: 0.25; }
+
+.star-bar .on {
+  opacity: 1;
+  animation: star-pop 0.4s ease;
+}
+
+@keyframes star-pop {
+  0%   { transform: scale(0); }
+  70%  { transform: scale(1.6); }
+  100% { transform: scale(1); }
+}
+
+/* ===== 全螢幕慶祝 ===== */
+#celebrate-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 20, 60, 0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  z-index: 999;
+}
+
+#celebrate-overlay .msg {
+  font-size: clamp(40px, 8vw, 90px);
+  font-weight: bold;
+  color: var(--star);
+  text-shadow: 0 4px 0 rgba(0, 0, 0, 0.4);
+  animation: star-pop 0.6s ease;
+  text-align: center;
+}
+
+.confetti {
+  position: fixed;
+  top: -20px;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  animation: confetti-fall linear forwards;
+  z-index: 998;
+}
+
+@keyframes confetti-fall {
+  to {
+    transform: translateY(110vh) rotate(720deg);
+  }
+}
+
+/* 答錯時的左右晃動 */
+.shake {
+  animation: shake 0.4s ease;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-10px); }
+  75% { transform: translateX(10px); }
+}
