@@ -65,14 +65,6 @@
       pointer-events: none;
     }
 
-    /* 機器人面向的方向（小箭頭戴在頭上） */
-    #robot .face {
-      position: absolute;
-      top: -6px;
-      font-size: 0.45em;
-      transition: transform 0.3s ease;
-    }
-
     /* ===== 指令區 ===== */
     #controls {
       display: flex;
@@ -155,9 +147,10 @@
       <div id="queue"></div>
 
       <div class="cmd-buttons">
-        <button class="big-btn blue" onclick="addCommand('forward')">⬆️</button>
-        <button class="big-btn blue" onclick="addCommand('left')">↩️</button>
-        <button class="big-btn blue" onclick="addCommand('right')">↪️</button>
+        <button class="big-btn blue" onclick="addCommand('up')">⬆️</button>
+        <button class="big-btn blue" onclick="addCommand('down')">⬇️</button>
+        <button class="big-btn blue" onclick="addCommand('left')">⬅️</button>
+        <button class="big-btn blue" onclick="addCommand('right')">➡️</button>
       </div>
 
       <div class="action-buttons">
@@ -173,26 +166,29 @@
   <script>
     /* ===== 關卡設計 =====
        x 是第幾行（0～4，往右），y 是第幾列（0～4，往下）
-       dir 是機器人面向：0=上、1=右、2=下、3=左
        想跟小孩一起加新關卡？照樣子多加一個 { ... } 就可以了！ */
     const LEVELS = [
-      { name: "第 1 關：往前走！",   start: { x: 0, y: 2, dir: 1 }, goal: { x: 3, y: 2 }, obstacles: [] },
-      { name: "第 2 關：轉個彎",     start: { x: 0, y: 4, dir: 1 }, goal: { x: 2, y: 1 }, obstacles: [] },
-      { name: "第 3 關：小心石頭！", start: { x: 0, y: 2, dir: 1 }, goal: { x: 4, y: 2 }, obstacles: [[2, 2]] },
-      { name: "第 4 關：繞過去",     start: { x: 0, y: 0, dir: 2 }, goal: { x: 3, y: 3 }, obstacles: [[1, 1], [2, 3], [1, 3]] },
-      { name: "第 5 關：大迷宮！",   start: { x: 0, y: 4, dir: 0 }, goal: { x: 4, y: 0 }, obstacles: [[1, 3], [1, 1], [3, 2], [2, 0], [3, 4]] },
+      { name: "第 1 關：往前走！",   start: { x: 0, y: 2 }, goal: { x: 3, y: 2 }, obstacles: [] },
+      { name: "第 2 關：轉個彎",     start: { x: 0, y: 4 }, goal: { x: 2, y: 1 }, obstacles: [] },
+      { name: "第 3 關：小心石頭！", start: { x: 0, y: 2 }, goal: { x: 4, y: 2 }, obstacles: [[2, 2]] },
+      { name: "第 4 關：繞過去",     start: { x: 0, y: 0 }, goal: { x: 3, y: 3 }, obstacles: [[1, 1], [2, 3], [1, 3]] },
+      { name: "第 5 關：大迷宮！",   start: { x: 0, y: 4 }, goal: { x: 4, y: 0 }, obstacles: [[1, 3], [1, 1], [3, 2], [2, 0], [3, 4]] },
     ];
 
     const GRID_SIZE = 5;
     const MAX_COMMANDS = 12;                 // 指令最多排幾個
-    const CMD_ICONS = { forward: "⬆️", left: "↩️", right: "↪️" };
-    const DIR_ARROWS = ["⬆️", "➡️", "⬇️", "⬅️"];
-    // 面向每個方向時，前進一步 x 和 y 要怎麼變
-    const DIR_MOVES = [{ x: 0, y: -1 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1, y: 0 }];
+    const CMD_ICONS = { up: "⬆️", down: "⬇️", left: "⬅️", right: "➡️" };
+    // 每個指令會讓 x 和 y 怎麼變（y 往下是加）
+    const MOVES = {
+      up:    { x: 0, y: -1 },
+      down:  { x: 0, y: 1 },
+      left:  { x: -1, y: 0 },
+      right: { x: 1, y: 0 },
+    };
 
     /* ===== 遊戲狀態 ===== */
     let levelIndex = 0;
-    let robot = { x: 0, y: 0, dir: 1 };   // 機器人現在的位置和方向
+    let robot = { x: 0, y: 0 };            // 機器人現在的位置
     let queue = [];                        // 排好的指令，例如 ["forward", "left"]
     let running = false;                   // 正在執行中就不能亂按
 
@@ -224,7 +220,7 @@
       // 機器人另外畫，蓋在格子上面
       robotEl = document.createElement("div");
       robotEl.id = "robot";
-      robotEl.innerHTML = `<span class="face"></span>🤖`;
+      robotEl.textContent = "🤖";
       gridEl.appendChild(robotEl);
       placeRobot();
     }
@@ -236,12 +232,11 @@
       robotEl.style.width = cell.offsetWidth + "px";
       robotEl.style.height = cell.offsetHeight + "px";
       robotEl.style.transform = `translate(${6 + robot.x * step}px, ${6 + robot.y * step}px)`;
-      robotEl.querySelector(".face").textContent = DIR_ARROWS[robot.dir];
     }
 
     function resetRobot() {
       const s = currentLevel().start;
-      robot = { x: s.x, y: s.y, dir: s.dir };
+      robot = { x: s.x, y: s.y };
       placeRobot();
     }
 
@@ -333,11 +328,8 @@
 
     // 做一個指令；回傳 false 表示撞牆或撞石頭
     function doCommand(cmd) {
-      if (cmd === "left")  { robot.dir = (robot.dir + 3) % 4; playSound("step"); placeRobot(); return true; }
-      if (cmd === "right") { robot.dir = (robot.dir + 1) % 4; playSound("step"); placeRobot(); return true; }
-
-      // forward：先算出下一格在哪
-      const move = DIR_MOVES[robot.dir];
+      // 先算出下一格在哪
+      const move = MOVES[cmd];
       const nextX = robot.x + move.x;
       const nextY = robot.y + move.y;
 

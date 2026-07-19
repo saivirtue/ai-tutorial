@@ -36,6 +36,12 @@
       overflow: hidden;
     }
 
+    #vision-bar {
+      font-size: 20px;
+      color: var(--star);
+      text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+    }
+
     /* ===== 氣球 ===== */
     .balloon {
       position: absolute;
@@ -119,10 +125,13 @@
   <div id="top-bar">
     <div id="question"></div>
     <div id="stars"></div>
+    <!-- 有鏡頭伺服器時才會出現：告訴小孩鏡頭看到幾根手指 -->
+    <div id="vision-bar" hidden>📷 <span id="finger-info">鏡頭準備好了，比手指回答！</span></div>
   </div>
   <div id="sky"></div>
 
   <script src="../../shared/game-utils.js"></script>
+  <script src="../../shared/vision-client.js"></script>
   <script>
     /* ===== 遊戲設定 ===== */
     const STARS_TO_WIN = 10;         // 集滿幾顆星星就獲勝
@@ -155,15 +164,17 @@
         const b = randomInt(10 - a);
         return { text: `${a} + ${b} = ?`, answer: a + b, max: 10 };
       }
-      // addsub：一半機率加法、一半機率減法（答案都在 0～20）
+      // addsub：一半機率加法、一半機率減法
+      // 用鏡頭比手指時最多只能比到 10，所以答案上限跟著縮小
+      const max = visionOn ? 10 : 20;
       if (Math.random() < 0.5) {
-        const a = randomInt(19);
-        const b = randomInt(20 - a);
-        return { text: `${a} + ${b} = ?`, answer: a + b, max: 20 };
+        const a = randomInt(max - 1);
+        const b = randomInt(max - a);
+        return { text: `${a} + ${b} = ?`, answer: a + b, max };
       } else {
-        const a = randomInt(19) + 1;   // 2～20
-        const b = randomInt(a - 1);    // 1～(a-1)，答案不會是負數
-        return { text: `${a} - ${b} = ?`, answer: a - b, max: 20 };
+        const a = randomInt(max - 1) + 1;  // 2～max
+        const b = randomInt(a - 1);        // 1～(a-1)，答案不會是負數
+        return { text: `${a} - ${b} = ?`, answer: a - b, max };
       }
     }
 
@@ -277,6 +288,38 @@
       questionEl.textContent = "";
       document.getElementById("menu").style.display = "flex";
     }
+
+    /* ===== 鏡頭輸入：比手指回答（沒開伺服器就自動只用觸控） ===== */
+
+    let visionOn = false;
+    const visionBar = document.getElementById("vision-bar");
+    const fingerInfo = document.getElementById("finger-info");
+
+    connectVision({
+      onStatus: (connected) => {
+        visionOn = connected;
+        visionBar.hidden = !connected;
+      },
+      onFingers: (count) => {
+        fingerInfo.textContent =
+          count === null ? "把手舉到鏡頭前！" : `看到 ${count} 根手指`;
+      },
+      onAnswer: (count) => {
+        // 還在選單畫面、或答對動畫進行中，就不理會
+        const inMenu = document.getElementById("menu").style.display !== "none";
+        if (inMenu || locked) return;
+
+        const target = balloons.find((b) => Number(b.element.textContent) === count);
+        if (target) {
+          tapBalloon(count, target.element);   // 跟用手點那顆氣球一模一樣
+        } else {
+          // 比的數字不在任何氣球上：給個答錯提示
+          playSound("wrong");
+          questionEl.classList.add("shake");
+          setTimeout(() => questionEl.classList.remove("shake"), 450);
+        }
+      },
+    });
 
     setStars(0);
     floatBalloons();
