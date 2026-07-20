@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>注音小火車</title>
+  <link rel="stylesheet" href="../../shared/style.css">
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      overflow: auto;
+      gap: 10px;
+    }
+
+    #title {
+      font-size: clamp(24px, 4vw, 40px);
+      font-weight: bold;
+      text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+    }
+
+    /* ===== 題目：大圖＋國字＋重聽 ===== */
+    #card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 28px;
+      padding: 18px 40px;
+    }
+
+    #picture {
+      font-size: clamp(80px, 16vh, 150px);
+      line-height: 1.1;
+    }
+
+    #word {
+      font-size: clamp(28px, 5vh, 44px);
+      font-weight: bold;
+    }
+
+    #replay-btn {
+      font-size: 22px;
+      padding: 10px 20px;
+    }
+
+    /* ===== 注音選項 ===== */
+    #choices {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    #choices .big-btn {
+      font-size: clamp(38px, 7vh, 56px);
+      width: clamp(80px, 20vw, 120px);
+      padding: 12px 0;
+    }
+
+    #message {
+      font-size: 22px;
+      min-height: 1.4em;
+      font-weight: bold;
+      color: var(--star);
+    }
+
+    /* ===== 火車 ===== */
+    #train {
+      display: flex;
+      align-items: flex-end;
+      gap: 4px;
+      font-size: clamp(30px, 6vw, 52px);
+      filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.3));
+    }
+
+    .wagon {
+      background: rgba(255, 255, 255, 0.15);
+      border: 2px dashed rgba(255, 255, 255, 0.4);
+      border-radius: 10px;
+      width: 1.4em;
+      height: 1.3em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .wagon.full {
+      background: #a0522d;
+      border: none;
+      animation: star-pop 0.4s ease;
+    }
+
+    #engine {
+      transform: scaleX(-1);   /* 火車頭朝右 */
+    }
+
+    .home-link {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 18px;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="title">🚂 注音小火車</div>
+
+  <div id="card">
+    <div id="picture"></div>
+    <div id="word"></div>
+    <button id="replay-btn" class="big-btn blue" onclick="sayWord()">🔁 再聽一次</button>
+  </div>
+
+  <div id="message">牠的名字開頭是哪個注音呢？</div>
+  <div id="choices"></div>
+
+  <div id="train"><span id="engine">🚂</span></div>
+  <a class="home-link" href="../../">⬅ 回遊戲樂園</a>
+
+  <script src="../../shared/game-utils.js"></script>
+  <script src="../../shared/speech.js"></script>
+  <script src="../../shared/stickers.js"></script>
+  <script>
+    /* ===== 詞庫 =====
+       每個字：圖案、國字、提示句（會唸出來）、開頭注音
+       想跟小孩一起加新的字？照樣子加一行就可以了！ */
+    const WORDS = [
+      { emoji: "👃", word: "鼻子", phrase: "鼻子的鼻", initial: "ㄅ" },
+      { emoji: "🐆", word: "豹",   phrase: "花豹的豹", initial: "ㄅ" },
+      { emoji: "🍎", word: "蘋果", phrase: "蘋果的蘋", initial: "ㄆ" },
+      { emoji: "🍇", word: "葡萄", phrase: "葡萄的葡", initial: "ㄆ" },
+      { emoji: "🐱", word: "貓",   phrase: "小貓的貓", initial: "ㄇ" },
+      { emoji: "🐴", word: "馬",   phrase: "騎馬的馬", initial: "ㄇ" },
+      { emoji: "🐜", word: "螞蟻", phrase: "螞蟻的螞", initial: "ㄇ" },
+      { emoji: "🧢", word: "帽子", phrase: "帽子的帽", initial: "ㄇ" },
+      { emoji: "🏠", word: "房子", phrase: "房子的房", initial: "ㄈ" },
+      { emoji: "✈️", word: "飛機", phrase: "飛機的飛", initial: "ㄈ" },
+      { emoji: "🍚", word: "飯",   phrase: "吃飯的飯", initial: "ㄈ" },
+      { emoji: "🥚", word: "蛋",   phrase: "雞蛋的蛋", initial: "ㄉ" },
+      { emoji: "💡", word: "燈",   phrase: "電燈的燈", initial: "ㄉ" },
+      { emoji: "🔪", word: "刀",   phrase: "菜刀的刀", initial: "ㄉ" },
+      { emoji: "🐰", word: "兔子", phrase: "兔子的兔", initial: "ㄊ" },
+      { emoji: "☀️", word: "太陽", phrase: "太陽的太", initial: "ㄊ" },
+      { emoji: "🍬", word: "糖果", phrase: "糖果的糖", initial: "ㄊ" },
+      { emoji: "🐮", word: "牛",   phrase: "牛奶的牛", initial: "ㄋ" },
+      { emoji: "🐦", word: "鳥",   phrase: "小鳥的鳥", initial: "ㄋ" },
+      { emoji: "🦌", word: "鹿",   phrase: "小鹿的鹿", initial: "ㄌ" },
+      { emoji: "🐉", word: "龍",   phrase: "神龍的龍", initial: "ㄌ" },
+      { emoji: "🐶", word: "狗",   phrase: "小狗的狗", initial: "ㄍ" },
+      { emoji: "🕊️", word: "鴿子", phrase: "鴿子的鴿", initial: "ㄍ" },
+      { emoji: "🦖", word: "恐龍", phrase: "恐龍的恐", initial: "ㄎ" },
+      { emoji: "👖", word: "褲子", phrase: "褲子的褲", initial: "ㄎ" },
+      { emoji: "🦋", word: "蝴蝶", phrase: "蝴蝶的蝴", initial: "ㄏ" },
+      { emoji: "🌸", word: "花",   phrase: "小花的花", initial: "ㄏ" },
+      { emoji: "🐒", word: "猴子", phrase: "猴子的猴", initial: "ㄏ" },
+      { emoji: "🔥", word: "火",   phrase: "火焰的火", initial: "ㄏ" },
+      { emoji: "🐔", word: "雞",   phrase: "公雞的雞", initial: "ㄐ" },
+      { emoji: "🍊", word: "橘子", phrase: "橘子的橘", initial: "ㄐ" },
+      { emoji: "✂️", word: "剪刀", phrase: "剪刀的剪", initial: "ㄐ" },
+      { emoji: "🍫", word: "巧克力", phrase: "巧克力的巧", initial: "ㄑ" },
+      { emoji: "🚗", word: "汽車", phrase: "汽車的汽", initial: "ㄑ" },
+      { emoji: "✏️", word: "鉛筆", phrase: "鉛筆的鉛", initial: "ㄑ" },
+      { emoji: "🍉", word: "西瓜", phrase: "西瓜的西", initial: "ㄒ" },
+      { emoji: "🦐", word: "蝦",   phrase: "蝦子的蝦", initial: "ㄒ" },
+      { emoji: "⭐", word: "星星", phrase: "星星的星", initial: "ㄒ" },
+      { emoji: "🐻", word: "熊",   phrase: "熊熊的熊", initial: "ㄒ" },
+      { emoji: "🐷", word: "豬",   phrase: "小豬的豬", initial: "ㄓ" },
+      { emoji: "🕷️", word: "蜘蛛", phrase: "蜘蛛的蜘", initial: "ㄓ" },
+      { emoji: "🚙", word: "車子", phrase: "車子的車", initial: "ㄔ" },
+      { emoji: "🦁", word: "獅子", phrase: "獅子的獅", initial: "ㄕ" },
+      { emoji: "🐍", word: "蛇",   phrase: "小蛇的蛇", initial: "ㄕ" },
+      { emoji: "🌳", word: "樹",   phrase: "大樹的樹", initial: "ㄕ" },
+      { emoji: "⛰️", word: "山",   phrase: "高山的山", initial: "ㄕ" },
+      { emoji: "🐿️", word: "松鼠", phrase: "松鼠的松", initial: "ㄙ" },
+      { emoji: "🦆", word: "鴨子", phrase: "鴨子的鴨", initial: "ㄧ" },
+      { emoji: "🐑", word: "羊",   phrase: "綿羊的羊", initial: "ㄧ" },
+      { emoji: "👕", word: "衣服", phrase: "衣服的衣", initial: "ㄧ" },
+      { emoji: "🍃", word: "葉子", phrase: "葉子的葉", initial: "ㄧ" },
+      { emoji: "🐢", word: "烏龜", phrase: "烏龜的烏", initial: "ㄨ" },
+      { emoji: "🧦", word: "襪子", phrase: "襪子的襪", initial: "ㄨ" },
+      { emoji: "🐟", word: "魚",   phrase: "小魚的魚", initial: "ㄩ" },
+      { emoji: "🌙", word: "月亮", phrase: "月亮的月", initial: "ㄩ" },
+      { emoji: "☁️", word: "雲",   phrase: "白雲的雲", initial: "ㄩ" },
+    ];
+
+    const TRAIN_SIZE = 8;        // 裝滿幾節車廂算一輪
+    const CHOICE_COUNT = 4;      // 一次給幾個注音選
+
+    // 詞庫裡出現過的所有注音（拿來當錯誤選項）
+    const ALL_INITIALS = [...new Set(WORDS.map((w) => w.initial))];
+
+    let deck = shuffle(WORDS);   // 洗牌後照順序出題，不會一直重複
+    let current = null;
+    let loaded = 0;              // 車上有幾隻了
+    let locked = false;
+
+    const pictureEl = document.getElementById("picture");
+    const wordEl = document.getElementById("word");
+    const choicesEl = document.getElementById("choices");
+    const messageEl = document.getElementById("message");
+    const trainEl = document.getElementById("train");
+
+    /* ===== 火車 ===== */
+
+    function drawTrain() {
+      trainEl.innerHTML = '<span id="engine">🚂</span>';
+      for (let i = 0; i < TRAIN_SIZE; i++) {
+        const wagon = document.createElement("span");
+        wagon.className = "wagon";
+        trainEl.appendChild(wagon);
+      }
+    }
+
+    function loadWagon(emoji) {
+      const wagon = trainEl.querySelectorAll(".wagon:not(.full)")[0];
+      wagon.classList.add("full");
+      wagon.textContent = emoji;
+    }
+
+    /* ===== 出題 ===== */
+
+    function sayWord() {
+      if (current) say(`${current.word}！${current.phrase}`);
+    }
+
+    function nextQuestion() {
+      if (deck.length === 0) deck = shuffle(WORDS);
+      current = deck.pop();
+
+      pictureEl.textContent = current.emoji;
+      pictureEl.dataset.initial = current.initial;   // 測試用：正解放這裡
+      wordEl.textContent = current.word;
+      messageEl.textContent = "開頭是哪個注音呢？";
+
+      // 正解 + 3 個不一樣的注音，打亂順序
+      const wrongs = shuffle(ALL_INITIALS.filter((z) => z !== current.initial)).slice(0, CHOICE_COUNT - 1);
+      choicesEl.innerHTML = "";
+      shuffle([current.initial, ...wrongs]).forEach((zhuyin) => {
+        const btn = document.createElement("button");
+        btn.className = "big-btn";
+        btn.textContent = zhuyin;
+        btn.onclick = () => pick(zhuyin, btn);
+        choicesEl.appendChild(btn);
+      });
+
+      sayWord();
+    }
+
+    /* ===== 作答 ===== */
+
+    function pick(zhuyin, btn) {
+      if (locked) return;
+
+      if (zhuyin === current.initial) {
+        locked = true;
+        playSound("pop");
+        cheer();
+        loadWagon(current.emoji);
+        loaded++;
+        messageEl.textContent = `${current.word}（${current.initial}）上車囉！`;
+
+        setTimeout(() => {
+          locked = false;
+          if (loaded >= TRAIN_SIZE) {
+            trainFull();
+          } else {
+            nextQuestion();
+          }
+        }, 1100);
+      } else {
+        playSound("wrong");
+        encourage();
+        btn.classList.add("shake");
+        setTimeout(() => btn.classList.remove("shake"), 450);
+        setTimeout(sayWord, 900);   // 再唸一次給他聽
+      }
+    }
+
+    function trainFull() {
+      const sticker = awardSticker();
+      awardTrophy("zhuyin-full");
+      const msg = `🎉 滿載出發！得到貼紙 ${sticker}`;
+      say(`火車滿載出發囉！你得到一張新貼紙！`);
+      celebrate(msg, "再玩一輪", () => {
+        loaded = 0;
+        drawTrain();
+        nextQuestion();
+      });
+    }
+
+    createSpeechToggle();
+    drawTrain();
+    nextQuestion();
+  </script>
+</body>
+</html>

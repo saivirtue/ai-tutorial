@@ -163,6 +163,8 @@
   </div>
 
   <script src="../../shared/game-utils.js"></script>
+  <script src="../../shared/speech.js"></script>
+  <script src="../../shared/stickers.js"></script>
   <script>
     /* ===== 關卡設計 =====
        x 是第幾行（0～4，往右），y 是第幾列（0～4，往下）
@@ -300,6 +302,7 @@
         if (!ok) {
           // 撞到東西了！回到起點，指令保留，讓小孩修改再試（這就是除錯！）
           playSound("crash");
+          say("哎呀，撞到了！改一改指令再試一次！");
           robotEl.classList.add("shake");
           messageEl.textContent = "💥 撞到了！改一改指令再試一次！";
           await wait(700);
@@ -322,6 +325,7 @@
       // 指令做完了，但還沒走到寶物
       [...chips].forEach((c) => c.classList.remove("running"));
       playSound("wrong");
+      say("還沒拿到寶物，再加幾個指令試試看！");
       messageEl.textContent = "還沒拿到寶物，再加幾個指令試試看！";
       running = false;
     }
@@ -345,11 +349,15 @@
     }
 
     function levelClear() {
+      const sticker = awardSticker();
       if (levelIndex === LEVELS.length - 1) {
-        celebrate("🏆 全部破關！你是程式大師！", "從頭再玩", () => loadLevel(0));
+        awardTrophy("robot-all");
+        say("全部破關！你是程式大師！還得到一張新貼紙！");
+        celebrate(`🏆 全部破關！得到貼紙 ${sticker}`, "從頭再玩", () => loadLevel(0));
         /* 之後的計畫：在這裡通知 SwitchBot 按下實體按鈕！ */
       } else {
-        celebrate("🎉 過關！", "下一關", () => loadLevel(levelIndex + 1));
+        say(`${randomFrom(CHEERS)}得到貼紙一張！`);
+        celebrate(`🎉 過關！得到貼紙 ${sticker}`, "下一關", () => loadLevel(levelIndex + 1));
       }
     }
 
@@ -358,6 +366,7 @@
       queue = [];
       messageEl.textContent = "";
       document.getElementById("title").textContent = "🤖 " + currentLevel().name;
+      say(currentLevel().name + "！帶機器人走到禮物那裡吧！");
       drawGrid();
       resetRobot();
       drawQueue();
@@ -370,6 +379,7 @@
     // 轉直/轉橫的時候重新把機器人放到正確位置
     window.addEventListener("resize", placeRobot);
 
+    createSpeechToggle();
     loadLevel(0);
   </script>
 </body>

@@ -1,0 +1,52 @@
+/* 貼紙收集簿：答對、破關可以得到動物貼紙和獎盃，存在瀏覽器裡（localStorage） */
+
+const STICKER_KEY = "stickerBook";
+
+// 可以收集的貼紙（想加新的？直接加在這裡！）
+const STICKER_POOL = [
+  "🦁", "🐯", "🐼", "🐨", "🦊", "🦄", "🐬", "🦖",
+  "🦉", "🐢", "🦋", "🐙", "🦩", "🐧", "🦒", "🐘",
+];
+
+// 獎盃清單：id → 名字（遊戲破紀錄時頒發）
+const TROPHIES = {
+  "balloons-count":  "🏆 數一數高手",
+  "balloons-add":    "🏆 加法高手",
+  "balloons-addsub": "🏆 加減大師",
+  "robot-all":       "🏆 程式小大師",
+  "zhuyin-full":     "🏆 注音小達人",
+};
+
+function loadStickerBook() {
+  try {
+    return JSON.parse(localStorage.getItem(STICKER_KEY)) || { stickers: {}, trophies: {} };
+  } catch (e) {
+    return { stickers: {}, trophies: {} };
+  }
+}
+
+function saveStickerBook(book) {
+  localStorage.setItem(STICKER_KEY, JSON.stringify(book));
+}
+
+// 隨機得到一張貼紙，回傳貼紙 emoji（慶祝畫面會用到）
+function awardSticker() {
+  const book = loadStickerBook();
+  const sticker = STICKER_POOL[Math.floor(Math.random() * STICKER_POOL.length)];
+  book.stickers[sticker] = (book.stickers[sticker] || 0) + 1;
+  saveStickerBook(book);
+  return sticker;
+}
+
+// 頒發獎盃（同一個獎盃只會有一座）；第一次拿到回傳獎盃名字，拿過了回傳 null
+function awardTrophy(id) {
+  const book = loadStickerBook();
+  if (book.trophies[id]) return null;
+  book.trophies[id] = true;
+  saveStickerBook(book);
+  return TROPHIES[id] || null;
+}
+
+function getCollection() {
+  return loadStickerBook();
+}

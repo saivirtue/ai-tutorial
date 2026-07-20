@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>我的貼紙簿</title>
+  <link rel="stylesheet" href="../shared/style.css">
+  <style>
+    body {
+      overflow: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      padding: 30px 16px;
+      min-height: 100%;
+    }
+
+    h1 {
+      font-size: clamp(32px, 6vw, 56px);
+      text-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
+    }
+
+    #trophy-shelf {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      min-height: 40px;
+    }
+
+    .trophy {
+      background: var(--star);
+      color: #6b4b00;
+      font-size: 20px;
+      font-weight: bold;
+      border-radius: 14px;
+      padding: 8px 14px;
+      box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25);
+    }
+
+    #hint {
+      color: rgba(255, 255, 255, 0.75);
+      font-size: 20px;
+      text-align: center;
+    }
+
+    #sticker-wall {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      width: min(480px, 92vw);
+    }
+
+    .sticker {
+      position: relative;
+      background: var(--panel);
+      border-radius: 20px;
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: min(56px, 12vw);
+      box-shadow: 0 5px 0 rgba(0, 0, 0, 0.25);
+    }
+
+    /* 還沒拿到的貼紙：灰色剪影 */
+    .sticker.locked {
+      background: rgba(255, 255, 255, 0.15);
+      box-shadow: none;
+    }
+
+    .sticker.locked span {
+      filter: grayscale(1) brightness(0.4);
+      opacity: 0.6;
+    }
+
+    /* 拿到幾張的小徽章 */
+    .sticker .count {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      background: var(--bad);
+      color: #fff;
+      font-size: 18px;
+      font-weight: bold;
+      border-radius: 999px;
+      min-width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+    }
+
+    .home-link {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 20px;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>🏆 我的貼紙簿</h1>
+  <div id="trophy-shelf"></div>
+  <div id="hint"></div>
+  <div id="sticker-wall"></div>
+  <a class="home-link" href="../">⬅ 回遊戲樂園</a>
+
+  <script src="../shared/stickers.js"></script>
+  <script>
+    const book = getCollection();
+
+    // 獎盃架
+    const shelf = document.getElementById("trophy-shelf");
+    Object.keys(book.trophies).forEach((id) => {
+      const trophy = document.createElement("div");
+      trophy.className = "trophy";
+      trophy.textContent = TROPHIES[id] || id;
+      shelf.appendChild(trophy);
+    });
+
+    // 貼紙牆：全部貼紙都畫出來，沒拿到的是灰色剪影
+    const wall = document.getElementById("sticker-wall");
+    let owned = 0;
+    STICKER_POOL.forEach((emoji) => {
+      const count = book.stickers[emoji] || 0;
+      if (count > 0) owned++;
+
+      const cell = document.createElement("div");
+      cell.className = "sticker" + (count === 0 ? " locked" : "");
+      cell.innerHTML = `<span>${emoji}</span>`;
+      if (count > 1) {
+        cell.innerHTML += `<div class="count">x${count}</div>`;
+      }
+      wall.appendChild(cell);
+    });
+
+    document.getElementById("hint").textContent =
+      owned === 0
+        ? "還沒有貼紙，快去玩遊戲收集吧！"
+        : `已經收集了 ${owned} 種貼紙（共 ${STICKER_POOL.length} 種）`;
+  </script>
+</body>
+</html>
