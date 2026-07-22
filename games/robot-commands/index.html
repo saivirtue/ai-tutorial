@@ -165,6 +165,7 @@
   <script src="../../shared/game-utils.js"></script>
   <script src="../../shared/speech.js"></script>
   <script src="../../shared/stickers.js"></script>
+  <script src="../../shared/vision-client.js"></script>
   <script>
     /* ===== 關卡設計 =====
        x 是第幾行（0～4，往右），y 是第幾列（0～4，往下）
@@ -353,8 +354,8 @@
       if (levelIndex === LEVELS.length - 1) {
         awardTrophy("robot-all");
         say("全部破關！你是程式大師！還得到一張新貼紙！");
+        notifyMilestone();   // 通知伺服器：讓 SwitchBot 按一下實體按鈕！
         celebrate(`🏆 全部破關！得到貼紙 ${sticker}`, "從頭再玩", () => loadLevel(0));
-        /* 之後的計畫：在這裡通知 SwitchBot 按下實體按鈕！ */
       } else {
         say(`${randomFrom(CHEERS)}得到貼紙一張！`);
         celebrate(`🎉 過關！得到貼紙 ${sticker}`, "下一關", () => loadLevel(levelIndex + 1));

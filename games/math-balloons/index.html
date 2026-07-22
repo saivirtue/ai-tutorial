@@ -268,8 +268,8 @@
             const sticker = awardSticker();
             awardTrophy("balloons-" + mode);
             say("全部答對！你得到一張新貼紙！");
+            notifyMilestone();   // 通知伺服器：讓 SwitchBot 按一下實體按鈕！
             celebrate(`🎉 全部答對！得到貼紙 ${sticker}`, "再玩一次", showMenu);
-            /* 之後的計畫：在這裡通知 SwitchBot 按下實體按鈕！ */
           } else {
             // 鼓勵和下一題接在同一句唸，才不會互相打斷
             nextQuestion(randomFrom(CHEERS));

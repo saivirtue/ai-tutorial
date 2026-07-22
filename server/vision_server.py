@@ -13,6 +13,14 @@
 送給網頁的事件（JSON）：
   {"type": "fingers", "count": N}   即時看到幾根手指（沒看到手是 null）
   {"type": "answer",  "count": N}   同一個數字穩定比了一秒，當作正式回答
+
+SwitchBot 實體回饋（--switchbot 參數）：
+  off     不處理（預設）——遊戲送里程碑事件時直接忽略
+  mock    不連真藍牙，只記錄下來，給 GET /switchbot/log 檢查（測試用）
+  <MAC位址>  例如 AA:BB:CC:DD:EE:FF，真的用藍牙連線按下 SwitchBot Bot
+遊戲網頁在達成里程碑（破關、集滿星星…）時會透過 WebSocket 送
+  {"type": "milestone"}
+伺服器收到後會觸發 SwitchBot 按一下實體按鈕。
 """
 
 import argparse
@@ -33,6 +41,35 @@ BROADCAST_HZ = 10           # 每秒最多送幾次 fingers 事件
 
 # 視覺執行緒把最新結果放這裡，asyncio 這邊定時拿去廣播
 latest = {"count": None}
+
+# ====================== SwitchBot ======================
+# 社群常見的 SwitchBot Bot「無密碼」BLE press 指令
+SWITCHBOT_CHAR_UUID = "cba20002-224d-11e6-9fb8-0002a5d5c51b"
+SWITCHBOT_PRESS_COMMAND = bytes([0x57, 0x01, 0x00])
+
+switchbot_mode = "off"      # "off" / "mock" / MAC 位址字串
+switchbot_log = []          # mock 模式：記錄每次觸發的時間，給測試讀取
+
+
+async def trigger_switchbot():
+    """收到里程碑事件時呼叫；依模式決定要不要真的按下 SwitchBot。
+    包在 try/except 裡，藍牙失敗只印訊息，不能讓伺服器掛掉。"""
+    if switchbot_mode == "off":
+        return
+
+    if switchbot_mode == "mock":
+        switchbot_log.append(time.time())
+        print(f"🔔 (mock) 按下 SwitchBot！（第 {len(switchbot_log)} 次）")
+        return
+
+    try:
+        from bleak import BleakClient
+
+        async with BleakClient(switchbot_mode) as client:
+            await client.write_gatt_char(SWITCHBOT_CHAR_UUID, SWITCHBOT_PRESS_COMMAND)
+        print("🔔 SwitchBot 按下去了！")
+    except Exception as e:
+        print(f"⚠️  SwitchBot 觸發失敗：{e}（裝置是否有設密碼？參考 README）")
 
 
 # ====================== 影像來源 ======================
@@ -146,6 +183,14 @@ async def ws_handler(request):
         async for msg in ws:
             if msg.type == WSMsgType.ERROR:
                 break
+            if msg.type == WSMsgType.TEXT:
+                try:
+                    data = json.loads(msg.data)
+                except ValueError:
+                    continue
+                if data.get("type") == "milestone":
+                    # 不要 await：BLE 可能很慢，不能卡住這個 WebSocket 的收訊迴圈
+                    asyncio.create_task(trigger_switchbot())
     finally:
         websockets.discard(ws)
     return ws
@@ -156,6 +201,11 @@ async def mock_handler(request):
     raw = request.query.get("count")
     latest["count"] = int(raw) if raw is not None else None
     return web.json_response({"ok": True, "count": latest["count"]})
+
+
+async def switchbot_log_handler(request):
+    """測試用：查 mock 模式下 SwitchBot 被觸發了幾次。"""
+    return web.json_response({"count": len(switchbot_log)})
 
 
 async def static_handler(request):
@@ -223,6 +273,7 @@ def print_welcome(source):
     print("=" * 46)
     print("🎪 小小遊戲樂園 伺服器啟動！")
     print(f"   影像來源：{source}")
+    print(f"   SwitchBot：{switchbot_mode}")
     print(f"   手機（跟筆電同一個 WiFi）請開：{url}")
     print("=" * 46)
     try:
@@ -242,9 +293,17 @@ async def start_background(app):
 
 
 def main():
+    global switchbot_mode
+
     parser = argparse.ArgumentParser(description="親子遊戲視覺伺服器")
     parser.add_argument("--source", choices=["oakd", "webcam", "mock"], default="oakd")
+    parser.add_argument(
+        "--switchbot",
+        default="off",
+        help="off（預設）/ mock（測試用）/ 實際 MAC 位址，例如 AA:BB:CC:DD:EE:FF",
+    )
     args = parser.parse_args()
+    switchbot_mode = args.switchbot
 
     if args.source != "mock":
         thread = threading.Thread(target=vision_loop, args=(args.source,), daemon=True)
@@ -255,6 +314,7 @@ def main():
     app = web.Application()
     app.router.add_get("/ws", ws_handler)
     app.router.add_get("/mock", mock_handler)
+    app.router.add_get("/switchbot/log", switchbot_log_handler)
     app.router.add_get("/{tail:.*}", static_handler)
     app.on_startup.append(start_background)
 

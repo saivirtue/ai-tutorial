@@ -5,14 +5,19 @@ const SPEECH_KEY = "speech-enabled";   // 記住 🔊/🔇 的選擇
 
 let speechEnabled = localStorage.getItem(SPEECH_KEY) !== "off";
 let chineseVoice = null;
+let englishVoice = null;
 
-// 挑一個中文語音：優先台灣（zh-TW），找不到就任何中文
+// 挑中文語音（優先台灣 zh-TW）和英文語音（優先美式 en-US）
 function pickVoice() {
   if (!window.speechSynthesis) return;
   const voices = speechSynthesis.getVoices();
   chineseVoice =
     voices.find((v) => v.lang === "zh-TW") ||
     voices.find((v) => v.lang.startsWith("zh")) ||
+    null;
+  englishVoice =
+    voices.find((v) => v.lang === "en-US") ||
+    voices.find((v) => v.lang.startsWith("en")) ||
     null;
 }
 
@@ -23,18 +28,27 @@ if (window.speechSynthesis) {
 }
 
 // 唸出一段話（會先打斷上一句，遊戲節奏才不會拖）
-function say(text) {
+function speak(text, voice, lang) {
   try {
     if (!speechEnabled || !window.speechSynthesis) return;
     speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    if (chineseVoice) utterance.voice = chineseVoice;
-    utterance.lang = "zh-TW";
+    if (voice) utterance.voice = voice;
+    utterance.lang = lang;
     utterance.rate = 0.9;    // 稍微慢一點，小孩聽得清楚
     speechSynthesis.speak(utterance);
   } catch (e) {
     // 語音壞了也不能讓遊戲壞掉
   }
+}
+
+function say(text) {
+  speak(text, chineseVoice, "zh-TW");
+}
+
+// 唸英文（ABC 小火車用）
+function sayEnglish(text) {
+  speak(text, englishVoice, "en-US");
 }
 
 /* ===== 鼓勵語 ===== */

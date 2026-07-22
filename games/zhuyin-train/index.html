@@ -124,6 +124,7 @@
   <script src="../../shared/game-utils.js"></script>
   <script src="../../shared/speech.js"></script>
   <script src="../../shared/stickers.js"></script>
+  <script src="../../shared/vision-client.js"></script>
   <script>
     /* ===== 詞庫 =====
        每個字：圖案、國字、提示句（會唸出來）、開頭注音
@@ -285,6 +286,7 @@
       awardTrophy("zhuyin-full");
       const msg = `🎉 滿載出發！得到貼紙 ${sticker}`;
       say(`火車滿載出發囉！你得到一張新貼紙！`);
+      notifyMilestone();   // 通知伺服器：讓 SwitchBot 按一下實體按鈕！
       celebrate(msg, "再玩一輪", () => {
         loaded = 0;
         drawTrain();
