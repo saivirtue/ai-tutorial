@@ -147,12 +147,21 @@ def vision_loop(source):
     else:
         frames = frames_from_webcam()
 
-    hands = mp.solutions.hands.Hands(
-        model_complexity=0,          # 用小模型，速度快
-        max_num_hands=2,             # 兩隻手一起比可以到 10
-        min_detection_confidence=0.6,
-        min_tracking_confidence=0.5,
-    )
+    try:
+        hands = mp.solutions.hands.Hands(
+            model_complexity=0,          # 用小模型，速度快
+            max_num_hands=2,             # 兩隻手一起比可以到 10
+            min_detection_confidence=0.6,
+            min_tracking_confidence=0.5,
+        )
+    except AttributeError:
+        print(
+            "❌ mediapipe 版本不對，缺少 solutions API（比手指功能沒辦法用，"
+            "但網頁和其他遊戲照常能玩）。\n"
+            "   請執行：cd server && source .venv/bin/activate && "
+            "pip install 'mediapipe==0.10.14' 然後重開伺服器。"
+        )
+        return
 
     for frame in frames:
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
