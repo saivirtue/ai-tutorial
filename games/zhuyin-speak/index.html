@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>跟讀小鸚鵡</title>
+  <link rel="stylesheet" href="../../shared/style.css">
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      overflow: auto;
+      gap: 14px;
+    }
+
+    #title {
+      font-size: clamp(24px, 4vw, 40px);
+      font-weight: bold;
+      text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+    }
+
+    /* ===== 題目：大注音符號＋提示字＋重聽 ===== */
+    #card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 28px;
+      padding: 18px 50px;
+    }
+
+    #symbol {
+      font-size: clamp(90px, 20vh, 170px);
+      line-height: 1.1;
+      font-weight: bold;
+    }
+
+    #hint {
+      font-size: clamp(22px, 4vh, 32px);
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    #replay-btn {
+      font-size: 22px;
+      padding: 10px 20px;
+      margin-top: 6px;
+    }
+
+    /* ===== 麥克風按鈕 ===== */
+    #mic-btn {
+      font-size: 32px;
+      padding: 20px 40px;
+    }
+
+    #mic-btn.listening {
+      background: var(--bad);
+      animation: star-pop 0.6s ease infinite alternate;
+    }
+
+    #message {
+      font-size: 22px;
+      min-height: 2.6em;
+      font-weight: bold;
+      color: var(--star);
+      text-align: center;
+      max-width: 90vw;
+    }
+
+    #fallback-btn {
+      font-size: 16px;
+      padding: 8px 16px;
+      background: transparent;
+      border: 2px dashed rgba(255, 255, 255, 0.5);
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    /* .big-btn 的 display:inline-block 特異度比瀏覽器內建的 [hidden] 規則高，
+       要在這裡明講一次，不然 hidden 屬性沒有用，按鈕會一直顯示 */
+    #fallback-btn[hidden] {
+      display: none;
+    }
+
+    #stars {
+      font-size: clamp(24px, 5vw, 34px);
+    }
+
+    .home-link {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 18px;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="title">🦜 跟讀小鸚鵡</div>
+  <div id="stars"></div>
+
+  <div id="card">
+    <div id="symbol"></div>
+    <div id="hint"></div>
+    <button id="replay-btn" class="big-btn blue" onclick="playDemo()">🔁 再聽一次</button>
+  </div>
+
+  <button id="mic-btn" class="big-btn green" onclick="startListening()">🎤 換你說說看！</button>
+  <div id="message">聽完範例，按麥克風跟著唸唸看！</div>
+  <button id="fallback-btn" class="big-btn" onclick="selfConfirm()" hidden>🙋 麥克風用不了？點這裡直接算過關</button>
+
+  <a class="home-link" href="../../">⬅ 回遊戲樂園</a>
+
+  <script src="../../shared/game-utils.js"></script>
+  <script src="../../shared/speech.js"></script>
+  <script src="../../shared/stickers.js"></script>
+  <script src="../../shared/vision-client.js"></script>
+  <script>
+    /* ===== 詞庫 =====
+       symbol：注音符號本身
+       demo：用來唸範例、給孩子模仿的常見同音字（比直接唸注音符號更準確）
+       accepted：語音辨識聽到這些字（或包含這些字）都算對，同音字盡量多列幾個
+       這份「呼讀」對照表是台灣國語課本常見教法，實際玩起來覺得太嚴/太鬆
+       都可以照樣子調整 accepted 陣列。 */
+    const SYMBOLS = [
+      { symbol: "ㄅ", demo: "波", accepted: ["波", "玻", "菠", "伯"] },
+      { symbol: "ㄆ", demo: "頗", accepted: ["頗", "坡", "潑", "婆"] },
+      { symbol: "ㄇ", demo: "摸", accepted: ["摸", "摩", "末", "漠"] },
+      { symbol: "ㄈ", demo: "佛", accepted: ["佛", "否", "缶"] },
+      { symbol: "ㄉ", demo: "得", accepted: ["得", "的", "德"] },
+      { symbol: "ㄊ", demo: "特", accepted: ["特", "忒"] },
+      { symbol: "ㄋ", demo: "呢", accepted: ["呢", "訥"] },
+      { symbol: "ㄌ", demo: "了", accepted: ["了", "勒", "樂"] },
+      { symbol: "ㄍ", demo: "哥", accepted: ["哥", "歌", "割", "個"] },
+      { symbol: "ㄎ", demo: "科", accepted: ["科", "可", "克"] },
+      { symbol: "ㄏ", demo: "喝", accepted: ["喝", "河", "何", "合"] },
+      { symbol: "ㄐ", demo: "基", accepted: ["基", "雞", "及", "急"] },
+      { symbol: "ㄑ", demo: "欺", accepted: ["欺", "七", "期", "起"] },
+      { symbol: "ㄒ", demo: "西", accepted: ["西", "希", "洗", "喜"] },
+      { symbol: "ㄓ", demo: "知", accepted: ["知", "之", "隻"] },
+      { symbol: "ㄔ", demo: "蚩", accepted: ["蚩", "吃", "池", "尺"] },
+      { symbol: "ㄕ", demo: "詩", accepted: ["詩", "是", "十", "師"] },
+      { symbol: "ㄖ", demo: "日", accepted: ["日", "入"] },
+      { symbol: "ㄗ", demo: "資", accepted: ["資", "字", "自", "子"] },
+      { symbol: "ㄘ", demo: "雌", accepted: ["雌", "次", "刺", "詞"] },
+      { symbol: "ㄙ", demo: "思", accepted: ["思", "四", "司", "絲"] },
+      { symbol: "ㄧ", demo: "一", accepted: ["一", "衣", "已", "以"] },
+      { symbol: "ㄨ", demo: "屋", accepted: ["屋", "無", "五", "烏"] },
+      { symbol: "ㄩ", demo: "魚", accepted: ["魚", "雨", "於", "玉"] },
+    ];
+
+    const ROUNDS_TO_WIN = 8;
+
+    let deck = shuffle(SYMBOLS);
+    let current = null;
+    let stars = 0;
+    let listening = false;
+    let sessionFallback = false;   // 麥克風壞掉之後，永久顯示自行判斷的按鈕
+
+    const symbolEl = document.getElementById("symbol");
+    const hintEl = document.getElementById("hint");
+    const messageEl = document.getElementById("message");
+    const micBtn = document.getElementById("mic-btn");
+    const fallbackBtn = document.getElementById("fallback-btn");
+    const setStars = createStarBar(document.getElementById("stars"), ROUNDS_TO_WIN);
+
+    function playDemo() {
+      if (current) say(current.demo);
+    }
+
+    function nextQuestion() {
+      if (deck.length === 0) deck = shuffle(SYMBOLS);
+      current = deck.pop();
+
+      symbolEl.textContent = current.symbol;
+      symbolEl.dataset.demo = current.demo;   // 測試用：正解放這裡
+      hintEl.textContent = `（唸作「${current.demo}」）`;
+      messageEl.textContent = "聽完範例，按麥克風跟著唸唸看！";
+      playDemo();
+    }
+
+    /* ===== 跟讀 ===== */
+
+    function startListening() {
+      if (listening) return;
+      listening = true;
+      micBtn.classList.add("listening");
+      micBtn.textContent = "🎧 聽你說...";
+      messageEl.textContent = "說說看「" + current.demo + "」！";
+
+      listenForSpeech(({ text, error }) => {
+        listening = false;
+        micBtn.classList.remove("listening");
+        micBtn.textContent = "🎤 換你說說看！";
+
+        if (error === "no_server" || error === "mic_disabled" || error === "server_error") {
+          fallbackBtn.hidden = false;
+          sessionFallback = true;
+          messageEl.textContent = "這台伺服器的麥克風還沒開，可以先用下面的按鈕直接算過關！";
+          return;
+        }
+
+        if (text && current.accepted.some((word) => text.includes(word))) {
+          correct();
+        } else {
+          encourage();
+          messageEl.textContent = text ? `我聽到的是「${text}」，再說一次看看！` : "沒聽清楚，再說一次！";
+        }
+      });
+    }
+
+    // 麥克風壞掉時的救援按鈕：爸媽用耳朵判斷後手動算過關
+    function selfConfirm() {
+      correct();
+    }
+
+    function correct() {
+      playSound("pop");
+      cheer();
+      stars++;
+      setStars(stars);
+      messageEl.textContent = `「${current.demo}」說得真好！`;
+
+      setTimeout(() => {
+        if (stars >= ROUNDS_TO_WIN) {
+          finishRound();
+        } else {
+          nextQuestion();
+        }
+      }, 900);
+    }
+
+    function finishRound() {
+      const sticker = awardSticker();
+      awardTrophy("zhuyin-speak-full");
+      say("太厲害了！你得到一張新貼紙！");
+      notifyMilestone();   // 通知伺服器：讓 SwitchBot 按一下實體按鈕！
+      celebrate(`🎉 全部唸對！得到貼紙 ${sticker}`, "再玩一輪", () => {
+        stars = 0;
+        setStars(0);
+        nextQuestion();
+      });
+    }
+
+    createSpeechToggle();
+    setStars(0);
+    nextQuestion();
+  </script>
+</body>
+</html>

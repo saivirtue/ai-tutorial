@@ -41,3 +41,34 @@ function notifyMilestone() {
     // 送不出去就算了，不影響遊戲
   }
 }
+
+// 跟讀小鸚鵡用：請伺服器用筆電麥克風錄音辨識，講完會呼叫 onHeard({ text, error })
+// text 是聽到的文字（null 表示沒聽清楚或沒開麥克風），error 是原因代碼
+function listenForSpeech(onHeard) {
+  if (!sharedSocket || sharedSocket.readyState !== WebSocket.OPEN) {
+    onHeard({ text: null, error: "no_server" });
+    return;
+  }
+
+  const timeout = setTimeout(() => {
+    sharedSocket.removeEventListener("message", handler);
+    onHeard({ text: null, error: "timeout" });
+  }, 8000); // 錄音＋辨識正常幾秒內會回來，太久就當作失敗，不要讓畫面卡住
+
+  function handler(event) {
+    const msg = JSON.parse(event.data);
+    if (msg.type !== "heard") return;
+    clearTimeout(timeout);
+    sharedSocket.removeEventListener("message", handler);
+    onHeard({ text: msg.text, error: msg.error });
+  }
+
+  sharedSocket.addEventListener("message", handler);
+  try {
+    sharedSocket.send(JSON.stringify({ type: "listen" }));
+  } catch (e) {
+    clearTimeout(timeout);
+    sharedSocket.removeEventListener("message", handler);
+    onHeard({ text: null, error: "no_server" });
+  }
+}

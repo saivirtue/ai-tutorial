@@ -21,6 +21,14 @@ SwitchBot 實體回饋（--switchbot 參數）：
 遊戲網頁在達成里程碑（破關、集滿星星…）時會透過 WebSocket 送
   {"type": "milestone"}
 伺服器收到後會觸發 SwitchBot 按一下實體按鈕。
+
+跟讀語音辨識（--mic 參數）：
+  on      預設。用筆電內建麥克風錄音＋Google 語音辨識（需要網路）
+  off     不處理，遊戲送 listen 時直接回覆「沒開啟」
+  mock    不錄音，回覆 GET /mock_speech?text=XXX 設定的文字（測試用）
+遊戲網頁送 {"type": "listen"}，伺服器錄音幾秒、辨識完送回
+  {"type": "heard", "text": "...", "error": null}
+（聽不清楚或沒開麥克風時 text 是 null，error 會有原因）
 """
 
 import argparse
@@ -70,6 +78,67 @@ async def trigger_switchbot():
         print("🔔 SwitchBot 按下去了！")
     except Exception as e:
         print(f"⚠️  SwitchBot 觸發失敗：{e}（裝置是否有設密碼？參考 README）")
+
+
+# ====================== 跟讀語音辨識 ======================
+
+LISTEN_SECONDS = 2.5
+SPEECH_SAMPLE_RATE = 16000
+
+mic_mode = "on"        # "on" / "off" / "mock"
+mock_speech_text = ""  # mock 模式：/mock_speech 設定的「假裝聽到的話」
+mic_broken_warned = False  # 麥克風壞掉的訊息只印一次，不要洗畫面
+
+
+def record_and_recognize():
+    """錄 LISTEN_SECONDS 秒的音，用 Google 語音辨識轉成文字。
+    這個函式會卡住（阻塞），一定要丟到背景執行緒／executor 裡跑，
+    不能直接在 asyncio 的事件迴圈裡呼叫。"""
+    import sounddevice as sd
+    import speech_recognition as sr
+
+    audio = sd.rec(int(LISTEN_SECONDS * SPEECH_SAMPLE_RATE), samplerate=SPEECH_SAMPLE_RATE, channels=1, dtype="int16")
+    sd.wait()
+    audio_data = sr.AudioData(audio.tobytes(), SPEECH_SAMPLE_RATE, 2)
+
+    recognizer = sr.Recognizer()
+    try:
+        return recognizer.recognize_google(audio_data, language="zh-TW"), None
+    except sr.UnknownValueError:
+        return None, "no_speech"
+    except sr.RequestError as e:
+        return None, f"network:{e}"
+
+
+async def handle_listen(ws):
+    """收到遊戲頁面的 {"type": "listen"} 時呼叫；錄音辨識完送回 heard 事件。"""
+    global mic_broken_warned
+
+    if mic_mode == "off":
+        await ws.send_str(json.dumps({"type": "heard", "text": None, "error": "mic_disabled"}))
+        return
+
+    if mic_mode == "mock":
+        await asyncio.sleep(0.5)   # 假裝錄音需要一點時間，體驗比較真實
+        text = mock_speech_text or None
+        await ws.send_str(json.dumps({"type": "heard", "text": text, "error": None if text else "no_speech"}))
+        return
+
+    try:
+        loop = asyncio.get_event_loop()
+        text, err = await loop.run_in_executor(None, record_and_recognize)
+    except Exception as e:
+        if not mic_broken_warned:
+            mic_broken_warned = True
+            print(
+                f"⚠️  麥克風錄音失敗（{e}）。跟讀小鸚鵡沒辦法用，其他遊戲不受影響。\n"
+                "   請執行：cd server && source .venv/bin/activate && "
+                "pip install SpeechRecognition sounddevice 然後重開伺服器，"
+                "並確認終端機有麥克風權限（系統設定 → 隱私權與安全性 → 麥克風）。"
+            )
+        text, err = None, "server_error"
+
+    await ws.send_str(json.dumps({"type": "heard", "text": text, "error": err}))
 
 
 # ====================== 影像來源 ======================
@@ -200,6 +269,9 @@ async def ws_handler(request):
                 if data.get("type") == "milestone":
                     # 不要 await：BLE 可能很慢，不能卡住這個 WebSocket 的收訊迴圈
                     asyncio.create_task(trigger_switchbot())
+                elif data.get("type") == "listen":
+                    # 不要 await：錄音要好幾秒，不能卡住這個 WebSocket 的收訊迴圈
+                    asyncio.create_task(handle_listen(ws))
     finally:
         websockets.discard(ws)
     return ws
@@ -215,6 +287,14 @@ async def mock_handler(request):
 async def switchbot_log_handler(request):
     """測試用：查 mock 模式下 SwitchBot 被觸發了幾次。"""
     return web.json_response({"count": len(switchbot_log)})
+
+
+async def mock_speech_handler(request):
+    """測試用：GET /mock_speech?text=波 設定下一次 listen 事件「假裝聽到的話」；
+    不帶 text 表示假裝什麼都沒聽到。"""
+    global mock_speech_text
+    mock_speech_text = request.query.get("text", "")
+    return web.json_response({"ok": True, "text": mock_speech_text})
 
 
 async def static_handler(request):
@@ -283,6 +363,7 @@ def print_welcome(source):
     print("🎪 小小遊戲樂園 伺服器啟動！")
     print(f"   影像來源：{source}")
     print(f"   SwitchBot：{switchbot_mode}")
+    print(f"   跟讀麥克風：{mic_mode}")
     print(f"   手機（跟筆電同一個 WiFi）請開：{url}")
     print("=" * 46)
     try:
@@ -302,7 +383,7 @@ async def start_background(app):
 
 
 def main():
-    global switchbot_mode
+    global switchbot_mode, mic_mode
 
     parser = argparse.ArgumentParser(description="親子遊戲視覺伺服器")
     parser.add_argument("--source", choices=["oakd", "webcam", "mock"], default="oakd")
@@ -311,8 +392,10 @@ def main():
         default="off",
         help="off（預設）/ mock（測試用）/ 實際 MAC 位址，例如 AA:BB:CC:DD:EE:FF",
     )
+    parser.add_argument("--mic", choices=["on", "off", "mock"], default="on", help="跟讀小鸚鵡用的麥克風（預設 on）")
     args = parser.parse_args()
     switchbot_mode = args.switchbot
+    mic_mode = args.mic
 
     if args.source != "mock":
         thread = threading.Thread(target=vision_loop, args=(args.source,), daemon=True)
@@ -324,6 +407,7 @@ def main():
     app.router.add_get("/ws", ws_handler)
     app.router.add_get("/mock", mock_handler)
     app.router.add_get("/switchbot/log", switchbot_log_handler)
+    app.router.add_get("/mock_speech", mock_speech_handler)
     app.router.add_get("/{tail:.*}", static_handler)
     app.on_startup.append(start_background)
 

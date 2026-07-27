@@ -6,6 +6,7 @@
 #   ./start.sh --source mock    # 不開鏡頭（測試）
 #   ./start.sh --switchbot AA:BB:CC:DD:EE:FF   # 里程碑時按下 SwitchBot
 #   ./start.sh --switchbot mock                # SwitchBot 測試模式（不用真裝置）
+#   ./start.sh --mic off                       # 關閉跟讀小鸚鵡的麥克風功能
 set -e
 cd "$(dirname "$0")"
 
