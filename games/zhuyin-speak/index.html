@@ -34,14 +34,30 @@
     }
 
     #symbol {
-      font-size: clamp(90px, 20vh, 170px);
+      font-size: clamp(64px, 15vh, 120px);
       line-height: 1.1;
       font-weight: bold;
+      letter-spacing: 0.05em;
+    }
+
+    /* ===== 拆解：一個一個注音符號分開顯示，方便指著教拼讀 ===== */
+    #breakdown {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+    }
+
+    #breakdown .chip {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 10px;
+      padding: 4px 12px;
+      font-size: clamp(24px, 5vh, 36px);
     }
 
     #hint {
-      font-size: clamp(22px, 4vh, 32px);
-      color: rgba(255, 255, 255, 0.8);
+      font-size: clamp(26px, 5vh, 38px);
+      color: rgba(255, 255, 255, 0.85);
+      font-weight: bold;
     }
 
     #replay-btn {
@@ -101,6 +117,7 @@
 
   <div id="card">
     <div id="symbol"></div>
+    <div id="breakdown"></div>
     <div id="hint"></div>
     <button id="replay-btn" class="big-btn blue" onclick="playDemo()">🔁 再聽一次</button>
   </div>
@@ -117,47 +134,52 @@
   <script src="../../shared/vision-client.js"></script>
   <script>
     /* ===== 詞庫 =====
-       symbol：注音符號本身
-       demo：用來唸範例、給孩子模仿的常見同音字（比直接唸注音符號更準確）
-       accepted：語音辨識聽到這些字（或包含這些字）都算對，同音字盡量多列幾個
-       這份「呼讀」對照表是台灣國語課本常見教法，實際玩起來覺得太嚴/太鬆
-       都可以照樣子調整 accepted 陣列。 */
-    const SYMBOLS = [
-      { symbol: "ㄅ", demo: "波", accepted: ["波", "玻", "菠", "伯"] },
-      { symbol: "ㄆ", demo: "頗", accepted: ["頗", "坡", "潑", "婆"] },
-      { symbol: "ㄇ", demo: "摸", accepted: ["摸", "摩", "末", "漠"] },
-      { symbol: "ㄈ", demo: "佛", accepted: ["佛", "否", "缶"] },
-      { symbol: "ㄉ", demo: "得", accepted: ["得", "的", "德"] },
-      { symbol: "ㄊ", demo: "特", accepted: ["特", "忒"] },
-      { symbol: "ㄋ", demo: "呢", accepted: ["呢", "訥"] },
-      { symbol: "ㄌ", demo: "了", accepted: ["了", "勒", "樂"] },
-      { symbol: "ㄍ", demo: "哥", accepted: ["哥", "歌", "割", "個"] },
-      { symbol: "ㄎ", demo: "科", accepted: ["科", "可", "克"] },
-      { symbol: "ㄏ", demo: "喝", accepted: ["喝", "河", "何", "合"] },
-      { symbol: "ㄐ", demo: "基", accepted: ["基", "雞", "及", "急"] },
-      { symbol: "ㄑ", demo: "欺", accepted: ["欺", "七", "期", "起"] },
-      { symbol: "ㄒ", demo: "西", accepted: ["西", "希", "洗", "喜"] },
-      { symbol: "ㄓ", demo: "知", accepted: ["知", "之", "隻"] },
-      { symbol: "ㄔ", demo: "蚩", accepted: ["蚩", "吃", "池", "尺"] },
-      { symbol: "ㄕ", demo: "詩", accepted: ["詩", "是", "十", "師"] },
-      { symbol: "ㄖ", demo: "日", accepted: ["日", "入"] },
-      { symbol: "ㄗ", demo: "資", accepted: ["資", "字", "自", "子"] },
-      { symbol: "ㄘ", demo: "雌", accepted: ["雌", "次", "刺", "詞"] },
-      { symbol: "ㄙ", demo: "思", accepted: ["思", "四", "司", "絲"] },
-      { symbol: "ㄧ", demo: "一", accepted: ["一", "衣", "已", "以"] },
-      { symbol: "ㄨ", demo: "屋", accepted: ["屋", "無", "五", "烏"] },
-      { symbol: "ㄩ", demo: "魚", accepted: ["魚", "雨", "於", "玉"] },
+       每個字是「一個完整音節」（聲符＋韻符＋聲調），不是單一注音符號——
+       完整音節才是正常說話會講的真實讀音，Google 語音辨識起來準得多。
+       建議玩法：爸媽先照 zhuyin 一個一個符號帶著唸，教小孩怎麼拼，
+       拼熟了再按麥克風讓小孩自己講一次完整的音。
+       hanzi：國字本身（範例發音、答對顯示都用這個）
+       zhuyin：完整注音拼法（大字顯示，也會拆成一個一個符號給爸媽指）
+       pinyin：漢語拼音，顯示在國字旁邊
+       accepted：語音辨識聽到這些字（或包含這些字）都算對
+       這份對照表是常見一年級單字，實際玩起來覺得太嚴/太鬆都可以照樣子調整。 */
+    const WORDS = [
+      { hanzi: "你", zhuyin: "ㄋㄧˇ", pinyin: "nǐ", accepted: ["你", "妳"] },
+      { hanzi: "好", zhuyin: "ㄏㄠˇ", pinyin: "hǎo", accepted: ["好", "郝"] },
+      { hanzi: "媽", zhuyin: "ㄇㄚ", pinyin: "mā", accepted: ["媽"] },
+      { hanzi: "爸", zhuyin: "ㄅㄚˋ", pinyin: "bà", accepted: ["爸", "霸", "壩"] },
+      { hanzi: "貓", zhuyin: "ㄇㄠ", pinyin: "māo", accepted: ["貓", "錨"] },
+      { hanzi: "狗", zhuyin: "ㄍㄡˇ", pinyin: "gǒu", accepted: ["狗", "苟"] },
+      { hanzi: "水", zhuyin: "ㄕㄨㄟˇ", pinyin: "shuǐ", accepted: ["水"] },
+      { hanzi: "花", zhuyin: "ㄏㄨㄚ", pinyin: "huā", accepted: ["花"] },
+      { hanzi: "魚", zhuyin: "ㄩˊ", pinyin: "yú", accepted: ["魚", "漁", "餘"] },
+      { hanzi: "月", zhuyin: "ㄩㄝˋ", pinyin: "yuè", accepted: ["月", "越", "閱"] },
+      { hanzi: "大", zhuyin: "ㄉㄚˋ", pinyin: "dà", accepted: ["大", "達"] },
+      { hanzi: "小", zhuyin: "ㄒㄧㄠˇ", pinyin: "xiǎo", accepted: ["小", "曉"] },
+      { hanzi: "天", zhuyin: "ㄊㄧㄢ", pinyin: "tiān", accepted: ["天", "添"] },
+      { hanzi: "地", zhuyin: "ㄉㄧˋ", pinyin: "dì", accepted: ["地", "弟", "第"] },
+      { hanzi: "山", zhuyin: "ㄕㄢ", pinyin: "shān", accepted: ["山", "衫", "珊"] },
+      { hanzi: "火", zhuyin: "ㄏㄨㄛˇ", pinyin: "huǒ", accepted: ["火", "夥"] },
+      { hanzi: "風", zhuyin: "ㄈㄥ", pinyin: "fēng", accepted: ["風", "封", "蜂"] },
+      { hanzi: "雨", zhuyin: "ㄩˇ", pinyin: "yǔ", accepted: ["雨", "羽", "與"] },
+      { hanzi: "手", zhuyin: "ㄕㄡˇ", pinyin: "shǒu", accepted: ["手", "首", "守"] },
+      { hanzi: "心", zhuyin: "ㄒㄧㄣ", pinyin: "xīn", accepted: ["心", "新", "辛", "欣"] },
+      { hanzi: "眼", zhuyin: "ㄧㄢˇ", pinyin: "yǎn", accepted: ["眼", "演", "掩"] },
+      { hanzi: "口", zhuyin: "ㄎㄡˇ", pinyin: "kǒu", accepted: ["口"] },
+      { hanzi: "耳", zhuyin: "ㄦˇ", pinyin: "ěr", accepted: ["耳", "爾"] },
+      { hanzi: "家", zhuyin: "ㄐㄧㄚ", pinyin: "jiā", accepted: ["家", "加", "佳", "嘉"] },
     ];
 
     const ROUNDS_TO_WIN = 8;
 
-    let deck = shuffle(SYMBOLS);
+    let deck = shuffle(WORDS);
     let current = null;
     let stars = 0;
     let listening = false;
     let sessionFallback = false;   // 麥克風壞掉之後，永久顯示自行判斷的按鈕
 
     const symbolEl = document.getElementById("symbol");
+    const breakdownEl = document.getElementById("breakdown");
     const hintEl = document.getElementById("hint");
     const messageEl = document.getElementById("message");
     const micBtn = document.getElementById("mic-btn");
@@ -165,17 +187,27 @@
     const setStars = createStarBar(document.getElementById("stars"), ROUNDS_TO_WIN);
 
     function playDemo() {
-      if (current) say(current.demo);
+      if (current) say(current.hanzi);
     }
 
     function nextQuestion() {
-      if (deck.length === 0) deck = shuffle(SYMBOLS);
+      if (deck.length === 0) deck = shuffle(WORDS);
       current = deck.pop();
 
-      symbolEl.textContent = current.symbol;
-      symbolEl.dataset.demo = current.demo;   // 測試用：正解放這裡
-      hintEl.textContent = `（唸作「${current.demo}」）`;
-      messageEl.textContent = "聽完範例，按麥克風跟著唸唸看！";
+      symbolEl.textContent = current.zhuyin;
+      symbolEl.dataset.answer = current.hanzi;   // 測試用：正解放這裡
+
+      // 把完整拼音拆成一個一個符號，方便爸媽指著教怎麼拼
+      breakdownEl.innerHTML = "";
+      [...current.zhuyin].forEach((mark) => {
+        const chip = document.createElement("span");
+        chip.className = "chip";
+        chip.textContent = mark;
+        breakdownEl.appendChild(chip);
+      });
+
+      hintEl.textContent = `${current.hanzi}（${current.pinyin}）`;
+      messageEl.textContent = "聽完範例，把注音拼起來，說說看！";
       playDemo();
     }
 
@@ -186,7 +218,7 @@
       listening = true;
       micBtn.classList.add("listening");
       micBtn.textContent = "🎧 聽你說...";
-      messageEl.textContent = "說說看「" + current.demo + "」！";
+      messageEl.textContent = `說說看「${current.hanzi}」（${current.zhuyin}）！`;
 
       listenForSpeech(({ text, error }) => {
         listening = false;
@@ -219,7 +251,7 @@
       cheer();
       stars++;
       setStars(stars);
-      messageEl.textContent = `「${current.demo}」說得真好！`;
+      messageEl.textContent = `「${current.hanzi}」說得真好！`;
 
       setTimeout(() => {
         if (stars >= ROUNDS_TO_WIN) {
