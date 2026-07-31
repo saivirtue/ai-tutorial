@@ -7,16 +7,25 @@ let speechEnabled = localStorage.getItem(SPEECH_KEY) !== "off";
 let chineseVoice = null;
 let englishVoice = null;
 
-// 挑中文語音（優先台灣 zh-TW）和英文語音（優先美式 en-US）
+// 挑中文語音（優先台灣 zh-TW）和英文語音（優先美式 en-US）。
+// 同語系裡優先選「進階／加強」版語音——聽起來自然很多，沒那麼像機器人。
+// macOS：系統設定 → 輔助使用 → 語音內容，可以下載「Mei-Jia（進階）」之類的語音。
 function pickVoice() {
   if (!window.speechSynthesis) return;
   const voices = speechSynthesis.getVoices();
+  const isEnhanced = (v) => /enhanced|premium|進階|加強/i.test(v.name);
+
+  const zhVoices = voices.filter((v) => v.lang === "zh-TW");
   chineseVoice =
-    voices.find((v) => v.lang === "zh-TW") ||
+    zhVoices.find(isEnhanced) ||
+    zhVoices[0] ||
     voices.find((v) => v.lang.startsWith("zh")) ||
     null;
+
+  const enVoices = voices.filter((v) => v.lang === "en-US");
   englishVoice =
-    voices.find((v) => v.lang === "en-US") ||
+    enVoices.find(isEnhanced) ||
+    enVoices[0] ||
     voices.find((v) => v.lang.startsWith("en")) ||
     null;
 }
@@ -49,6 +58,24 @@ function say(text) {
 // 唸英文（ABC 小火車用）
 function sayEnglish(text) {
   speak(text, englishVoice, "en-US");
+}
+
+/* ===== 錄音檔覆蓋（跟讀小鸚鵡專用） =====
+   語音合成再怎麼調還是有點機器人腔，最自然的辦法是家人自己錄音。
+   把錄好的檔案放進 repo 根目錄的 audio/ 資料夾，檔名是「要唸的字」，
+   例如 audio/你.mp3、audio/你好.mp3——不用改任何程式碼，遊戲會自動
+   優先播放錄音檔，找不到才退回語音合成。 */
+
+const clipCache = {};
+
+function sayWithClip(text) {
+  if (!speechEnabled) return;
+  if (!(text in clipCache)) {
+    clipCache[text] = new Audio(`/audio/${encodeURIComponent(text)}.mp3`);
+  }
+  const clip = clipCache[text];
+  clip.currentTime = 0;
+  clip.play().catch(() => say(text));   // 沒有錄音檔（404）或播放失敗，就改用語音合成
 }
 
 /* ===== 鼓勵語 ===== */
@@ -90,12 +117,16 @@ function createSpeechToggle() {
 }
 
 /* 手機瀏覽器規定：要等使用者碰過畫面才能出聲。
-   第一次碰畫面時「暖機」一次，之後的 say() 就都能出聲了。 */
+   第一次碰畫面時「暖機」一次，之後的 say()／sayWithClip() 就都能出聲了。 */
 document.addEventListener(
   "pointerdown",
   () => {
     try {
       if (window.speechSynthesis) speechSynthesis.resume();
+      // 也順便「解鎖」一下 <audio> 播放權限，之後 sayWithClip() 用 setTimeout
+      // 觸發（不是直接在點擊事件裡）也不會被瀏覽器的自動播放限制擋掉
+      const unlock = new Audio();
+      unlock.play().catch(() => {});
     } catch (e) {}
   },
   { once: true }

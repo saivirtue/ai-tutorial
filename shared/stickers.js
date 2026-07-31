@@ -10,11 +10,14 @@ const STICKER_POOL = [
 
 // 獎盃清單：id → 名字（遊戲破紀錄時頒發）
 const TROPHIES = {
-  "balloons-count":  "🏆 數一數高手",
-  "balloons-add":    "🏆 加法高手",
-  "balloons-addsub": "🏆 加減大師",
-  "robot-all":       "🏆 程式小大師",
-  "zhuyin-full":     "🏆 注音小達人",
+  "balloons-count":         "🏆 數一數高手",
+  "balloons-add":           "🏆 加法高手",
+  "balloons-addsub":        "🏆 加減大師",
+  "robot-all":              "🏆 程式小大師",
+  "zhuyin-full":            "🏆 注音小達人",
+  "abc-full":               "🏆 ABC 小達人",
+  "zhuyin-speak-full":      "🏆 拼讀小達人",
+  "zhuyin-speak-sentence-full": "🏆 短句朗讀高手",
 };
 
 function loadStickerBook() {
