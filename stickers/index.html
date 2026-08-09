@@ -110,10 +110,13 @@
 
   <script src="../shared/stickers.js"></script>
   <script>
-    const book = getCollection();
+    /* 最外層變數用 var，不要用 let/const——某些電視盒的 WebView 對
+       「最外層 let/const」有相容性 bug（函式讀不到），var 沒有這個
+       問題。函式內部的 let/const 不受影響，不用改。 */
+    var book = getCollection();
 
     // 獎盃架
-    const shelf = document.getElementById("trophy-shelf");
+    var shelf = document.getElementById("trophy-shelf");
     Object.keys(book.trophies).forEach((id) => {
       const trophy = document.createElement("div");
       trophy.className = "trophy";
@@ -122,8 +125,8 @@
     });
 
     // 貼紙牆：全部貼紙都畫出來，沒拿到的是灰色剪影
-    const wall = document.getElementById("sticker-wall");
-    let owned = 0;
+    var wall = document.getElementById("sticker-wall");
+    var owned = 0;
     STICKER_POOL.forEach((emoji) => {
       const count = book.stickers[emoji] || 0;
       if (count > 0) owned++;

@@ -168,10 +168,14 @@
   <script src="../../shared/stickers.js"></script>
   <script src="../../shared/vision-client.js"></script>
   <script>
+    /* 最外層變數用 var，不要用 let/const——某些電視盒的 WebView 對
+       「最外層 let/const」有相容性 bug（函式讀不到），var 沒有這個
+       問題。函式內部的 let/const 不受影響，不用改。 */
+
     /* ===== 關卡設計 =====
        x 是第幾行（0～4，往右），y 是第幾列（0～4，往下）
        想跟小孩一起加新關卡？照樣子多加一個 { ... } 就可以了！ */
-    const LEVELS = [
+    var LEVELS = [
       { name: "第 1 關：往前走！",   start: { x: 0, y: 2 }, goal: { x: 3, y: 2 }, obstacles: [] },
       { name: "第 2 關：轉個彎",     start: { x: 0, y: 4 }, goal: { x: 2, y: 1 }, obstacles: [] },
       { name: "第 3 關：小心石頭！", start: { x: 0, y: 2 }, goal: { x: 4, y: 2 }, obstacles: [[2, 2]] },
@@ -179,11 +183,11 @@
       { name: "第 5 關：大迷宮！",   start: { x: 0, y: 4 }, goal: { x: 4, y: 0 }, obstacles: [[1, 3], [1, 1], [3, 2], [2, 0], [3, 4]] },
     ];
 
-    const GRID_SIZE = 5;
-    const MAX_COMMANDS = 12;                 // 指令最多排幾個
-    const CMD_ICONS = { up: "⬆️", down: "⬇️", left: "⬅️", right: "➡️" };
+    var GRID_SIZE = 5;
+    var MAX_COMMANDS = 12;                 // 指令最多排幾個
+    var CMD_ICONS = { up: "⬆️", down: "⬇️", left: "⬅️", right: "➡️" };
     // 每個指令會讓 x 和 y 怎麼變（y 往下是加）
-    const MOVES = {
+    var MOVES = {
       up:    { x: 0, y: -1 },
       down:  { x: 0, y: 1 },
       left:  { x: -1, y: 0 },
@@ -191,15 +195,15 @@
     };
 
     /* ===== 遊戲狀態 ===== */
-    let levelIndex = 0;
-    let robot = { x: 0, y: 0 };            // 機器人現在的位置
-    let queue = [];                        // 排好的指令，例如 ["forward", "left"]
-    let running = false;                   // 正在執行中就不能亂按
+    var levelIndex = 0;
+    var robot = { x: 0, y: 0 };            // 機器人現在的位置
+    var queue = [];                        // 排好的指令，例如 ["forward", "left"]
+    var running = false;                   // 正在執行中就不能亂按
 
-    const gridEl = document.getElementById("grid");
-    const queueEl = document.getElementById("queue");
-    const messageEl = document.getElementById("message");
-    let robotEl = null;
+    var gridEl = document.getElementById("grid");
+    var queueEl = document.getElementById("queue");
+    var messageEl = document.getElementById("message");
+    var robotEl = null;
 
     /* ===== 畫地圖 ===== */
 
@@ -282,54 +286,72 @@
       });
     }
 
-    /* ===== 執行程式（一步一步做） ===== */
+    /* ===== 執行程式（一步一步做） =====
+       故意不用 async/await（那是比 ES6 更晚才有的語法，有些舊瀏覽器
+       解析不了），改用 setTimeout 一格一格接下去，效果一樣。 */
 
-    async function runProgram() {
+    function clearRunningHighlight(chips) {
+      for (var i = 0; i < chips.length; i++) chips[i].classList.remove("running");
+    }
+
+    function runProgram() {
       if (running || queue.length === 0) return;
       running = true;
       messageEl.textContent = "";
       resetRobot();
-      await wait(500);
 
-      const chips = queueEl.children;
+      setTimeout(function () {
+        var chips = queueEl.children;
+        var i = 0;
 
-      for (let i = 0; i < queue.length; i++) {
-        // 亮起現在執行到哪一個指令
-        [...chips].forEach((c) => c.classList.remove("running"));
-        chips[i].classList.add("running");
+        function step() {
+          if (i >= queue.length) {
+            // 指令做完了，但還沒走到寶物
+            clearRunningHighlight(chips);
+            playSound("wrong");
+            say("還沒拿到寶物，再加幾個指令試試看！");
+            messageEl.textContent = "還沒拿到寶物，再加幾個指令試試看！";
+            running = false;
+            return;
+          }
 
-        const ok = doCommand(queue[i]);
-        await wait(600);
+          // 亮起現在執行到哪一個指令
+          clearRunningHighlight(chips);
+          chips[i].classList.add("running");
 
-        if (!ok) {
-          // 撞到東西了！回到起點，指令保留，讓小孩修改再試（這就是除錯！）
-          playSound("crash");
-          say("哎呀，撞到了！改一改指令再試一次！");
-          robotEl.classList.add("shake");
-          messageEl.textContent = "💥 撞到了！改一改指令再試一次！";
-          await wait(700);
-          robotEl.classList.remove("shake");
-          resetRobot();
-          running = false;
-          return;
+          var ok = doCommand(queue[i]);
+
+          setTimeout(function () {
+            if (!ok) {
+              // 撞到東西了！回到起點，指令保留，讓小孩修改再試（這就是除錯！）
+              playSound("crash");
+              say("哎呀，撞到了！改一改指令再試一次！");
+              robotEl.classList.add("shake");
+              messageEl.textContent = "💥 撞到了！改一改指令再試一次！";
+              setTimeout(function () {
+                robotEl.classList.remove("shake");
+                resetRobot();
+                running = false;
+              }, 700);
+              return;
+            }
+
+            // 走到寶物就過關（不用等指令全部做完）
+            var goal = currentLevel().goal;
+            if (robot.x === goal.x && robot.y === goal.y) {
+              clearRunningHighlight(chips);
+              running = false;
+              levelClear();
+              return;
+            }
+
+            i++;
+            step();
+          }, 600);
         }
 
-        // 走到寶物就過關（不用等指令全部做完）
-        const goal = currentLevel().goal;
-        if (robot.x === goal.x && robot.y === goal.y) {
-          [...chips].forEach((c) => c.classList.remove("running"));
-          running = false;
-          levelClear();
-          return;
-        }
-      }
-
-      // 指令做完了，但還沒走到寶物
-      [...chips].forEach((c) => c.classList.remove("running"));
-      playSound("wrong");
-      say("還沒拿到寶物，再加幾個指令試試看！");
-      messageEl.textContent = "還沒拿到寶物，再加幾個指令試試看！";
-      running = false;
+        step();
+      }, 500);
     }
 
     // 做一個指令；回傳 false 表示撞牆或撞石頭
@@ -372,10 +394,6 @@
       drawGrid();
       resetRobot();
       drawQueue();
-    }
-
-    function wait(ms) {
-      return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
     // 轉直/轉橫的時候重新把機器人放到正確位置

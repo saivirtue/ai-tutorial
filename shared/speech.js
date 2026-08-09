@@ -1,11 +1,14 @@
 /* 共用語音模組：用瀏覽器內建的中文語音唸題目和鼓勵話
    裝置沒有中文語音、或被 🔇 靜音時，全部靜默跳過——遊戲照常能玩。 */
 
-const SPEECH_KEY = "speech-enabled";   // 記住 🔊/🔇 的選擇
+/* 這個檔案最外層的變數全部用 var，不要用 let/const——某些電視盒的
+   WebView 對「最外層 let/const」有相容性 bug（函式讀不到），var 沒
+   有這個問題。函式內部的 let/const 不受影響，不用改。 */
+var SPEECH_KEY = "speech-enabled";   // 記住 🔊/🔇 的選擇
 
-let speechEnabled = localStorage.getItem(SPEECH_KEY) !== "off";
-let chineseVoice = null;
-let englishVoice = null;
+var speechEnabled = localStorage.getItem(SPEECH_KEY) !== "off";
+var chineseVoice = null;
+var englishVoice = null;
 
 // 挑中文語音（優先台灣 zh-TW）和英文語音（優先美式 en-US）。
 // 同語系裡優先選「進階／加強」版語音——聽起來自然很多，沒那麼像機器人。
@@ -66,7 +69,7 @@ function sayEnglish(text) {
    例如 audio/你.mp3、audio/你好.mp3——不用改任何程式碼，遊戲會自動
    優先播放錄音檔，找不到才退回語音合成。 */
 
-const clipCache = {};
+var clipCache = {};
 
 function sayWithClip(text) {
   if (!speechEnabled) return;
@@ -80,8 +83,8 @@ function sayWithClip(text) {
 
 /* ===== 鼓勵語 ===== */
 
-const CHEERS = ["哇！你好棒！", "答對了！太厲害了！", "好聰明！", "太強了吧！", "答對囉！繼續加油！"];
-const ENCOURAGES = ["再想想看喔！", "差一點點，再試一次！", "沒關係，再想一下！", "加油，你可以的！"];
+var CHEERS = ["哇！你好棒！", "答對了！太厲害了！", "好聰明！", "太強了吧！", "答對囉！繼續加油！"];
+var ENCOURAGES = ["再想想看喔！", "差一點點，再試一次！", "沒關係，再想一下！", "加油，你可以的！"];
 
 function randomFrom(list) {
   return list[Math.floor(Math.random() * list.length)];

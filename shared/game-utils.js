@@ -3,7 +3,10 @@
 
 /* ===== 音效（用 WebAudio 直接「畫」出聲音，不需要音檔） ===== */
 
-let audioCtx = null;
+/* 最外層變數用 var，不要用 let/const——某些電視盒的 WebView 對「最
+   外層 let/const」有相容性 bug（函式讀不到），var 沒有這個問題。
+   函式內部的 let/const 不受影響，不用改。 */
+var audioCtx = null;
 
 function getAudioCtx() {
   // 瀏覽器規定：要等使用者點過畫面才能發出聲音，所以用到時才建立
@@ -28,7 +31,7 @@ function beep(frequency, duration, delay = 0, type = "square") {
 }
 
 // 遊戲裡會用到的幾種音效
-const SOUNDS = {
+var SOUNDS = {
   click: () => beep(600, 0.08),                       // 按按鈕
   pop:   () => { beep(500, 0.08); beep(900, 0.1, 0.06); },  // 答對／氣球爆
   wrong: () => beep(160, 0.3, 0, "sawtooth"),          // 答錯
@@ -63,7 +66,7 @@ function createStarBar(container, total) {
 
 /* ===== 全螢幕慶祝（彩帶＋大字＋勝利音效） ===== */
 
-const CONFETTI_COLORS = ["#ff5a5a", "#ffd93d", "#3ecf6b", "#4a7bff", "#ff8a3d", "#c77dff"];
+var CONFETTI_COLORS = ["#ff5a5a", "#ffd93d", "#3ecf6b", "#4a7bff", "#ff8a3d", "#c77dff"];
 
 function dropConfetti(count = 80) {
   for (let i = 0; i < count; i++) {

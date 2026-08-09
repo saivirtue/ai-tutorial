@@ -1,15 +1,18 @@
 /* 貼紙收集簿：答對、破關可以得到動物貼紙和獎盃，存在瀏覽器裡（localStorage） */
 
-const STICKER_KEY = "stickerBook";
+/* 最外層變數用 var，不要用 let/const——某些電視盒的 WebView 對「最
+   外層 let/const」有相容性 bug（函式讀不到），var 沒有這個問題。
+   函式內部的 let/const 不受影響，不用改。 */
+var STICKER_KEY = "stickerBook";
 
 // 可以收集的貼紙（想加新的？直接加在這裡！）
-const STICKER_POOL = [
+var STICKER_POOL = [
   "🦁", "🐯", "🐼", "🐨", "🦊", "🦄", "🐬", "🦖",
   "🦉", "🐢", "🦋", "🐙", "🦩", "🐧", "🦒", "🐘",
 ];
 
 // 獎盃清單：id → 名字（遊戲破紀錄時頒發）
-const TROPHIES = {
+var TROPHIES = {
   "balloons-count":         "🏆 數一數高手",
   "balloons-add":           "🏆 加法高手",
   "balloons-addsub":        "🏆 加減大師",

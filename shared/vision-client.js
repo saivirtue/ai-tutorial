@@ -4,13 +4,16 @@
    同一個 WebSocket 也用來通知伺服器「里程碑達成」，讓伺服器觸發 SwitchBot
    按下實體按鈕——所以不管遊戲有沒有用到鏡頭，都可以呼叫 notifyMilestone()。 */
 
-let sharedSocket = null;
+/* 最外層變數用 var，不要用 let/const——某些電視盒的 WebView 對「最
+   外層 let/const」有相容性 bug（函式讀不到），var 沒有這個問題。
+   函式內部的 let/const 不受影響，不用改。 */
+var sharedSocket = null;
 
 // 一載入這個腳本就馬上開始連線（不要等到要送里程碑事件的那一刻才開始
 // 連，不然連線根本還沒 OPEN，訊息會送不出去）；開不了就是 null，之後
 // 的呼叫都會靜默略過。
 try {
-  const scheme = location.protocol === "https:" ? "wss" : "ws";
+  var scheme = location.protocol === "https:" ? "wss" : "ws";
   sharedSocket = new WebSocket(`${scheme}://${location.host}/ws`);
   sharedSocket.onclose = () => (sharedSocket = null);
   sharedSocket.onerror = () => {};   // 連不上很正常，不要吵
