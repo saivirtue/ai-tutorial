@@ -30,13 +30,10 @@
     }
 
     /* ===== 5x5 地圖 ===== */
+    /* 寬高由 JS 依每一關的地圖算出來（地圖大小、形狀每關不同） */
     #grid {
       position: relative;
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      grid-template-rows: repeat(5, 1fr);
-      width: min(88vw, 52vh, 480px);
-      aspect-ratio: 1;
       background: #244a2c;
       border-radius: 16px;
       padding: 6px;
@@ -50,7 +47,12 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: min(9vw, 5.5vh, 48px);
+      font-size: inherit;   /* 大小跟著 #grid 走（由 JS 依地圖大小算） */
+    }
+
+    /* 這一格沒有地板——地圖就不會是方方正正的一塊 */
+    .cell.void {
+      background: transparent;
     }
 
     /* 機器人蓋在格子上面，用 transform 移動才有滑順的動畫 */
@@ -59,7 +61,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: min(9vw, 5.5vh, 48px);
+      font-size: inherit;   /* 跟格子一樣大 */
       transition: transform 0.45s ease;
       z-index: 5;
       pointer-events: none;
@@ -95,12 +97,30 @@
     }
 
     .cmd-chip {
-      font-size: 30px;
+      position: relative;
+      font-size: 36px;
       background: #fff;
       border-radius: 12px;
-      padding: 4px 10px;
+      padding: 8px 14px;
       cursor: pointer;
       box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25);
+    }
+
+    /* 指令方塊右上角的小 ✕，提示「點一下可以刪掉」 */
+    .cmd-chip .x {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      background: var(--bad);
+      color: #fff;
+      font-size: 14px;
+      font-weight: bold;
+      border-radius: 999px;
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .cmd-chip.running {
@@ -155,7 +175,8 @@
 
       <div class="action-buttons">
         <button class="big-btn green" id="run-btn" onclick="runProgram()">▶️ 執行！</button>
-        <button class="big-btn gray" onclick="clearQueue()">🗑️ 清除</button>
+        <button class="big-btn blue" onclick="undoCommand()">⌫ 退一步</button>
+        <button class="big-btn gray" onclick="clearQueue()">🗑️ 全部清除</button>
       </div>
 
       <a class="home-link" href="../../">⬅ 回遊戲樂園</a>
@@ -172,18 +193,105 @@
        問題。函式內部的 let/const 不受影響，不用改。 */
 
     /* ===== 關卡設計 =====
-       x 是第幾行（0～4，往右），y 是第幾列（0～4，往下）
-       想跟小孩一起加新關卡？照樣子多加一個 { ... } 就可以了！ */
+       每一關直接用一張「地圖」畫出來，一個字元一格，看得懂就改得動：
+         .  可以走的路
+         #  石頭（撞到會失敗）
+         (空白)  這裡沒有地板（地圖不一定是方的！）
+         S  機器人的起點
+         G  寶物
+       想跟小孩一起設計新關卡？複製一段照樣子改，或是讓他在紙上畫好
+       再打進來——這是這個遊戲最好玩的部分。
+       每一關的地圖可以不一樣大、不一定是正方形。 */
     var LEVELS = [
-      { name: "第 1 關：往前走！",   start: { x: 0, y: 2 }, goal: { x: 3, y: 2 }, obstacles: [] },
-      { name: "第 2 關：轉個彎",     start: { x: 0, y: 4 }, goal: { x: 2, y: 1 }, obstacles: [] },
-      { name: "第 3 關：小心石頭！", start: { x: 0, y: 2 }, goal: { x: 4, y: 2 }, obstacles: [[2, 2]] },
-      { name: "第 4 關：繞過去",     start: { x: 0, y: 0 }, goal: { x: 3, y: 3 }, obstacles: [[1, 1], [2, 3], [1, 3]] },
-      { name: "第 5 關：大迷宮！",   start: { x: 0, y: 4 }, goal: { x: 4, y: 0 }, obstacles: [[1, 3], [1, 1], [3, 2], [2, 0], [3, 4]] },
+      {
+        name: "第 1 關：往前走！",
+        map: [
+          ".....",
+          ".....",
+          "S...G",
+          ".....",
+          ".....",
+        ],
+      },
+      {
+        name: "第 2 關：轉個彎",
+        map: [
+          ".....",
+          "..G..",
+          ".....",
+          ".....",
+          "S....",
+        ],
+      },
+      {
+        name: "第 3 關：小心石頭！",
+        map: [
+          ".....",
+          ".....",
+          "S.#.G",
+          ".....",
+          ".....",
+        ],
+      },
+      {
+        name: "第 4 關：繞過去",
+        map: [
+          "S....",
+          ".#...",
+          ".....",
+          ".#.G.",
+          ".....",
+        ],
+      },
+      {
+        name: "第 5 關：走廊",
+        map: [
+          "S.###",
+          ".#...",
+          "...#.",
+          "##.#.",
+          "....G",
+        ],
+      },
+      {
+        name: "第 6 關：十字路口",
+        map: [
+          "  S  ",
+          "  .  ",
+          ".....",
+          "  .  ",
+          "  G  ",
+        ],
+      },
+      {
+        name: "第 7 關：ㄇ 字型",
+        map: [
+          "S.. ..G",
+          ".#. .#.",
+          ".#. .#.",
+          ".#...#.",
+          ".......",
+        ],
+      },
+      {
+        name: "第 8 關：大迷宮！",
+        map: [
+          "S.#....",
+          ".#.##.#",
+          ".....#.",
+          "##.#...",
+          "...#.#.",
+          ".#...#.",
+          ".#.##.G",
+        ],
+      },
     ];
 
-    var GRID_SIZE = 5;
-    var MAX_COMMANDS = 12;                 // 指令最多排幾個
+    // 地圖上的字元代表什麼
+    var TILE_PATH = ".";
+    var TILE_ROCK = "#";
+    var TILE_VOID = " ";
+    var MAX_COMMANDS = 30;                 // 指令最多排幾個（後面的迷宮要走很多步）
     var CMD_ICONS = { up: "⬆️", down: "⬇️", left: "⬅️", right: "➡️" };
     // 每個指令會讓 x 和 y 怎麼變（y 往下是加）
     var MOVES = {
@@ -204,22 +312,85 @@
     var messageEl = document.getElementById("message");
     var robotEl = null;
 
-    /* ===== 畫地圖 ===== */
+    /* ===== 讀地圖 ===== */
 
     function currentLevel() {
       return LEVELS[levelIndex];
     }
 
-    function drawGrid() {
-      const level = currentLevel();
-      gridEl.innerHTML = "";
+    // 這一關的地圖幾格寬、幾格高（每一關可以不一樣大）
+    function mapSize() {
+      const map = currentLevel().map;
+      let width = 0;
+      for (let i = 0; i < map.length; i++) width = Math.max(width, map[i].length);
+      return { width: width, height: map.length };
+    }
 
-      for (let y = 0; y < GRID_SIZE; y++) {
-        for (let x = 0; x < GRID_SIZE; x++) {
+    // 拿地圖上某一格的字元；超出範圍就當作「沒有地板」
+    function tileAt(x, y) {
+      const map = currentLevel().map;
+      if (y < 0 || y >= map.length) return TILE_VOID;
+      const row = map[y];
+      if (x < 0 || x >= row.length) return TILE_VOID;
+      return row[x];
+    }
+
+    // 找地圖上的某個記號（S 起點、G 寶物）在哪一格
+    function findTile(mark) {
+      const map = currentLevel().map;
+      for (let y = 0; y < map.length; y++) {
+        const x = map[y].indexOf(mark);
+        if (x >= 0) return { x: x, y: y };
+      }
+      return { x: 0, y: 0 };
+    }
+
+    // 這一格可以站嗎？石頭和「沒有地板」都不行
+    function canStand(x, y) {
+      const tile = tileAt(x, y);
+      return tile !== TILE_ROCK && tile !== TILE_VOID;
+    }
+
+    /* ===== 畫地圖 ===== */
+
+    /* 地圖每一關大小不同，而且不一定是正方形，所以整張圖的寬高直接
+       用算的（不靠 CSS 的 aspect-ratio——舊瀏覽器不支援那個屬性）。
+       算出來的格子一定是正方形，而且寬高都不會超出畫面。 */
+    function sizeGrid() {
+      const size = mapSize();
+      const gap = 6;
+      const pad = 6;
+      const availW = Math.min(document.documentElement.clientWidth * 0.9, 520);
+      const availH = window.innerHeight * 0.5;
+
+      const cellFromW = (availW - pad * 2 - gap * (size.width - 1)) / size.width;
+      const cellFromH = (availH - pad * 2 - gap * (size.height - 1)) / size.height;
+      const cell = Math.max(22, Math.min(cellFromW, cellFromH));
+
+      gridEl.style.width = (cell * size.width + gap * (size.width - 1) + pad * 2) + "px";
+      gridEl.style.height = (cell * size.height + gap * (size.height - 1) + pad * 2) + "px";
+      gridEl.style.fontSize = Math.floor(cell * 0.62) + "px";
+    }
+
+    function drawGrid() {
+      const size = mapSize();
+      gridEl.innerHTML = "";
+      gridEl.style.gridTemplateColumns = `repeat(${size.width}, 1fr)`;
+      gridEl.style.gridTemplateRows = `repeat(${size.height}, 1fr)`;
+      sizeGrid();
+
+      for (let y = 0; y < size.height; y++) {
+        for (let x = 0; x < size.width; x++) {
           const cell = document.createElement("div");
+          const tile = tileAt(x, y);
           cell.className = "cell";
-          if (level.goal.x === x && level.goal.y === y) cell.textContent = "🎁";
-          if (level.obstacles.some(([ox, oy]) => ox === x && oy === y)) cell.textContent = "🪨";
+          if (tile === TILE_VOID) {
+            cell.classList.add("void");        // 沒有地板：畫成空的
+          } else if (tile === TILE_ROCK) {
+            cell.textContent = "🪨";
+          } else if (tile === "G") {
+            cell.textContent = "🎁";
+          }
           gridEl.appendChild(cell);
         }
       }
@@ -235,14 +406,15 @@
     // 依 robot 的 x, y 把機器人移到正確的格子上（transform 會自動有滑順動畫）
     function placeRobot() {
       const cell = gridEl.children[0];                    // 用第一格量出格子多大
-      const step = cell.offsetWidth + 6;                  // 6 是格子間距
+      const stepX = cell.offsetWidth + 6;                 // 6 是格子間距
+      const stepY = cell.offsetHeight + 6;
       robotEl.style.width = cell.offsetWidth + "px";
       robotEl.style.height = cell.offsetHeight + "px";
-      robotEl.style.transform = `translate(${6 + robot.x * step}px, ${6 + robot.y * step}px)`;
+      robotEl.style.transform = `translate(${6 + robot.x * stepX}px, ${6 + robot.y * stepY}px)`;
     }
 
     function resetRobot() {
-      const s = currentLevel().start;
+      const s = findTile("S");
       robot = { x: s.x, y: s.y };
       placeRobot();
     }
@@ -263,6 +435,13 @@
       drawQueue();
     }
 
+    // 拿掉最後一個指令。點指令方塊本身也可以刪，但小孩不一定看得出來
+    // 可以點，所以另外給一顆明顯的按鈕。
+    function undoCommand() {
+      if (running || queue.length === 0) return;
+      removeCommand(queue.length - 1);
+    }
+
     function clearQueue() {
       if (running) return;
       playSound("click");
@@ -279,7 +458,8 @@
       queue.forEach((cmd, i) => {
         const chip = document.createElement("span");
         chip.className = "cmd-chip";
-        chip.textContent = CMD_ICONS[cmd];
+        // 右上角加一個小 ✕，讓小孩看得出來「點一下可以把這個丟掉」
+        chip.innerHTML = `${CMD_ICONS[cmd]}<span class="x">✕</span>`;
         chip.onclick = () => removeCommand(i);
         queueEl.appendChild(chip);
       });
@@ -336,7 +516,7 @@
             }
 
             // 走到寶物就過關（不用等指令全部做完）
-            var goal = currentLevel().goal;
+            var goal = findTile("G");
             if (robot.x === goal.x && robot.y === goal.y) {
               clearRunningHighlight(chips);
               running = false;
@@ -353,16 +533,14 @@
       }, 500);
     }
 
-    // 做一個指令；回傳 false 表示撞牆或撞石頭
+    // 做一個指令；回傳 false 表示撞到石頭或走出地圖外
     function doCommand(cmd) {
       // 先算出下一格在哪
       const move = MOVES[cmd];
       const nextX = robot.x + move.x;
       const nextY = robot.y + move.y;
 
-      const outside = nextX < 0 || nextX >= GRID_SIZE || nextY < 0 || nextY >= GRID_SIZE;
-      const hitRock = currentLevel().obstacles.some(([ox, oy]) => ox === nextX && oy === nextY);
-      if (outside || hitRock) return false;
+      if (!canStand(nextX, nextY)) return false;
 
       robot.x = nextX;
       robot.y = nextY;
@@ -396,8 +574,9 @@
     }
 
     // 轉直/轉橫的時候重新把機器人放到正確位置
-    window.addEventListener("resize", placeRobot);
+    window.addEventListener("resize", function () { sizeGrid(); placeRobot(); });
 
+    refreshStickers();   // 開場先跟伺服器對一下貼紙，免得用到過期的本機資料
     createSpeechToggle();
     loadLevel(0);
   </script>

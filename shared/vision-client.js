@@ -47,16 +47,18 @@ function notifyMilestone() {
 
 // 跟讀小鸚鵡用：請伺服器用筆電麥克風錄音辨識，講完會呼叫 onHeard({ text, error })
 // text 是聽到的文字（null 表示沒聽清楚或沒開麥克風），error 是原因代碼
-function listenForSpeech(onHeard) {
+// seconds：要錄多久（小孩習慣先一個一個唸注音再拼出來，唸句子要久一點）
+function listenForSpeech(onHeard, seconds) {
   if (!sharedSocket || sharedSocket.readyState !== WebSocket.OPEN) {
     onHeard({ text: null, error: "no_server" });
     return;
   }
 
+  const waitMs = (seconds || 3) * 1000 + 6000;   // 錄音時間再加辨識上網的時間
   const timeout = setTimeout(() => {
     sharedSocket.removeEventListener("message", handler);
     onHeard({ text: null, error: "timeout" });
-  }, 8000); // 錄音＋辨識正常幾秒內會回來，太久就當作失敗，不要讓畫面卡住
+  }, waitMs); // 太久沒回應就當作失敗，不要讓畫面卡住
 
   function handler(event) {
     const msg = JSON.parse(event.data);
@@ -68,7 +70,7 @@ function listenForSpeech(onHeard) {
 
   sharedSocket.addEventListener("message", handler);
   try {
-    sharedSocket.send(JSON.stringify({ type: "listen" }));
+    sharedSocket.send(JSON.stringify({ type: "listen", seconds: seconds || 3 }));
   } catch (e) {
     clearTimeout(timeout);
     sharedSocket.removeEventListener("message", handler);

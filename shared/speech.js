@@ -40,27 +40,44 @@ if (window.speechSynthesis) {
 }
 
 // 唸出一段話（會先打斷上一句，遊戲節奏才不會拖）
-function speak(text, voice, lang) {
+// onDone：唸完會呼叫（沒開聲音、或語音壞掉時也會呼叫，不會把流程卡死）
+function speak(text, voice, lang, onDone) {
+  var finished = false;
+  function done() {
+    if (finished) return;
+    finished = true;
+    if (onDone) onDone();
+  }
+
   try {
-    if (!speechEnabled || !window.speechSynthesis) return;
+    if (!speechEnabled || !window.speechSynthesis) {
+      done();
+      return;
+    }
     speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     if (voice) utterance.voice = voice;
     utterance.lang = lang;
     utterance.rate = 0.9;    // 稍微慢一點，小孩聽得清楚
+    utterance.onend = done;
+    utterance.onerror = done;
     speechSynthesis.speak(utterance);
+
+    // 保險：有些瀏覽器的 onend 不一定會來，估一個時間硬叫一次，
+    // 免得「等唸完再錄音」永遠等不到
+    setTimeout(done, 1200 + text.length * 180);
   } catch (e) {
-    // 語音壞了也不能讓遊戲壞掉
+    done();   // 語音壞了也不能讓遊戲壞掉
   }
 }
 
-function say(text) {
-  speak(text, chineseVoice, "zh-TW");
+function say(text, onDone) {
+  speak(text, chineseVoice, "zh-TW", onDone);
 }
 
 // 唸英文（ABC 小火車用）
-function sayEnglish(text) {
-  speak(text, englishVoice, "en-US");
+function sayEnglish(text, onDone) {
+  speak(text, englishVoice, "en-US", onDone);
 }
 
 /* ===== 錄音檔覆蓋（跟讀小鸚鵡專用） =====
@@ -83,8 +100,10 @@ function sayWithClip(text) {
 
 /* ===== 鼓勵語 ===== */
 
-var CHEERS = ["哇！你好棒！", "答對了！太厲害了！", "好聰明！", "太強了吧！", "答對囉！繼續加油！"];
-var ENCOURAGES = ["再想想看喔！", "差一點點，再試一次！", "沒關係，再想一下！", "加油，你可以的！"];
+/* 鼓勵語刻意都很短（一到三個字）——講太長會拖慢節奏，而且下一題的
+   題目會把它打斷，聽起來反而更亂。想聽長一點的就自己加長。 */
+var CHEERS = ["讚！", "答對了！", "好棒！", "太厲害！", "對！"];
+var ENCOURAGES = ["再試一次！", "再想想！", "差一點點！", "加油！"];
 
 function randomFrom(list) {
   return list[Math.floor(Math.random() * list.length)];

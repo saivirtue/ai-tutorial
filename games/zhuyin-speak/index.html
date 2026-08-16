@@ -279,16 +279,31 @@
       return dp[a.length][b.length];
     }
 
-    // 這句/這字有沒有算對；短句模式允許差個一兩字（語音辨識本來就不會百分百精準）
+    /* 這句/這字有沒有算對。
+       重要：台灣小孩的習慣是「先一個一個唸注音，再把整個音拼出來」，
+       例如唸「ㄋ…ㄧ…ˇ…你」。前面那串拼讀會被語音辨識轉成一堆看不懂
+       的字，如果拿「整串」去比對就一定判錯。所以規則設計成：
+         1. 只要正確答案有出現在聽到的內容裡 → 就算對（不管前面唸了什麼）
+         2. 短句模式再看「句尾」——小孩最後拼出來的才是答案
+       故意放寬，寧可鬆一點也不要讓小孩明明唸對卻一直被判錯。 */
     function isCorrect(text) {
       if (!text) return false;
-      if (mode === "word") {
-        return current.accepted.some((word) => text.includes(word));
-      }
-      const target = current.chars.map((c) => c.h).join("");
       const clean = text.replace(/[，。！？、,.!?\s]/g, "");
       if (!clean) return false;
-      return editDistance(clean, target) <= Math.max(1, Math.floor(target.length / 3));
+
+      if (mode === "word") {
+        return current.accepted.some((word) => clean.includes(word));
+      }
+
+      const target = current.chars.map((c) => c.h).join("");
+
+      // 整句有出現在裡面就算對（前面的注音拼讀直接忽略）
+      if (clean.includes(target)) return true;
+
+      // 沒有完全出現，就只看最後那幾個字（長度抓跟答案一樣，多留 2 個字的餘裕）
+      const tail = clean.slice(-(target.length + 2));
+      const allow = Math.max(1, Math.floor(target.length / 3));
+      return editDistance(tail, target) <= allow;
     }
 
     function currentText() {
@@ -332,15 +347,44 @@
       playDemo();
     }
 
-    /* ===== 跟讀 ===== */
+    /* ===== 跟讀 =====
+       筆電就放在電視旁邊，喇叭和麥克風靠很近，如果一按就開始錄，會把
+       範例發音自己錄進去，怎麼唸都判不對。所以流程改成：
+         先把還在唸的聲音停掉 → 倒數 3、2、1 → 才真的開始錄音
+       倒數同時也讓小孩知道什麼時候該開口。 */
 
     function startListening() {
       if (listening) return;
       listening = true;
       micBtn.classList.add("listening");
-      micBtn.textContent = "🎧 聽你說...";
-      messageEl.textContent = `說說看「${currentText()}」！`;
 
+      // 先閉嘴，免得錄到自己的範例發音
+      try {
+        if (window.speechSynthesis) speechSynthesis.cancel();
+      } catch (e) {}
+
+      var countdown = 3;
+      function tick() {
+        if (countdown > 0) {
+          micBtn.textContent = "⏳ " + countdown;
+          messageEl.textContent = `準備…${countdown}`;
+          playSound("step");
+          countdown--;
+          setTimeout(tick, 700);
+          return;
+        }
+
+        micBtn.textContent = "🎧 說吧！";
+        messageEl.textContent = `說說看「${currentText()}」！`;
+        playSound("click");
+        record();
+      }
+      tick();
+    }
+
+    function record() {
+      // 單字 4 秒、句子 6 秒——小孩會先一個一個唸注音再拼出來，要留夠時間
+      const seconds = mode === "word" ? 4 : 6;
       listenForSpeech(({ text, error }) => {
         listening = false;
         micBtn.classList.remove("listening");
@@ -359,7 +403,7 @@
           encourage();
           messageEl.textContent = text ? `我聽到的是「${text}」，再說一次看看！` : "沒聽清楚，再說一次！";
         }
-      });
+      }, seconds);
     }
 
     // 麥克風壞掉時的救援按鈕：爸媽用耳朵判斷後手動算過關
@@ -380,7 +424,7 @@
         } else {
           nextQuestion();
         }
-      }, 900);
+      }, 700);
     }
 
     function finishRound() {
@@ -409,6 +453,7 @@
       menuEl.style.display = "flex";
     }
 
+    refreshStickers();   // 開場先跟伺服器對一下貼紙，免得用到過期的本機資料
     createSpeechToggle();
   </script>
 </body>
