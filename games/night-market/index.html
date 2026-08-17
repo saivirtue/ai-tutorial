@@ -28,6 +28,17 @@
       padding: 8px 20px;
     }
 
+    /* 有連上鏡頭時才出現的提示條 */
+    #hand-bar {
+      font-size: 17px;
+      background: rgba(0, 0, 0, 0.35);
+      border-radius: 999px;
+      padding: 6px 18px;
+      color: var(--star);
+    }
+
+    #hand-bar[hidden] { display: none; }
+
     /* ===== 攤位選單 ===== */
     #stalls {
       display: flex;
@@ -43,16 +54,17 @@
       font-family: inherit;
       border-radius: 24px;
       padding: 20px 24px;
-      width: min(260px, 88vw);
+      width: min(240px, 88vw);
       text-align: center;
       cursor: pointer;
       box-shadow: 0 6px 0 rgba(0, 0, 0, 0.25);
     }
 
     .stall:active { transform: translateY(3px); box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25); }
-    .stall .icon { font-size: 60px; }
-    .stall h2 { font-size: 26px; margin-top: 4px; }
-    .stall p { font-size: 16px; color: #666; margin-top: 4px; }
+    .stall .icon { font-size: 56px; }
+    .stall h2 { font-size: 24px; margin-top: 4px; }
+    .stall p { font-size: 15px; color: #666; margin-top: 4px; }
+    .stall .hand-ok { color: #2a7; font-weight: bold; font-size: 14px; }
 
     /* ===== 遊戲場地 ===== */
     #arena {
@@ -63,6 +75,27 @@
       border-radius: 20px;
       overflow: hidden;
       box-shadow: 0 8px 0 rgba(0, 0, 0, 0.3);
+      touch-action: none;     /* 撈金魚要用手指拖，別讓瀏覽器捲畫面 */
+    }
+
+    /* 手在畫面上的位置（連上鏡頭才出現） */
+    #hand-cursor {
+      position: absolute;
+      font-size: min(12vw, 54px);
+      line-height: 1;
+      transform: translate(-50%, -50%);
+      pointer-events: none;   /* 只是個指標，不要擋住底下的東西 */
+      z-index: 5;
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+    }
+
+    #hand-cursor[hidden] { display: none; }
+
+    /* 打出去的瞬間閃一下，讓小孩知道「有打到」 */
+    #hand-cursor.punch { animation: punch-pop 0.25s ease; }
+
+    @keyframes punch-pop {
+      50% { transform: translate(-50%, -50%) scale(1.5); }
     }
 
     /* 打地鼠的洞 */
@@ -90,8 +123,10 @@
     .hole .mole { transform: translateY(120%); transition: transform 0.15s ease; }
     .hole.up .mole { transform: translateY(0); }
     .hole.hit { background: #2a5; }
+    /* 手正對著這個洞：框起來，小孩才知道現在打下去會打到哪一個 */
+    .hole.aimed { box-shadow: inset 0 0 0 5px var(--star); }
 
-    /* 套圈圈：一條左右來回的指示器，時機對了就中 */
+    /* ===== 套圈圈：一條左右來回的指示器，時機對了就中 ===== */
     #ring-area {
       position: relative;
       width: 100%;
@@ -132,6 +167,28 @@
       border-radius: 4px;
     }
 
+    /* ===== 射氣球／撈金魚共用的場地 ===== */
+    #field {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    .target {
+      position: absolute;
+      font-size: min(12vw, 52px);
+      line-height: 1;
+      transform: translate(-50%, -50%);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .target.popping { animation: star-pop 0.3s ease forwards; }
+
+    /* 撈金魚：網子正罩著這條魚，撈到一半 */
+    .target.scooping { filter: drop-shadow(0 0 12px var(--star)); }
+
     #status {
       font-size: clamp(18px, 3.4vw, 24px);
       font-weight: bold;
@@ -153,6 +210,7 @@
 <body>
   <div id="title">🎪 小夜市</div>
   <div id="wallet">🎟️ 貼紙：<span id="sticker-count">0</span> 張</div>
+  <div id="hand-bar" hidden>🖐️ 鏡頭開著！可以站遠一點，用手玩</div>
 
   <!-- 攤位選單 -->
   <div id="stalls">
@@ -160,17 +218,32 @@
       <div class="icon">🐹</div>
       <h2>打地鼠</h2>
       <p>15 秒內打到 8 隻就贏！</p>
+      <p class="hand-ok">🖐️ 可以用手打</p>
+    </button>
+    <button class="stall" onclick="startGame('balloon')">
+      <div class="icon">🎈</div>
+      <h2>射氣球</h2>
+      <p>25 秒內射破 5 顆就贏！</p>
+      <p class="hand-ok">🖐️ 可以用手射</p>
+    </button>
+    <button class="stall" onclick="startGame('fish')">
+      <div class="icon">🐠</div>
+      <h2>撈金魚</h2>
+      <p>25 秒內撈到 4 條就贏！</p>
+      <p class="hand-ok">🖐️ 可以用手撈</p>
     </button>
     <button class="stall" onclick="startGame('ring')">
       <div class="icon">🎯</div>
       <h2>套圈圈</h2>
       <p>抓準時機，3 次套中 2 次就贏！</p>
+      <p class="hand-ok">🖐️ 可以揮手丟</p>
     </button>
   </div>
 
   <!-- 遊戲場地 -->
   <div id="arena" hidden>
     <div id="holes" hidden></div>
+    <div id="field" hidden></div>
     <div id="ring-area" hidden>
       <div id="bottles">🍾🍾🍾</div>
       <div id="ring-track">
@@ -179,6 +252,7 @@
       </div>
       <button class="big-btn green" id="throw-btn" onclick="throwRing()">🎯 丟！</button>
     </div>
+    <div id="hand-cursor" hidden>🖐️</div>
   </div>
 
   <div id="status">玩一場要 1 張貼紙，贏了可以拿一個獎品 🎁</div>
@@ -192,18 +266,42 @@
     /* 夜市：用學習遊戲賺到的貼紙當代幣，玩一場花 1 張，贏了得一個獎品。
        獎品集滿一整組就可以跟爸媽換 10 元（在貼紙簿那一頁換）。
 
+       ★ 為什麼要能「用手玩」：
+       用點的一定要走到電視或手機前面，小孩會越靠越近，眼睛和姿勢都不好。
+       開著鏡頭伺服器時，這幾攤都可以站遠一點用整隻手臂玩：
+         手移動 → 畫面上的🖐️跟著動
+         手往前揮（像真的打出去）→ 打／射／丟
+       沒開鏡頭（例如 GitHub Pages）就自動只用觸控，玩法完全一樣。
+
        最外層變數用 var，不要用 let/const——某些電視盒的 WebView 對
        「最外層 let/const」有相容性 bug（函式讀不到）。 */
 
     var COST = 1;              // 玩一場要幾張貼紙
+
     var MOLE_SECONDS = 15;     // 打地鼠限時
     var MOLE_TARGET = 8;       // 打到幾隻算贏
+
+    var BALLOON_SECONDS = 25;  // 射氣球限時
+    var BALLOON_TARGET = 5;    // 射破幾顆算贏
+    var BALLOON_HIT_RADIUS = 14;   // 手離氣球多近（場地寬度的 %）算射中
+
+    var FISH_SECONDS = 25;     // 撈金魚限時
+    var FISH_TARGET = 4;       // 撈到幾條算贏
+    var FISH_HIT_RADIUS = 13;  // 網子罩到魚的範圍（%）
+    var FISH_SCOOP_MS = 700;   // 網子要罩住魚多久才撈起來
+
     var RING_THROWS = 3;       // 套圈圈丟幾次
     var RING_TARGET = 2;       // 套中幾次算贏
+
+    // 手在鏡頭畫面裡通常只動中間這一段，把它放大對應到整個場地，
+    // 小孩才不用把手伸到鏡頭最邊邊才能碰到角落。
+    var HAND_LO = 0.15;
+    var HAND_HI = 0.85;
 
     var stallsEl = document.getElementById("stalls");
     var arenaEl = document.getElementById("arena");
     var holesEl = document.getElementById("holes");
+    var fieldEl = document.getElementById("field");
     var ringAreaEl = document.getElementById("ring-area");
     var statusEl = document.getElementById("status");
     var countEl = document.getElementById("sticker-count");
@@ -211,11 +309,19 @@
     var targetEl = document.getElementById("ring-target");
     var bottlesEl = document.getElementById("bottles");
     var throwBtn = document.getElementById("throw-btn");
+    var cursorEl = document.getElementById("hand-cursor");
+    var handBar = document.getElementById("hand-bar");
 
     var playing = false;
-    var moleTimer = null;
+    var kind = null;           // 現在在玩哪一攤
+    var countdownTimer = null;   // 打地鼠／射氣球／撈金魚共用的倒數
     var moleTick = null;
     var ringAnim = null;
+    var fieldAnim = null;
+    var fieldTimer = null;
+
+    // 瞄準點（場地的百分比座標）。用手玩時跟著手動，用點的就是手指位置。
+    var aim = { x: 50, y: 50, active: false };
 
     function refreshWallet() {
       countEl.textContent = stickerCount();
@@ -223,16 +329,19 @@
 
     function showStalls() {
       playing = false;
+      kind = null;
       stallsEl.hidden = false;
       arenaEl.hidden = true;
       holesEl.hidden = true;
+      fieldEl.hidden = true;
       ringAreaEl.hidden = true;
+      fieldEl.innerHTML = "";
       refreshWallet();
     }
 
     /* ===== 開始一場（先收貼紙） ===== */
 
-    function startGame(kind) {
+    function startGame(which) {
       if (playing) return;
 
       if (!spendStickers(COST)) {
@@ -246,10 +355,13 @@
       playSound("click");
       refreshWallet();
       playing = true;
+      kind = which;
       stallsEl.hidden = true;
       arenaEl.hidden = false;
 
-      if (kind === "mole") startMole();
+      if (which === "mole") startMole();
+      else if (which === "balloon") startBalloons();
+      else if (which === "fish") startFish();
       else startRing();
     }
 
@@ -262,7 +374,7 @@
         var hole = document.createElement("div");
         hole.className = "hole";
         hole.innerHTML = '<span class="mole">🐹</span>';
-        hole.onclick = whack;
+        hole.onclick = function (event) { whackHole(event.currentTarget); };
         holesEl.appendChild(hole);
       }
 
@@ -270,16 +382,16 @@
       var left = MOLE_SECONDS;
       statusEl.textContent = `打到 ${hits} 隻，還有 ${left} 秒！`;
 
-      function whack(event) {
-        var hole = event.currentTarget;
-        if (!hole.classList.contains("up")) return;
+      // 掛在外面，手勢和滑鼠點擊都用同一套判定
+      window.whackHole = function (hole) {
+        if (!playing || !hole || !hole.classList.contains("up")) return;
         hole.classList.remove("up");
         hole.classList.add("hit");
         setTimeout(function () { hole.classList.remove("hit"); }, 150);
         hits++;
         playSound("pop");
         statusEl.textContent = `打到 ${hits} 隻，還有 ${left} 秒！`;
-      }
+      };
 
       // 每隔一下就讓隨機一個洞冒出地鼠，過一下自己縮回去
       moleTick = setInterval(function () {
@@ -290,7 +402,7 @@
         setTimeout(function () { pick.classList.remove("up"); }, 700);
       }, 450);
 
-      moleTimer = setInterval(function () {
+      countdownTimer = setInterval(function () {
         left--;
         statusEl.textContent = `打到 ${hits} 隻，還有 ${left} 秒！`;
         if (left <= 0) {
@@ -302,9 +414,218 @@
 
     function stopMole() {
       clearInterval(moleTick);
-      clearInterval(moleTimer);
+      clearInterval(countdownTimer);
       moleTick = null;
-      moleTimer = null;
+      countdownTimer = null;
+      window.whackHole = null;
+      clearAimedHole();
+    }
+
+    function clearAimedHole() {
+      var aimed = holesEl.querySelectorAll(".hole.aimed");
+      for (var i = 0; i < aimed.length; i++) aimed[i].classList.remove("aimed");
+    }
+
+    // 手指著場地的 (x%, y%)，對應到 3x3 的哪一個洞
+    function holeAt(xPercent, yPercent) {
+      var col = Math.min(2, Math.floor(xPercent / 100 * 3));
+      var row = Math.min(2, Math.floor(yPercent / 100 * 3));
+      return holesEl.children[row * 3 + col] || null;
+    }
+
+    /* ===== 射氣球 ===== */
+
+    function startBalloons() {
+      fieldEl.hidden = false;
+      fieldEl.innerHTML = "";
+
+      var popped = 0;
+      var left = BALLOON_SECONDS;
+      var balloons = [];    // { el, x, y, speed }
+      var COLORS = ["🎈", "🟠", "🟣", "🟢", "🔵"];
+
+      statusEl.textContent = `射破 ${popped} 顆，還有 ${left} 秒！`;
+
+      function spawn() {
+        var el = document.createElement("div");
+        el.className = "target";
+        el.textContent = COLORS[Math.floor(Math.random() * COLORS.length)];
+        fieldEl.appendChild(el);
+        var balloon = {
+          el: el,
+          x: 8 + Math.random() * 84,          // 場地寬度的 %
+          y: 108,                              // 從底下冒出來
+          speed: 0.25 + Math.random() * 0.35,  // 每一格畫面往上飄多少 %
+        };
+        balloons.push(balloon);
+        el.onclick = function () { popBalloon(balloon); };
+      }
+
+      // 掛在外面，手勢那邊也要用
+      window.popBalloon = function (balloon) {
+        if (!playing || !balloon || balloon.dead) return;
+        balloon.dead = true;
+        balloon.el.classList.add("popping");
+        setTimeout(function () { balloon.el.remove(); }, 300);
+        popped++;
+        playSound("pop");
+        statusEl.textContent = `射破 ${popped} 顆，還有 ${left} 秒！`;
+      };
+
+      // 離瞄準點最近、又在範圍內的那顆氣球
+      window.balloonNear = function (xPercent, yPercent) {
+        var best = null;
+        var bestDist = BALLOON_HIT_RADIUS;
+        balloons.forEach(function (b) {
+          if (b.dead) return;
+          var dist = Math.sqrt(Math.pow(b.x - xPercent, 2) + Math.pow(b.y - yPercent, 2));
+          if (dist <= bestDist) {
+            best = b;
+            bestDist = dist;
+          }
+        });
+        return best;
+      };
+
+      for (var i = 0; i < 3; i++) spawn();
+
+      function frame() {
+        balloons.forEach(function (b) {
+          if (b.dead) return;
+          b.y -= b.speed;
+          if (b.y < -10) b.y = 108;      // 飄出去就從底下再來
+          b.el.style.left = b.x + "%";
+          b.el.style.top = b.y + "%";
+        });
+        fieldAnim = requestAnimationFrame(frame);
+      }
+      frame();
+
+      // 每隔一下多放一顆，畫面上不會太空
+      fieldTimer = setInterval(function () {
+        if (balloons.filter(function (b) { return !b.dead; }).length < 6) spawn();
+      }, 1200);
+
+      countdownTimer = setInterval(function () {
+        left--;
+        statusEl.textContent = `射破 ${popped} 顆，還有 ${left} 秒！`;
+        if (left <= 0) {
+          stopField();
+          finish(popped >= BALLOON_TARGET, `你射破 ${popped} 顆`);
+        }
+      }, 1000);
+    }
+
+    /* ===== 撈金魚 ===== */
+
+    function startFish() {
+      fieldEl.hidden = false;
+      fieldEl.innerHTML = "";
+
+      var scooped = 0;
+      var left = FISH_SECONDS;
+      var fishes = [];
+      var KINDS = ["🐠", "🐟", "🐡", "🦐"];
+      var holdOn = null;     // 網子現在罩著哪一條
+      var holdMs = 0;
+      var lastFrame = 0;
+
+      statusEl.textContent = `撈到 ${scooped} 條，還有 ${left} 秒！`;
+
+      function spawn() {
+        var el = document.createElement("div");
+        el.className = "target";
+        el.textContent = KINDS[Math.floor(Math.random() * KINDS.length)];
+        fieldEl.appendChild(el);
+        fishes.push({
+          el: el,
+          x: 10 + Math.random() * 80,
+          y: 15 + Math.random() * 70,
+          vx: (Math.random() < 0.5 ? -1 : 1) * (0.15 + Math.random() * 0.25),
+          vy: (Math.random() < 0.5 ? -1 : 1) * (0.08 + Math.random() * 0.15),
+        });
+      }
+
+      for (var i = 0; i < 4; i++) spawn();
+
+      function frame(now) {
+        var dt = lastFrame ? now - lastFrame : 16;
+        lastFrame = now;
+
+        fishes.forEach(function (f) {
+          if (f.dead) return;
+          f.x += f.vx;
+          f.y += f.vy;
+          // 撞到邊就轉頭游回來
+          if (f.x < 6 || f.x > 94) f.vx *= -1;
+          if (f.y < 10 || f.y > 90) f.vy *= -1;
+          f.el.style.left = f.x + "%";
+          f.el.style.top = f.y + "%";
+        });
+
+        // 網子（＝瞄準點）罩著哪一條魚？罩夠久就撈起來
+        var near = aim.active ? fishNear(aim.x, aim.y) : null;
+        if (near && near === holdOn) {
+          holdMs += dt;
+          if (holdMs >= FISH_SCOOP_MS) scoopFish(near);
+        } else {
+          if (holdOn) holdOn.el.classList.remove("scooping");
+          holdOn = near;
+          holdMs = 0;
+          if (near) near.el.classList.add("scooping");
+        }
+
+        fieldAnim = requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+
+      function fishNear(xPercent, yPercent) {
+        var best = null;
+        var bestDist = FISH_HIT_RADIUS;
+        fishes.forEach(function (f) {
+          if (f.dead) return;
+          var dist = Math.sqrt(Math.pow(f.x - xPercent, 2) + Math.pow(f.y - yPercent, 2));
+          if (dist <= bestDist) {
+            best = f;
+            bestDist = dist;
+          }
+        });
+        return best;
+      }
+
+      function scoopFish(fish) {
+        if (!playing || fish.dead) return;
+        fish.dead = true;
+        fish.el.classList.remove("scooping");
+        fish.el.classList.add("popping");
+        setTimeout(function () { fish.el.remove(); }, 300);
+        holdOn = null;
+        holdMs = 0;
+        scooped++;
+        playSound("pop");
+        statusEl.textContent = `撈到 ${scooped} 條，還有 ${left} 秒！`;
+        spawn();   // 撈走一條就再放一條，池子不會變空
+      }
+
+      countdownTimer = setInterval(function () {
+        left--;
+        statusEl.textContent = `撈到 ${scooped} 條，還有 ${left} 秒！`;
+        if (left <= 0) {
+          stopField();
+          finish(scooped >= FISH_TARGET, `你撈到 ${scooped} 條`);
+        }
+      }, 1000);
+    }
+
+    function stopField() {
+      if (fieldAnim) cancelAnimationFrame(fieldAnim);
+      fieldAnim = null;
+      clearInterval(fieldTimer);
+      clearInterval(countdownTimer);
+      fieldTimer = null;
+      countdownTimer = null;
+      window.popBalloon = null;
+      window.balloonNear = null;
     }
 
     /* ===== 套圈圈 ===== */
@@ -375,14 +696,97 @@
       throwBtn.disabled = true;
     }
 
+    /* ===== 用手玩：手的位置變成瞄準點，往前揮＝打出去 ===== */
+
+    // 鏡頭看到的 0~1 → 場地的百分比（中間那段放大到整個場地）
+    function mapAxis(value) {
+      var scaled = (value - HAND_LO) / (HAND_HI - HAND_LO);
+      return Math.max(0, Math.min(1, scaled)) * 100;
+    }
+
+    function moveAim(xPercent, yPercent, showCursor) {
+      aim.x = xPercent;
+      aim.y = yPercent;
+      aim.active = true;
+
+      if (showCursor) {
+        cursorEl.hidden = false;
+        cursorEl.style.left = xPercent + "%";
+        cursorEl.style.top = yPercent + "%";
+      }
+
+      // 打地鼠：框出現在對準的洞
+      if (kind === "mole") {
+        clearAimedHole();
+        var hole = holeAt(xPercent, yPercent);
+        if (hole) hole.classList.add("aimed");
+      }
+    }
+
+    function clearAim() {
+      aim.active = false;
+      cursorEl.hidden = true;
+      clearAimedHole();
+    }
+
+    // 往前揮＝打下去。打到什麼要看現在在玩哪一攤。
+    function punch() {
+      if (!playing) return;
+      cursorEl.classList.remove("punch");
+      void cursorEl.offsetWidth;      // 強制重新開始動畫
+      cursorEl.classList.add("punch");
+
+      if (kind === "mole" && window.whackHole) {
+        whackHole(holeAt(aim.x, aim.y));
+      } else if (kind === "balloon" && window.balloonNear) {
+        var balloon = balloonNear(aim.x, aim.y);
+        if (balloon) popBalloon(balloon);
+        else playSound("wrong");
+      } else if (kind === "ring" && window.throwRing) {
+        throwRing();
+      }
+      // 撈金魚不用揮，把網子罩著不動就會撈起來
+    }
+
+    connectVision({
+      onStatus: function (connected) {
+        handBar.hidden = !connected;
+      },
+      onHand: function (hand) {
+        if (hand.x === null || hand.y === null) {
+          clearAim();
+          return;
+        }
+        moveAim(mapAxis(hand.x), mapAxis(hand.y), true);
+      },
+      onGesture: function (gesture) {
+        if (gesture.name === "push") punch();
+      },
+    });
+
+    /* ===== 用點的（沒開鏡頭時的玩法，跟原本一樣） =====
+       撈金魚要一直知道手指在哪，所以額外聽 pointermove。 */
+    arenaEl.addEventListener("pointermove", function (event) {
+      if (!playing || kind !== "fish") return;
+      var rect = arenaEl.getBoundingClientRect();
+      moveAim(
+        (event.clientX - rect.left) / rect.width * 100,
+        (event.clientY - rect.top) / rect.height * 100,
+        false      // 用手指玩不用畫🖐️，手指本來就看得到
+      );
+    });
+
     /* ===== 結算 ===== */
 
     function finish(won, detail) {
       playing = false;
+      clearAim();
 
       if (won) {
         var prize = awardPrize();
         awardTrophy("night-market-first");
+        // 用鏡頭玩贏的另外給一座獎盃
+        if (!handBar.hidden) awardTrophy("night-market-hand");
         say("贏了！得到一個獎品！");
         notifyMilestone();
         celebrate(`🎉 ${detail}，贏了！獎品 ${prize}`, "回攤位", function () {
