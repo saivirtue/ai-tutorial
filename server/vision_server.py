@@ -29,6 +29,12 @@ SwitchBot 實體回饋（--switchbot 參數）：
 遊戲網頁送 {"type": "listen"}，伺服器錄音幾秒、辨識完送回
   {"type": "heard", "text": "...", "error": null}
 （聽不清楚或沒開麥克風時 text 是 null，error 會有原因）
+
+貼紙收集簿存檔：
+  GET  /stickers        拿目前的收集簿
+  POST /stickers/apply  送一筆變更（得到貼紙／花掉／贏獎品／換錢／獎盃）
+存成 server/sticker-book.json。這樣換 Wi-Fi、換筆電 IP、關掉電視盒
+瀏覽器，小孩收集的貼紙都不會不見。
 """
 
 import argparse
@@ -49,6 +55,69 @@ BROADCAST_HZ = 10           # 每秒最多送幾次 fingers 事件
 
 # 視覺執行緒把最新結果放這裡，asyncio 這邊定時拿去廣播
 latest = {"count": None}
+
+
+# ====================== 貼紙收集簿存檔 ======================
+
+STICKER_FILE = Path(__file__).resolve().parent / "sticker-book.json"
+
+
+def empty_book():
+    return {"stickers": {}, "trophies": {}, "prizes": {}, "redeemed": 0}
+
+
+def load_sticker_book():
+    """讀存檔；檔案不在或壞掉就當作全新的一本，不要讓伺服器掛掉。"""
+    try:
+        with open(STICKER_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        book = empty_book()
+        book.update({k: v for k, v in data.items() if k in book})
+        return book
+    except (OSError, ValueError):
+        return empty_book()
+
+
+def save_sticker_book(book):
+    try:
+        with open(STICKER_FILE, "w", encoding="utf-8") as f:
+            json.dump(book, f, ensure_ascii=False, indent=2)
+    except OSError as e:
+        print(f"⚠️  貼紙存檔失敗：{e}")
+
+
+def apply_sticker_action(book, action):
+    """把一筆變更套用到收集簿上。
+    收「發生了什麼事」而不是整本收集簿，這樣兩台裝置同時在玩也不會
+    互相蓋掉對方的進度。"""
+    kind = action.get("type")
+
+    if kind == "award" and action.get("sticker"):
+        emoji = action["sticker"]
+        book["stickers"][emoji] = book["stickers"].get(emoji, 0) + 1
+
+    elif kind == "spend":
+        left = int(action.get("count", 0))
+        # 從數量最多的先扣，跟網頁那邊同一套規則
+        for emoji in sorted(book["stickers"], key=lambda e: -book["stickers"][e]):
+            if left <= 0:
+                break
+            take = min(left, book["stickers"][emoji])
+            book["stickers"][emoji] -= take
+            left -= take
+
+    elif kind == "prize" and action.get("prize"):
+        emoji = action["prize"]
+        book["prizes"][emoji] = book["prizes"].get(emoji, 0) + 1
+
+    elif kind == "redeem":
+        book["prizes"] = {}
+        book["redeemed"] = book.get("redeemed", 0) + 1
+
+    elif kind == "trophy" and action.get("id"):
+        book["trophies"][action["id"]] = True
+
+    return book
 
 # ====================== SwitchBot ======================
 # 社群常見的 SwitchBot Bot「無密碼」BLE press 指令
@@ -90,14 +159,14 @@ mock_speech_text = ""  # mock 模式：/mock_speech 設定的「假裝聽到的�
 mic_broken_warned = False  # 麥克風壞掉的訊息只印一次，不要洗畫面
 
 
-def record_and_recognize():
-    """錄 LISTEN_SECONDS 秒的音，用 Google 語音辨識轉成文字。
+def record_and_recognize(seconds=LISTEN_SECONDS):
+    """錄幾秒的音，用 Google 語音辨識轉成文字。
     這個函式會卡住（阻塞），一定要丟到背景執行緒／executor 裡跑，
     不能直接在 asyncio 的事件迴圈裡呼叫。"""
     import sounddevice as sd
     import speech_recognition as sr
 
-    audio = sd.rec(int(LISTEN_SECONDS * SPEECH_SAMPLE_RATE), samplerate=SPEECH_SAMPLE_RATE, channels=1, dtype="int16")
+    audio = sd.rec(int(seconds * SPEECH_SAMPLE_RATE), samplerate=SPEECH_SAMPLE_RATE, channels=1, dtype="int16")
     sd.wait()
     audio_data = sr.AudioData(audio.tobytes(), SPEECH_SAMPLE_RATE, 2)
 
@@ -110,8 +179,10 @@ def record_and_recognize():
         return None, f"network:{e}"
 
 
-async def handle_listen(ws):
-    """收到遊戲頁面的 {"type": "listen"} 時呼叫；錄音辨識完送回 heard 事件。"""
+async def handle_listen(ws, seconds=LISTEN_SECONDS):
+    """收到遊戲頁面的 {"type": "listen"} 時呼叫；錄音辨識完送回 heard 事件。
+    seconds 由遊戲決定要錄多久——小孩習慣先一個一個唸注音再拼出整個音，
+    唸句子時需要的時間比單字長很多。"""
     global mic_broken_warned
 
     if mic_mode == "off":
@@ -126,7 +197,7 @@ async def handle_listen(ws):
 
     try:
         loop = asyncio.get_event_loop()
-        text, err = await loop.run_in_executor(None, record_and_recognize)
+        text, err = await loop.run_in_executor(None, record_and_recognize, seconds)
     except Exception as e:
         if not mic_broken_warned:
             mic_broken_warned = True
@@ -271,7 +342,12 @@ async def ws_handler(request):
                     asyncio.create_task(trigger_switchbot())
                 elif data.get("type") == "listen":
                     # 不要 await：錄音要好幾秒，不能卡住這個 WebSocket 的收訊迴圈
-                    asyncio.create_task(handle_listen(ws))
+                    try:
+                        seconds = float(data.get("seconds") or LISTEN_SECONDS)
+                    except (TypeError, ValueError):
+                        seconds = LISTEN_SECONDS
+                    seconds = max(1.0, min(seconds, 10.0))   # 防呆，別讓網頁叫伺服器錄一小時
+                    asyncio.create_task(handle_listen(ws, seconds))
     finally:
         websockets.discard(ws)
     return ws
@@ -287,6 +363,23 @@ async def mock_handler(request):
 async def switchbot_log_handler(request):
     """測試用：查 mock 模式下 SwitchBot 被觸發了幾次。"""
     return web.json_response({"count": len(switchbot_log)})
+
+
+async def stickers_get_handler(request):
+    """網頁開起來時來拿最新的收集簿。"""
+    return web.json_response(load_sticker_book())
+
+
+async def stickers_apply_handler(request):
+    """網頁送一筆變更過來（得到貼紙／花掉／贏獎品／換錢／獎盃）。"""
+    try:
+        action = await request.json()
+    except ValueError:
+        raise web.HTTPBadRequest(text="需要 JSON")
+
+    book = apply_sticker_action(load_sticker_book(), action)
+    save_sticker_book(book)
+    return web.json_response(book)
 
 
 async def mock_speech_handler(request):
@@ -408,6 +501,8 @@ def main():
     app.router.add_get("/mock", mock_handler)
     app.router.add_get("/switchbot/log", switchbot_log_handler)
     app.router.add_get("/mock_speech", mock_speech_handler)
+    app.router.add_get("/stickers", stickers_get_handler)
+    app.router.add_post("/stickers/apply", stickers_apply_handler)
     app.router.add_get("/{tail:.*}", static_handler)
     app.on_startup.append(start_background)
 

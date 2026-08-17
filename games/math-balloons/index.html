@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, target-densitydpi=device-dpi">
   <title>數學氣球</title>
   <link rel="stylesheet" href="../../shared/style.css">
   <style>
@@ -135,11 +135,15 @@
   <script src="../../shared/speech.js"></script>
   <script src="../../shared/stickers.js"></script>
   <script>
+    /* 最外層變數用 var，不要用 let/const——某些電視盒的 WebView 對
+       「最外層 let/const」有相容性 bug（函式讀不到），var 沒有這個
+       問題。函式內部的 let/const 不受影響，不用改。 */
+
     /* ===== 遊戲設定 ===== */
-    const STARS_TO_WIN = 10;         // 集滿幾顆星星就獲勝
-    const BALLOON_COUNT = 4;         // 一次幾顆氣球
-    const BALLOON_COLORS = ["#ff5a5a", "#4a7bff", "#3ecf6b", "#ff8a3d", "#c77dff"];
-    const ANIMALS = [
+    var STARS_TO_WIN = 10;         // 集滿幾顆星星就獲勝
+    var BALLOON_COUNT = 4;         // 一次幾顆氣球
+    var BALLOON_COLORS = ["#ff5a5a", "#4a7bff", "#3ecf6b", "#ff8a3d", "#c77dff"];
+    var ANIMALS = [
       { emoji: "🐱", name: "小貓" },
       { emoji: "🐶", name: "小狗" },
       { emoji: "🐰", name: "兔子" },
@@ -149,15 +153,15 @@
     ];
 
     /* ===== 遊戲狀態 ===== */
-    let mode = "count";   // 現在玩哪種難度
-    let stars = 0;        // 拿到幾顆星星
-    let answer = 0;       // 正確答案
-    let locked = false;   // 答對後短暫鎖住，避免連點
-    let balloons = [];    // 天上所有的氣球 { element, x, y, speed }
+    var mode = "count";   // 現在玩哪種難度
+    var stars = 0;        // 拿到幾顆星星
+    var answer = 0;       // 正確答案
+    var locked = false;   // 答對後短暫鎖住，避免連點
+    var balloons = [];    // 天上所有的氣球 { element, x, y, speed }
 
-    const sky = document.getElementById("sky");
-    const questionEl = document.getElementById("question");
-    const setStars = createStarBar(document.getElementById("stars"), STARS_TO_WIN);
+    var sky = document.getElementById("sky");
+    var questionEl = document.getElementById("question");
+    var setStars = createStarBar(document.getElementById("stars"), STARS_TO_WIN);
 
     /* ===== 出題 ===== */
 
@@ -311,9 +315,9 @@
 
     /* ===== 鏡頭輸入：比手指回答（沒開伺服器就自動只用觸控） ===== */
 
-    let visionOn = false;
-    const visionBar = document.getElementById("vision-bar");
-    const fingerInfo = document.getElementById("finger-info");
+    var visionOn = false;
+    var visionBar = document.getElementById("vision-bar");
+    var fingerInfo = document.getElementById("finger-info");
 
     connectVision({
       onStatus: (connected) => {
@@ -341,6 +345,7 @@
       },
     });
 
+    refreshStickers();   // 開場先跟伺服器對一下貼紙，免得用到過期的本機資料
     createSpeechToggle();
     setStars(0);
     floatBalloons();

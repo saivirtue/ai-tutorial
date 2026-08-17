@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, target-densitydpi=device-dpi">
+  <title>小夜市</title>
+  <link rel="stylesheet" href="../../shared/style.css">
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      overflow: auto;
+    }
+
+    #title {
+      font-size: clamp(24px, 4vw, 40px);
+      font-weight: bold;
+      text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+    }
+
+    #wallet {
+      font-size: clamp(18px, 3vw, 24px);
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 999px;
+      padding: 8px 20px;
+    }
+
+    /* ===== 攤位選單 ===== */
+    #stalls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      justify-content: center;
+    }
+
+    .stall {
+      background: var(--panel);
+      color: var(--text);
+      border: none;
+      font-family: inherit;
+      border-radius: 24px;
+      padding: 20px 24px;
+      width: min(260px, 88vw);
+      text-align: center;
+      cursor: pointer;
+      box-shadow: 0 6px 0 rgba(0, 0, 0, 0.25);
+    }
+
+    .stall:active { transform: translateY(3px); box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25); }
+    .stall .icon { font-size: 60px; }
+    .stall h2 { font-size: 26px; margin-top: 4px; }
+    .stall p { font-size: 16px; color: #666; margin-top: 4px; }
+
+    /* ===== 遊戲場地 ===== */
+    #arena {
+      position: relative;
+      width: min(92vw, 520px);
+      height: min(58vh, 420px);
+      background: #1b3a5c;
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 8px 0 rgba(0, 0, 0, 0.3);
+    }
+
+    /* 打地鼠的洞 */
+    #holes {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 8px;
+      padding: 8px;
+      width: 100%;
+      height: 100%;
+    }
+
+    .hole {
+      background: #123;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: min(13vw, 56px);
+      cursor: pointer;
+      overflow: hidden;
+    }
+
+    .hole .mole { transform: translateY(120%); transition: transform 0.15s ease; }
+    .hole.up .mole { transform: translateY(0); }
+    .hole.hit { background: #2a5; }
+
+    /* 套圈圈：一條左右來回的指示器，時機對了就中 */
+    #ring-area {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+    }
+
+    #bottles { font-size: min(15vw, 64px); letter-spacing: 6px; }
+
+    #ring-track {
+      position: relative;
+      width: 86%;
+      height: 46px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    /* 中間那段是「命中區」 */
+    #ring-target {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      background: var(--good);
+      opacity: 0.55;
+    }
+
+    #ring-marker {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 10px;
+      background: #fff;
+      border-radius: 4px;
+    }
+
+    #status {
+      font-size: clamp(18px, 3.4vw, 24px);
+      font-weight: bold;
+      color: var(--star);
+      text-align: center;
+      min-height: 2.4em;
+      max-width: 92vw;
+    }
+
+    .home-link {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 18px;
+      text-decoration: none;
+    }
+
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="title">🎪 小夜市</div>
+  <div id="wallet">🎟️ 貼紙：<span id="sticker-count">0</span> 張</div>
+
+  <!-- 攤位選單 -->
+  <div id="stalls">
+    <button class="stall" onclick="startGame('mole')">
+      <div class="icon">🐹</div>
+      <h2>打地鼠</h2>
+      <p>15 秒內打到 8 隻就贏！</p>
+    </button>
+    <button class="stall" onclick="startGame('ring')">
+      <div class="icon">🎯</div>
+      <h2>套圈圈</h2>
+      <p>抓準時機，3 次套中 2 次就贏！</p>
+    </button>
+  </div>
+
+  <!-- 遊戲場地 -->
+  <div id="arena" hidden>
+    <div id="holes" hidden></div>
+    <div id="ring-area" hidden>
+      <div id="bottles">🍾🍾🍾</div>
+      <div id="ring-track">
+        <div id="ring-target"></div>
+        <div id="ring-marker"></div>
+      </div>
+      <button class="big-btn green" id="throw-btn" onclick="throwRing()">🎯 丟！</button>
+    </div>
+  </div>
+
+  <div id="status">玩一場要 1 張貼紙，贏了可以拿一個獎品 🎁</div>
+  <a class="home-link" href="../../">⬅ 回遊戲樂園</a>
+
+  <script src="../../shared/game-utils.js"></script>
+  <script src="../../shared/speech.js"></script>
+  <script src="../../shared/stickers.js"></script>
+  <script src="../../shared/vision-client.js"></script>
+  <script>
+    /* 夜市：用學習遊戲賺到的貼紙當代幣，玩一場花 1 張，贏了得一個獎品。
+       獎品集滿一整組就可以跟爸媽換 10 元（在貼紙簿那一頁換）。
+
+       最外層變數用 var，不要用 let/const——某些電視盒的 WebView 對
+       「最外層 let/const」有相容性 bug（函式讀不到）。 */
+
+    var COST = 1;              // 玩一場要幾張貼紙
+    var MOLE_SECONDS = 15;     // 打地鼠限時
+    var MOLE_TARGET = 8;       // 打到幾隻算贏
+    var RING_THROWS = 3;       // 套圈圈丟幾次
+    var RING_TARGET = 2;       // 套中幾次算贏
+
+    var stallsEl = document.getElementById("stalls");
+    var arenaEl = document.getElementById("arena");
+    var holesEl = document.getElementById("holes");
+    var ringAreaEl = document.getElementById("ring-area");
+    var statusEl = document.getElementById("status");
+    var countEl = document.getElementById("sticker-count");
+    var markerEl = document.getElementById("ring-marker");
+    var targetEl = document.getElementById("ring-target");
+    var bottlesEl = document.getElementById("bottles");
+    var throwBtn = document.getElementById("throw-btn");
+
+    var playing = false;
+    var moleTimer = null;
+    var moleTick = null;
+    var ringAnim = null;
+
+    function refreshWallet() {
+      countEl.textContent = stickerCount();
+    }
+
+    function showStalls() {
+      playing = false;
+      stallsEl.hidden = false;
+      arenaEl.hidden = true;
+      holesEl.hidden = true;
+      ringAreaEl.hidden = true;
+      refreshWallet();
+    }
+
+    /* ===== 開始一場（先收貼紙） ===== */
+
+    function startGame(kind) {
+      if (playing) return;
+
+      if (!spendStickers(COST)) {
+        playSound("wrong");
+        statusEl.textContent = "貼紙不夠了！去玩學習遊戲賺貼紙再回來玩 😊";
+        say("貼紙不夠囉！");
+        refreshWallet();
+        return;
+      }
+
+      playSound("click");
+      refreshWallet();
+      playing = true;
+      stallsEl.hidden = true;
+      arenaEl.hidden = false;
+
+      if (kind === "mole") startMole();
+      else startRing();
+    }
+
+    /* ===== 打地鼠 ===== */
+
+    function startMole() {
+      holesEl.hidden = false;
+      holesEl.innerHTML = "";
+      for (var i = 0; i < 9; i++) {
+        var hole = document.createElement("div");
+        hole.className = "hole";
+        hole.innerHTML = '<span class="mole">🐹</span>';
+        hole.onclick = whack;
+        holesEl.appendChild(hole);
+      }
+
+      var hits = 0;
+      var left = MOLE_SECONDS;
+      statusEl.textContent = `打到 ${hits} 隻，還有 ${left} 秒！`;
+
+      function whack(event) {
+        var hole = event.currentTarget;
+        if (!hole.classList.contains("up")) return;
+        hole.classList.remove("up");
+        hole.classList.add("hit");
+        setTimeout(function () { hole.classList.remove("hit"); }, 150);
+        hits++;
+        playSound("pop");
+        statusEl.textContent = `打到 ${hits} 隻，還有 ${left} 秒！`;
+      }
+
+      // 每隔一下就讓隨機一個洞冒出地鼠，過一下自己縮回去
+      moleTick = setInterval(function () {
+        var holes = holesEl.children;
+        var pick = holes[Math.floor(Math.random() * holes.length)];
+        if (pick.classList.contains("up")) return;
+        pick.classList.add("up");
+        setTimeout(function () { pick.classList.remove("up"); }, 700);
+      }, 450);
+
+      moleTimer = setInterval(function () {
+        left--;
+        statusEl.textContent = `打到 ${hits} 隻，還有 ${left} 秒！`;
+        if (left <= 0) {
+          stopMole();
+          finish(hits >= MOLE_TARGET, `你打到 ${hits} 隻`);
+        }
+      }, 1000);
+    }
+
+    function stopMole() {
+      clearInterval(moleTick);
+      clearInterval(moleTimer);
+      moleTick = null;
+      moleTimer = null;
+    }
+
+    /* ===== 套圈圈 ===== */
+
+    function startRing() {
+      ringAreaEl.hidden = false;
+      throwBtn.disabled = false;
+
+      var throwsLeft = RING_THROWS;
+      var hits = 0;
+      var pos = 0;         // 指示器位置 0～100
+      var dir = 1;
+      var speed = 1.6;
+
+      // 命中區放中間，越後面越窄（越難）
+      function placeTarget() {
+        var width = 30 - (RING_THROWS - throwsLeft) * 6;   // 30% → 24% → 18%
+        targetEl.style.left = (50 - width / 2) + "%";
+        targetEl.style.width = width + "%";
+        targetEl.dataset.lo = 50 - width / 2;
+        targetEl.dataset.hi = 50 + width / 2;
+      }
+      placeTarget();
+
+      function step() {
+        pos += dir * speed;
+        if (pos >= 100) { pos = 100; dir = -1; }
+        if (pos <= 0) { pos = 0; dir = 1; }
+        markerEl.style.left = `calc(${pos}% - 5px)`;
+        ringAnim = requestAnimationFrame(step);
+      }
+      step();
+
+      statusEl.textContent = `還有 ${throwsLeft} 個圈圈，套中 ${RING_TARGET} 次就贏！`;
+
+      // 掛在外面讓按鈕可以呼叫
+      window.throwRing = function () {
+        if (!playing || throwsLeft <= 0) return;
+
+        var lo = Number(targetEl.dataset.lo);
+        var hi = Number(targetEl.dataset.hi);
+        var hit = pos >= lo && pos <= hi;
+
+        throwsLeft--;
+        if (hit) {
+          hits++;
+          playSound("pop");
+          bottlesEl.textContent = "⭕".repeat(hits) + "🍾".repeat(Math.max(0, 3 - hits));
+        } else {
+          playSound("wrong");
+        }
+
+        if (throwsLeft > 0) {
+          placeTarget();
+          statusEl.textContent = hit
+            ? `套中了！還有 ${throwsLeft} 個圈圈`
+            : `差一點！還有 ${throwsLeft} 個圈圈`;
+        } else {
+          stopRing();
+          finish(hits >= RING_TARGET, `你套中 ${hits} 個`);
+        }
+      };
+    }
+
+    function stopRing() {
+      if (ringAnim) cancelAnimationFrame(ringAnim);
+      ringAnim = null;
+      throwBtn.disabled = true;
+    }
+
+    /* ===== 結算 ===== */
+
+    function finish(won, detail) {
+      playing = false;
+
+      if (won) {
+        var prize = awardPrize();
+        awardTrophy("night-market-first");
+        say("贏了！得到一個獎品！");
+        notifyMilestone();
+        celebrate(`🎉 ${detail}，贏了！獎品 ${prize}`, "回攤位", function () {
+          bottlesEl.textContent = "🍾🍾🍾";
+          showStalls();
+          statusEl.textContent = "獎品收進貼紙簿了！集滿一整組就可以換 10 元 💰";
+        });
+      } else {
+        playSound("wrong");
+        say("差一點點，再來一次！");
+        celebrate(`${detail}，差一點點！`, "回攤位", function () {
+          bottlesEl.textContent = "🍾🍾🍾";
+          showStalls();
+          statusEl.textContent = "再玩一次！玩一場要 1 張貼紙 🎟️";
+        });
+      }
+    }
+
+    // 貼紙數量以伺服器那份為準（換 Wi-Fi、換裝置都不會不見）
+    refreshStickers(refreshWallet);
+    createSpeechToggle();
+    showStalls();
+  </script>
+</body>
+</html>

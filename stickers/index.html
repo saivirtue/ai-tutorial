@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, target-densitydpi=device-dpi">
   <title>我的貼紙簿</title>
   <link rel="stylesheet" href="../shared/style.css">
   <style>
@@ -11,14 +11,118 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 20px;
-      padding: 30px 16px;
+      gap: 18px;
+      padding: 26px 16px;
       min-height: 100%;
     }
 
     h1 {
-      font-size: clamp(32px, 6vw, 56px);
+      font-size: clamp(30px, 6vw, 52px);
       text-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
+    }
+
+    h2.section {
+      font-size: clamp(22px, 4vw, 30px);
+      margin-top: 6px;
+    }
+
+    /* ===== 手上的貼紙（＝夜市代幣） ===== */
+    #wallet {
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 20px;
+      padding: 14px 26px;
+      text-align: center;
+      font-size: clamp(20px, 3.6vw, 26px);
+    }
+
+    #wallet .big {
+      font-size: clamp(34px, 6vw, 48px);
+      font-weight: bold;
+      color: var(--star);
+    }
+
+    .go-market {
+      display: inline-block;
+      margin-top: 10px;
+      font-size: 20px;
+      padding: 12px 22px;
+    }
+
+    /* ===== 兌換 10 元 ===== */
+    #redeem-box {
+      background: var(--star);
+      color: #6b4b00;
+      border-radius: 24px;
+      padding: 18px 26px;
+      text-align: center;
+      width: min(480px, 92vw);
+      box-shadow: 0 6px 0 rgba(0, 0, 0, 0.25);
+    }
+
+    #redeem-box h3 { font-size: clamp(24px, 4.5vw, 32px); }
+    #redeem-box p { font-size: 17px; margin-top: 4px; }
+    #redeem-box .big-btn { margin-top: 12px; background: var(--bad); }
+
+    #redeem-note {
+      color: rgba(255, 255, 255, 0.75);
+      font-size: 18px;
+      text-align: center;
+    }
+
+    /* ===== 收集牆（貼紙／獎品共用） ===== */
+    .wall {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      width: min(460px, 92vw);
+    }
+
+    .slot {
+      position: relative;
+      background: var(--panel);
+      border-radius: 18px;
+      aspect-ratio: 1;
+      min-height: 70px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: min(48px, 11vw);
+      box-shadow: 0 5px 0 rgba(0, 0, 0, 0.25);
+    }
+
+    /* 還沒拿到的：灰色剪影 */
+    .slot.locked {
+      background: rgba(255, 255, 255, 0.15);
+      box-shadow: none;
+    }
+
+    .slot.locked span {
+      filter: grayscale(1) brightness(0.4);
+      opacity: 0.6;
+    }
+
+    .slot .count {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      background: var(--bad);
+      color: #fff;
+      font-size: 17px;
+      font-weight: bold;
+      border-radius: 999px;
+      min-width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+    }
+
+    .hint {
+      color: rgba(255, 255, 255, 0.75);
+      font-size: 18px;
+      text-align: center;
+      max-width: 92vw;
     }
 
     #trophy-shelf {
@@ -26,71 +130,16 @@
       flex-wrap: wrap;
       gap: 10px;
       justify-content: center;
-      min-height: 40px;
     }
 
     .trophy {
       background: var(--star);
       color: #6b4b00;
-      font-size: 20px;
+      font-size: 18px;
       font-weight: bold;
       border-radius: 14px;
       padding: 8px 14px;
       box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25);
-    }
-
-    #hint {
-      color: rgba(255, 255, 255, 0.75);
-      font-size: 20px;
-      text-align: center;
-    }
-
-    #sticker-wall {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 14px;
-      width: min(480px, 92vw);
-    }
-
-    .sticker {
-      position: relative;
-      background: var(--panel);
-      border-radius: 20px;
-      aspect-ratio: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: min(56px, 12vw);
-      box-shadow: 0 5px 0 rgba(0, 0, 0, 0.25);
-    }
-
-    /* 還沒拿到的貼紙：灰色剪影 */
-    .sticker.locked {
-      background: rgba(255, 255, 255, 0.15);
-      box-shadow: none;
-    }
-
-    .sticker.locked span {
-      filter: grayscale(1) brightness(0.4);
-      opacity: 0.6;
-    }
-
-    /* 拿到幾張的小徽章 */
-    .sticker .count {
-      position: absolute;
-      top: -8px;
-      right: -8px;
-      background: var(--bad);
-      color: #fff;
-      font-size: 18px;
-      font-weight: bold;
-      border-radius: 999px;
-      min-width: 32px;
-      height: 32px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
     }
 
     .home-link {
@@ -98,48 +147,112 @@
       font-size: 20px;
       text-decoration: none;
     }
+
+    [hidden] { display: none !important; }
   </style>
 </head>
 <body>
   <h1>🏆 我的貼紙簿</h1>
+
+  <!-- 手上有幾張貼紙可以去夜市花 -->
+  <div id="wallet">
+    手上的貼紙<br>
+    <span class="big" id="sticker-count">0</span> 張
+    <br>
+    <a class="big-btn green go-market" href="../games/night-market/">🎪 去夜市玩</a>
+  </div>
+
+  <!-- 獎品集滿了才出現 -->
+  <div id="redeem-box" hidden>
+    <h3>🎉 獎品全部集滿了！</h3>
+    <p>可以跟爸爸媽媽換 10 元囉！</p>
+    <button class="big-btn" onclick="doRedeem()">💰 換 10 元！</button>
+  </div>
+  <div id="redeem-note"></div>
+
+  <h2 class="section">🎁 夜市獎品</h2>
+  <div class="hint" id="prize-hint"></div>
+  <div class="wall" id="prize-wall"></div>
+
+  <h2 class="section">⭐ 收集到的貼紙</h2>
+  <div class="hint" id="sticker-hint"></div>
+  <div class="wall" id="sticker-wall"></div>
+
+  <h2 class="section">🏆 獎盃</h2>
   <div id="trophy-shelf"></div>
-  <div id="hint"></div>
-  <div id="sticker-wall"></div>
+
   <a class="home-link" href="../">⬅ 回遊戲樂園</a>
 
+  <script src="../shared/game-utils.js"></script>
+  <script src="../shared/speech.js"></script>
   <script src="../shared/stickers.js"></script>
   <script>
-    const book = getCollection();
+    /* 最外層變數用 var，不要用 let/const——某些電視盒的 WebView 對
+       「最外層 let/const」有相容性 bug（函式讀不到）。 */
 
-    // 獎盃架
-    const shelf = document.getElementById("trophy-shelf");
-    Object.keys(book.trophies).forEach((id) => {
-      const trophy = document.createElement("div");
-      trophy.className = "trophy";
-      trophy.textContent = TROPHIES[id] || id;
-      shelf.appendChild(trophy);
-    });
+    // 把一組收集品畫成一面牆；owned 是 { emoji: 數量 }
+    function drawWall(container, pool, owned) {
+      container.innerHTML = "";
+      pool.forEach(function (emoji) {
+        var count = owned[emoji] || 0;
+        var slot = document.createElement("div");
+        slot.className = "slot" + (count === 0 ? " locked" : "");
+        slot.innerHTML = "<span>" + emoji + "</span>";
+        if (count > 1) {
+          slot.innerHTML += '<div class="count">x' + count + "</div>";
+        }
+        container.appendChild(slot);
+      });
+    }
 
-    // 貼紙牆：全部貼紙都畫出來，沒拿到的是灰色剪影
-    const wall = document.getElementById("sticker-wall");
-    let owned = 0;
-    STICKER_POOL.forEach((emoji) => {
-      const count = book.stickers[emoji] || 0;
-      if (count > 0) owned++;
+    function render() {
+      var book = getCollection();
 
-      const cell = document.createElement("div");
-      cell.className = "sticker" + (count === 0 ? " locked" : "");
-      cell.innerHTML = `<span>${emoji}</span>`;
-      if (count > 1) {
-        cell.innerHTML += `<div class="count">x${count}</div>`;
-      }
-      wall.appendChild(cell);
-    });
+      // 手上的貼紙（夜市代幣）
+      document.getElementById("sticker-count").textContent = stickerCount();
 
-    document.getElementById("hint").textContent =
-      owned === 0
-        ? "還沒有貼紙，快去玩遊戲收集吧！"
-        : `已經收集了 ${owned} 種貼紙（共 ${STICKER_POOL.length} 種）`;
+      // 獎品牆
+      drawWall(document.getElementById("prize-wall"), PRIZE_POOL, book.prizes);
+      var prizeKinds = prizeKindsOwned();
+      document.getElementById("prize-hint").textContent =
+        prizeKinds === 0
+          ? "還沒有獎品，去夜市玩玩看！"
+          : "收集了 " + prizeKinds + " / " + PRIZE_POOL.length + " 種獎品";
+
+      // 集滿才出現「換 10 元」
+      document.getElementById("redeem-box").hidden = !canRedeem();
+
+      var redeemed = book.redeemed || 0;
+      document.getElementById("redeem-note").textContent =
+        redeemed > 0 ? "已經換過 " + redeemed + " 次 10 元了 💰" : "";
+
+      // 貼紙牆
+      drawWall(document.getElementById("sticker-wall"), STICKER_POOL, book.stickers);
+      document.getElementById("sticker-hint").textContent =
+        "收集了 " + stickerKindsOwned() + " / " + STICKER_POOL.length + " 種（貼紙可以拿去夜市玩）";
+
+      // 獎盃架
+      var shelf = document.getElementById("trophy-shelf");
+      shelf.innerHTML = "";
+      Object.keys(book.trophies).forEach(function (id) {
+        var trophy = document.createElement("div");
+        trophy.className = "trophy";
+        trophy.textContent = TROPHIES[id] || id;
+        shelf.appendChild(trophy);
+      });
+    }
+
+    function doRedeem() {
+      if (!redeem()) return;
+      playSound("win");
+      say("恭喜！可以跟爸爸媽媽換十塊錢囉！");
+      celebrate("💰 換到 10 元！", "好耶", render);
+      render();
+    }
+
+    // 先用瀏覽器存的畫一次（馬上看得到），再跟伺服器要最新的重畫
+    render();
+    refreshStickers(render);
   </script>
 </body>
 </html>

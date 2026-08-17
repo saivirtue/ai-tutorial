@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, target-densitydpi=device-dpi">
   <title>ABC 字母小火車</title>
   <link rel="stylesheet" href="../../shared/style.css">
   <style>
@@ -126,10 +126,14 @@
   <script src="../../shared/stickers.js"></script>
   <script src="../../shared/vision-client.js"></script>
   <script>
+    /* 最外層變數用 var，不要用 let/const——某些電視盒的 WebView 對
+       「最外層 let/const」有相容性 bug（函式讀不到），var 沒有這個
+       問題。函式內部的 let/const 不受影響，不用改。 */
+
     /* ===== 詞庫 =====
        每個字：圖案、英文單字、中文提示、開頭字母（大寫）
        想跟小孩一起加新的字？照樣子加一行就可以了！ */
-    const WORDS = [
+    var WORDS = [
       { emoji: "🍎", word: "Apple",    hint: "蘋果", letter: "A" },
       { emoji: "✈️", word: "Airplane", hint: "飛機", letter: "A" },
       { emoji: "🐝", word: "Bee",      hint: "蜜蜂", letter: "B" },
@@ -171,22 +175,22 @@
       { emoji: "🐢", word: "Tortoise", hint: "陸龜", letter: "T" },
     ];
 
-    const TRAIN_SIZE = 8;        // 裝滿幾節車廂算一輪
-    const CHOICE_COUNT = 4;      // 一次給幾個字母選
+    var TRAIN_SIZE = 8;        // 裝滿幾節車廂算一輪
+    var CHOICE_COUNT = 4;      // 一次給幾個字母選
 
     // 詞庫裡出現過的所有字母（拿來當錯誤選項）
-    const ALL_LETTERS = [...new Set(WORDS.map((w) => w.letter))];
+    var ALL_LETTERS = [...new Set(WORDS.map((w) => w.letter))];
 
-    let deck = shuffle(WORDS);   // 洗牌後照順序出題，不會一直重複
-    let current = null;
-    let loaded = 0;              // 車上有幾隻了
-    let locked = false;
+    var deck = shuffle(WORDS);   // 洗牌後照順序出題，不會一直重複
+    var current = null;
+    var loaded = 0;              // 車上有幾隻了
+    var locked = false;
 
-    const pictureEl = document.getElementById("picture");
-    const wordEl = document.getElementById("word");
-    const choicesEl = document.getElementById("choices");
-    const messageEl = document.getElementById("message");
-    const trainEl = document.getElementById("train");
+    var pictureEl = document.getElementById("picture");
+    var wordEl = document.getElementById("word");
+    var choicesEl = document.getElementById("choices");
+    var messageEl = document.getElementById("message");
+    var trainEl = document.getElementById("train");
 
     /* ===== 火車 ===== */
 
@@ -254,7 +258,7 @@
           } else {
             nextQuestion();
           }
-        }, 1100);
+        }, 700);
       } else {
         playSound("wrong");
         encourage();
@@ -277,6 +281,7 @@
       });
     }
 
+    refreshStickers();   // 開場先跟伺服器對一下貼紙，免得用到過期的本機資料
     createSpeechToggle();
     drawTrain();
     nextQuestion();

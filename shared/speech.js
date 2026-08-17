@@ -1,11 +1,14 @@
 /* 共用語音模組：用瀏覽器內建的中文語音唸題目和鼓勵話
    裝置沒有中文語音、或被 🔇 靜音時，全部靜默跳過——遊戲照常能玩。 */
 
-const SPEECH_KEY = "speech-enabled";   // 記住 🔊/🔇 的選擇
+/* 這個檔案最外層的變數全部用 var，不要用 let/const——某些電視盒的
+   WebView 對「最外層 let/const」有相容性 bug（函式讀不到），var 沒
+   有這個問題。函式內部的 let/const 不受影響，不用改。 */
+var SPEECH_KEY = "speech-enabled";   // 記住 🔊/🔇 的選擇
 
-let speechEnabled = localStorage.getItem(SPEECH_KEY) !== "off";
-let chineseVoice = null;
-let englishVoice = null;
+var speechEnabled = localStorage.getItem(SPEECH_KEY) !== "off";
+var chineseVoice = null;
+var englishVoice = null;
 
 // 挑中文語音（優先台灣 zh-TW）和英文語音（優先美式 en-US）。
 // 同語系裡優先選「進階／加強」版語音——聽起來自然很多，沒那麼像機器人。
@@ -37,27 +40,44 @@ if (window.speechSynthesis) {
 }
 
 // 唸出一段話（會先打斷上一句，遊戲節奏才不會拖）
-function speak(text, voice, lang) {
+// onDone：唸完會呼叫（沒開聲音、或語音壞掉時也會呼叫，不會把流程卡死）
+function speak(text, voice, lang, onDone) {
+  var finished = false;
+  function done() {
+    if (finished) return;
+    finished = true;
+    if (onDone) onDone();
+  }
+
   try {
-    if (!speechEnabled || !window.speechSynthesis) return;
+    if (!speechEnabled || !window.speechSynthesis) {
+      done();
+      return;
+    }
     speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     if (voice) utterance.voice = voice;
     utterance.lang = lang;
     utterance.rate = 0.9;    // 稍微慢一點，小孩聽得清楚
+    utterance.onend = done;
+    utterance.onerror = done;
     speechSynthesis.speak(utterance);
+
+    // 保險：有些瀏覽器的 onend 不一定會來，估一個時間硬叫一次，
+    // 免得「等唸完再錄音」永遠等不到
+    setTimeout(done, 1200 + text.length * 180);
   } catch (e) {
-    // 語音壞了也不能讓遊戲壞掉
+    done();   // 語音壞了也不能讓遊戲壞掉
   }
 }
 
-function say(text) {
-  speak(text, chineseVoice, "zh-TW");
+function say(text, onDone) {
+  speak(text, chineseVoice, "zh-TW", onDone);
 }
 
 // 唸英文（ABC 小火車用）
-function sayEnglish(text) {
-  speak(text, englishVoice, "en-US");
+function sayEnglish(text, onDone) {
+  speak(text, englishVoice, "en-US", onDone);
 }
 
 /* ===== 錄音檔覆蓋（跟讀小鸚鵡專用） =====
@@ -66,7 +86,7 @@ function sayEnglish(text) {
    例如 audio/你.mp3、audio/你好.mp3——不用改任何程式碼，遊戲會自動
    優先播放錄音檔，找不到才退回語音合成。 */
 
-const clipCache = {};
+var clipCache = {};
 
 function sayWithClip(text) {
   if (!speechEnabled) return;
@@ -80,8 +100,10 @@ function sayWithClip(text) {
 
 /* ===== 鼓勵語 ===== */
 
-const CHEERS = ["哇！你好棒！", "答對了！太厲害了！", "好聰明！", "太強了吧！", "答對囉！繼續加油！"];
-const ENCOURAGES = ["再想想看喔！", "差一點點，再試一次！", "沒關係，再想一下！", "加油，你可以的！"];
+/* 鼓勵語刻意都很短（一到三個字）——講太長會拖慢節奏，而且下一題的
+   題目會把它打斷，聽起來反而更亂。想聽長一點的就自己加長。 */
+var CHEERS = ["讚！", "答對了！", "好棒！", "太厲害！", "對！"];
+var ENCOURAGES = ["再試一次！", "再想想！", "差一點點！", "加油！"];
 
 function randomFrom(list) {
   return list[Math.floor(Math.random() * list.length)];
