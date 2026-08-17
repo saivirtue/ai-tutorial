@@ -140,6 +140,18 @@
       padding: 12px 22px;
     }
 
+    /* 有連上鏡頭時才出現的提示條 */
+    #hand-bar {
+      font-size: 16px;
+      background: rgba(0, 0, 0, 0.35);
+      border-radius: 999px;
+      padding: 6px 16px;
+      color: var(--star);
+      text-align: center;
+    }
+
+    #hand-bar[hidden] { display: none; }
+
     #message {
       font-size: 22px;
       min-height: 1.4em;
@@ -157,6 +169,7 @@
 </head>
 <body>
   <div id="title">🤖 指令小機器人</div>
+  <div id="hand-bar" hidden>🖐️ 鏡頭開著！朝上下左右揮手排指令，手往前揮＝執行</div>
   <div id="message"></div>
 
   <div id="playfield">
@@ -572,6 +585,28 @@
       resetRobot();
       drawQueue();
     }
+
+    /* ===== 用手玩（沒開鏡頭伺服器就自動跳過，按按鈕玩法完全不變） =====
+       這一關的四個方向本來就跟「往哪邊揮手」對得起來，所以手勢用起來
+       特別直覺：朝哪邊揮，就排哪個方向的指令；手往前揮＝按下執行。
+       這樣小孩可以站遠一點用整隻手臂玩，不用一直靠到螢幕前面點。 */
+
+    var handBar = document.getElementById("hand-bar");
+
+    connectVision({
+      onStatus: function (connected) {
+        handBar.hidden = !connected;
+      },
+      onGesture: function (gesture) {
+        if (running) return;                    // 機器人正在走，先不要收新指令
+        if (gesture.name === "swipe" && MOVES[gesture.dir]) {
+          addCommand(gesture.dir);
+          messageEl.textContent = `排了一個 ${CMD_ICONS[gesture.dir]}`;
+        } else if (gesture.name === "push") {
+          runProgram();
+        }
+      },
+    });
 
     // 轉直/轉橫的時候重新把機器人放到正確位置
     window.addEventListener("resize", function () { sizeGrid(); placeRobot(); });

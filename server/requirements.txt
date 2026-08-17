@@ -6,3 +6,4 @@ qrcode
 bleak
 SpeechRecognition
 sounddevice
+numpy

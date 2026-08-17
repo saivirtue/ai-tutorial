@@ -37,8 +37,10 @@ var TROPHIES = {
   "zhuyin-full":                "🏆 注音小達人",
   "abc-full":                   "🏆 ABC 小達人",
   "zhuyin-speak-full":          "🏆 拼讀小達人",
+  "zhuyin-speak-three-full":    "🏆 三拼高手",
   "zhuyin-speak-sentence-full": "🏆 短句朗讀高手",
   "night-market-first":         "🏆 夜市高手",
+  "night-market-hand":          "🏆 徒手高手",
 };
 
 function emptyBook() {

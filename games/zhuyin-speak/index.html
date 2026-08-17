@@ -161,8 +161,9 @@
   <!-- 開始畫面：選單字或短句 -->
   <div id="menu">
     <h1>🦜 跟讀小鸚鵡</h1>
-    <p>先聽範例、把注音拼起來，按🎤說說看，讓小鸚鵡聽聽你唸得像不像！</p>
+    <p>小鸚鵡會慢慢唸兩次，唸完就換你說——不用按任何按鈕，慢慢拼注音沒關係！</p>
     <button class="big-btn green" onclick="startGame('word')">🔤 單字（拼一個字）</button>
+    <button class="big-btn orange" onclick="startGame('three')">🧩 三拼（三個注音）</button>
     <button class="big-btn blue" onclick="startGame('sentence')">📝 短句（拼一句話）</button>
     <a class="home-link" href="../../">⬅ 回遊戲樂園</a>
   </div>
@@ -177,7 +178,7 @@
     <button id="replay-btn" class="big-btn blue" onclick="playDemo()">🔁 再聽一次</button>
   </div>
 
-  <button id="mic-btn" class="big-btn green" onclick="startListening()">🎤 換你說說看！</button>
+  <button id="mic-btn" class="big-btn green" onclick="startListening()">🎤 再說一次</button>
   <div id="message"></div>
   <button id="fallback-btn" class="big-btn" onclick="selfConfirm()" hidden>🙋 麥克風用不了？點這裡直接算過關</button>
 
@@ -228,6 +229,40 @@
       { hanzi: "家", zhuyin: "ㄐㄧㄚ", accepted: ["家", "加", "佳", "嘉"] },
     ];
 
+    /* ===== 詞庫：三拼字（聲母＋介音＋韻母，三個注音符號） =====
+       像 ㄒㄧㄤ 這種「三個符號拼一個音」是小一最容易卡住的地方——
+       中間多一個介音（ㄧ ㄨ ㄩ），小孩很容易漏掉或拼錯順序。
+       這些字也會混進「單字」模式，另外還有一個專門練三拼的模式。 */
+    var THREE_WORDS = [
+      { hanzi: "光", zhuyin: "ㄍㄨㄤ", accepted: ["光"] },
+      { hanzi: "香", zhuyin: "ㄒㄧㄤ", accepted: ["香", "鄉", "箱"] },
+      { hanzi: "想", zhuyin: "ㄒㄧㄤˇ", accepted: ["想", "響", "享"] },
+      { hanzi: "星", zhuyin: "ㄒㄧㄥ", accepted: ["星", "興", "腥"] },
+      { hanzi: "球", zhuyin: "ㄑㄧㄡˊ", accepted: ["球", "求", "秋"] },
+      { hanzi: "牛", zhuyin: "ㄋㄧㄡˊ", accepted: ["牛"] },
+      { hanzi: "鳥", zhuyin: "ㄋㄧㄠˇ", accepted: ["鳥"] },
+      { hanzi: "橋", zhuyin: "ㄑㄧㄠˊ", accepted: ["橋", "喬", "瞧"] },
+      { hanzi: "船", zhuyin: "ㄔㄨㄢˊ", accepted: ["船", "傳", "川"] },
+      { hanzi: "電", zhuyin: "ㄉㄧㄢˋ", accepted: ["電", "店", "墊"] },
+      { hanzi: "快", zhuyin: "ㄎㄨㄞˋ", accepted: ["快", "塊", "筷"] },
+      { hanzi: "黃", zhuyin: "ㄏㄨㄤˊ", accepted: ["黃", "皇", "煌"] },
+      { hanzi: "學", zhuyin: "ㄒㄩㄝˊ", accepted: ["學", "穴"] },
+      { hanzi: "熊", zhuyin: "ㄒㄩㄥˊ", accepted: ["熊", "雄"] },
+      { hanzi: "雙", zhuyin: "ㄕㄨㄤ", accepted: ["雙", "霜"] },
+      { hanzi: "春", zhuyin: "ㄔㄨㄣ", accepted: ["春"] },
+      { hanzi: "回", zhuyin: "ㄏㄨㄟˊ", accepted: ["回", "會", "灰"] },
+      { hanzi: "亮", zhuyin: "ㄌㄧㄤˋ", accepted: ["亮", "量", "輛"] },
+      { hanzi: "跳", zhuyin: "ㄊㄧㄠˋ", accepted: ["跳", "眺"] },
+      { hanzi: "笑", zhuyin: "ㄒㄧㄠˋ", accepted: ["笑", "校", "孝"] },
+      { hanzi: "叫", zhuyin: "ㄐㄧㄠˋ", accepted: ["叫", "教", "較"] },
+      { hanzi: "腳", zhuyin: "ㄐㄧㄠˇ", accepted: ["腳", "角", "餃"] },
+      { hanzi: "寫", zhuyin: "ㄒㄧㄝˇ", accepted: ["寫", "血"] },
+      { hanzi: "謝", zhuyin: "ㄒㄧㄝˋ", accepted: ["謝", "卸", "蟹"] },
+    ];
+
+    // 「單字」模式把三拼字也混進去，這樣一般練習就會常常遇到三個符號的字
+    var ALL_WORDS = WORDS.concat(THREE_WORDS);
+
     /* ===== 詞庫：短句 =====
        每個句子拆成一個一個字，各自有注音（畫面會像課本一樣把注音蓋在國字上面）。
        盡量用 WORDS 裡出現過的字組句子，讓單字模式練過的字在這裡派上用場。
@@ -245,14 +280,29 @@
       { chars: [{ h: "小", z: "ㄒㄧㄠˇ" }, { h: "魚", z: "ㄩˊ" }, { h: "愛", z: "ㄞˋ" }, { h: "水", z: "ㄕㄨㄟˇ" }] },
     ];
 
-    var ROUNDS = { word: 8, sentence: 5 };
-    var TROPHY_ID = { word: "zhuyin-speak-full", sentence: "zhuyin-speak-sentence-full" };
+    var ROUNDS = { word: 8, three: 6, sentence: 5 };
+    var TROPHY_ID = {
+      word: "zhuyin-speak-full",
+      three: "zhuyin-speak-three-full",
+      sentence: "zhuyin-speak-sentence-full",
+    };
+
+    var DEMO_TIMES = 2;        // 自動示範唸幾次（慢速）
+    var GAP_MS = 700;          // 兩次示範中間停多久
+    var BEFORE_LISTEN_MS = 600; // 示範完到開始錄音中間停多久
+    // 最多錄多久。伺服器會在小孩不講話時自動結束，所以這只是上限——
+    // 小孩要一個一個慢慢拼注音都沒關係，不會錄到一半被切掉。
+    var LISTEN_MAX = { word: 12, three: 12, sentence: 14 };
 
     var mode = "word";
     var deck = [];
     var current = null;
     var stars = 0;
     var listening = false;
+    var demoing = false;           // 正在放示範發音（還不能錄音，會錄到自己）
+    var flowTimer = null;          // 示範 →（等）→ 錄音的計時器
+    var tries = 0;                 // 這一題連續沒唸對幾次
+    var MAX_TRIES = 3;             // 連續沒過幾次就停下來，不要一直自動重來
     var sessionFallback = false;   // 麥克風壞掉之後，永久顯示自行判斷的按鈕
 
     var menuEl = document.getElementById("menu");
@@ -291,7 +341,7 @@
       const clean = text.replace(/[，。！？、,.!?\s]/g, "");
       if (!clean) return false;
 
-      if (mode === "word") {
+      if (mode !== "sentence") {
         return current.accepted.some((word) => clean.includes(word));
       }
 
@@ -307,21 +357,61 @@
     }
 
     function currentText() {
-      return mode === "word" ? current.hanzi : current.chars.map((c) => c.h).join("");
+      return mode === "sentence" ? current.chars.map((c) => c.h).join("") : current.hanzi;
+    }
+
+    /* ===== 示範 → 自動開始聽 =====
+       原本是按🎤才開始，還要倒數 3、2、1。實際玩起來小孩得一直伸手去
+       按按鈕，而且倒數完常常還沒準備好。改成：
+         慢慢唸兩次 → 自己開始錄音
+       小孩只要專心聽、專心跟著唸就好，手完全不用碰螢幕。
+       🎤 按鈕留著，想重講一次隨時可以按。 */
+
+    function stopFlow() {
+      clearTimeout(flowTimer);
+      flowTimer = null;
+      demoing = false;
+      try {
+        if (window.speechSynthesis) speechSynthesis.cancel();
+      } catch (e) {}
     }
 
     function playDemo() {
-      if (current) sayWithClip(currentText());
+      if (!current || listening) return;
+      stopFlow();
+      demoing = true;
+
+      var left = DEMO_TIMES;
+
+      function once() {
+        if (!demoing) return;   // 中途被打斷（例如按了🎤）就不要再接下去
+        messageEl.textContent = `仔細聽…（第 ${DEMO_TIMES - left + 1} 次）`;
+        sayWithClip(currentText(), function () {
+          if (!demoing) return;
+          left--;
+          if (left > 0) {
+            flowTimer = setTimeout(once, GAP_MS);
+          } else {
+            flowTimer = setTimeout(function () {
+              demoing = false;
+              startListening();
+            }, BEFORE_LISTEN_MS);
+          }
+        }, true);   // true＝慢速，小孩才聽得出每一個音
+      }
+
+      once();
     }
 
     /* ===== 出題 ===== */
 
     function nextQuestion() {
-      const bank = mode === "word" ? WORDS : SENTENCES;
+      const bank = mode === "sentence" ? SENTENCES : (mode === "three" ? THREE_WORDS : ALL_WORDS);
       if (deck.length === 0) deck = shuffle(bank);
       current = deck.pop();
+      tries = 0;
 
-      if (mode === "word") {
+      if (mode !== "sentence") {
         symbolEl.textContent = current.zhuyin;
         breakdownEl.hidden = false;
         breakdownEl.innerHTML = "";
@@ -343,52 +433,32 @@
       }
 
       symbolEl.dataset.answer = currentText();   // 測試用：正解放這裡
-      messageEl.textContent = "聽完範例，把注音拼起來，說說看！";
       playDemo();
     }
 
     /* ===== 跟讀 =====
-       筆電就放在電視旁邊，喇叭和麥克風靠很近，如果一按就開始錄，會把
-       範例發音自己錄進去，怎麼唸都判不對。所以流程改成：
-         先把還在唸的聲音停掉 → 倒數 3、2、1 → 才真的開始錄音
-       倒數同時也讓小孩知道什麼時候該開口。 */
+       筆電放在電視旁邊，喇叭和麥克風靠很近，一開始錄就會把範例發音自己
+       錄進去，怎麼唸都判不對——所以一定要等示範唸完才開始錄。
+       錄多久不用猜：伺服器會聽到「不講話了」自動結束，小孩想一個一個
+       慢慢拼注音、中間停下來想一下，都不會被切掉。 */
 
     function startListening() {
       if (listening) return;
+      stopFlow();          // 停掉還在唸的示範，免得錄到自己
       listening = true;
       micBtn.classList.add("listening");
-
-      // 先閉嘴，免得錄到自己的範例發音
-      try {
-        if (window.speechSynthesis) speechSynthesis.cancel();
-      } catch (e) {}
-
-      var countdown = 3;
-      function tick() {
-        if (countdown > 0) {
-          micBtn.textContent = "⏳ " + countdown;
-          messageEl.textContent = `準備…${countdown}`;
-          playSound("step");
-          countdown--;
-          setTimeout(tick, 700);
-          return;
-        }
-
-        micBtn.textContent = "🎧 說吧！";
-        messageEl.textContent = `說說看「${currentText()}」！`;
-        playSound("click");
-        record();
-      }
-      tick();
+      micBtn.textContent = "🎧 聽你說…";
+      messageEl.textContent = `換你唸「${currentText()}」！可以一個一個拼，慢慢來`;
+      playSound("click");
+      record();
     }
 
     function record() {
-      // 單字 4 秒、句子 6 秒——小孩會先一個一個唸注音再拼出來，要留夠時間
-      const seconds = mode === "word" ? 4 : 6;
+      const seconds = LISTEN_MAX[mode];
       listenForSpeech(({ text, error }) => {
         listening = false;
         micBtn.classList.remove("listening");
-        micBtn.textContent = "🎤 換你說說看！";
+        micBtn.textContent = "🎤 再說一次";
 
         if (error === "no_server" || error === "mic_disabled" || error === "server_error") {
           fallbackBtn.hidden = false;
@@ -399,9 +469,21 @@
 
         if (isCorrect(text)) {
           correct();
+          return;
+        }
+
+        // 沒唸對：再示範一次、再自動聽一次，小孩不用去按任何按鈕。
+        // 但不能無限重來（麥克風有問題時會一直空轉），試幾次就停下來等大人。
+        encourage();
+        tries++;
+        messageEl.textContent = text ? `我聽到的是「${text}」，再聽一次喔！` : "沒聽清楚，再聽一次喔！";
+
+        if (tries < MAX_TRIES) {
+          flowTimer = setTimeout(playDemo, 1200);
         } else {
-          encourage();
-          messageEl.textContent = text ? `我聽到的是「${text}」，再說一次看看！` : "沒聽清楚，再說一次！";
+          tries = 0;
+          fallbackBtn.hidden = false;   // 一直過不了就讓爸媽可以直接判過
+          messageEl.textContent += "（想再試按 🎤，或請爸媽幫忙）";
         }
       }, seconds);
     }
@@ -442,7 +524,8 @@
       mode = selectedMode;
       deck = [];
       stars = 0;
-      fallbackBtn.hidden = true;
+      tries = 0;
+      fallbackBtn.hidden = sessionFallback ? false : true;
       setStars = createStarBar(document.getElementById("stars"), ROUNDS[mode]);
       setStars(0);
       menuEl.style.display = "none";
@@ -450,6 +533,10 @@
     }
 
     function showMenu() {
+      stopFlow();          // 回選單就別再自己唸下去了
+      listening = false;
+      micBtn.classList.remove("listening");
+      micBtn.textContent = "🎤 再說一次";
       menuEl.style.display = "flex";
     }
 

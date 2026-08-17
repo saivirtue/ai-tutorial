@@ -39,9 +39,14 @@ if (window.speechSynthesis) {
   speechSynthesis.onvoiceschanged = pickVoice;
 }
 
+var NORMAL_RATE = 0.9;   // 平常說話的速度（稍微慢一點，小孩聽得清楚）
+var SLOW_RATE = 0.6;     // 「跟我唸」示範用的慢速
+
 // 唸出一段話（會先打斷上一句，遊戲節奏才不會拖）
 // onDone：唸完會呼叫（沒開聲音、或語音壞掉時也會呼叫，不會把流程卡死）
-function speak(text, voice, lang, onDone) {
+// rate：語速，不給就用 NORMAL_RATE
+function speak(text, voice, lang, onDone, rate) {
+  var speed = rate || NORMAL_RATE;
   var finished = false;
   function done() {
     if (finished) return;
@@ -58,14 +63,14 @@ function speak(text, voice, lang, onDone) {
     const utterance = new SpeechSynthesisUtterance(text);
     if (voice) utterance.voice = voice;
     utterance.lang = lang;
-    utterance.rate = 0.9;    // 稍微慢一點，小孩聽得清楚
+    utterance.rate = speed;
     utterance.onend = done;
     utterance.onerror = done;
     speechSynthesis.speak(utterance);
 
     // 保險：有些瀏覽器的 onend 不一定會來，估一個時間硬叫一次，
-    // 免得「等唸完再錄音」永遠等不到
-    setTimeout(done, 1200 + text.length * 180);
+    // 免得「等唸完再錄音」永遠等不到。唸得越慢就要等越久。
+    setTimeout(done, (1200 + text.length * 180) * (NORMAL_RATE / speed));
   } catch (e) {
     done();   // 語音壞了也不能讓遊戲壞掉
   }
@@ -73,6 +78,11 @@ function speak(text, voice, lang, onDone) {
 
 function say(text, onDone) {
   speak(text, chineseVoice, "zh-TW", onDone);
+}
+
+// 慢慢唸（跟讀小鸚鵡示範用：唸慢一點小孩才聽得出每個音）
+function saySlow(text, onDone) {
+  speak(text, chineseVoice, "zh-TW", onDone, SLOW_RATE);
 }
 
 // 唸英文（ABC 小火車用）
@@ -88,14 +98,37 @@ function sayEnglish(text, onDone) {
 
 var clipCache = {};
 
-function sayWithClip(text) {
-  if (!speechEnabled) return;
-  if (!(text in clipCache)) {
-    clipCache[text] = new Audio(`/audio/${encodeURIComponent(text)}.mp3`);
+// sayWithClip(要唸的字, 唸完要做什麼, 要不要慢慢唸)
+// onDone 一定會被呼叫——就算靜音、沒有錄音檔、或播放失敗也一樣。
+// 這很重要：跟讀小鸚鵡是「唸完就自動開始錄音」，onDone 沒來就會卡住。
+function sayWithClip(text, onDone, slow) {
+  var finished = false;
+  function done() {
+    if (finished) return;
+    finished = true;
+    if (onDone) onDone();
   }
-  const clip = clipCache[text];
-  clip.currentTime = 0;
-  clip.play().catch(() => say(text));   // 沒有錄音檔（404）或播放失敗，就改用語音合成
+
+  // 靜音時不出聲，但還是要回報「唸完了」，不然流程會停在這裡
+  if (!speechEnabled) {
+    done();
+    return;
+  }
+
+  try {
+    if (!(text in clipCache)) {
+      clipCache[text] = new Audio(`/audio/${encodeURIComponent(text)}.mp3`);
+    }
+    const clip = clipCache[text];
+    clip.playbackRate = slow ? SLOW_RATE : 1;
+    clip.onended = done;
+    clip.currentTime = 0;
+    // 沒有錄音檔（404）或播放失敗，就改用語音合成
+    clip.play().catch(() => (slow ? saySlow(text, done) : say(text, done)));
+  } catch (e) {
+    if (slow) saySlow(text, done);
+    else say(text, done);
+  }
 }
 
 /* ===== 鼓勵語 ===== */
