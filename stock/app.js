@@ -20,6 +20,7 @@ var state = {
   current: null,   // 查詢分頁：目前選中的代號
   dcaCode: null,   // 定期定額分頁：目前打開的個股帳本；null = 顯示總覽
   marketHistory: [],  // 全市場估值中位數的歷史序列，每個交易日一筆
+  etfRank: [],         // 定期定額交易戶數排行（前十名個股／ETF）
 };
 
 /* ===== 小工具 ===== */
@@ -136,11 +137,12 @@ async function boot() {
   $("proxy-input").value = getProxy();
   $("loading").textContent = "正在跟證交所要資料…";
 
-  var loaded = await Promise.all([loadAll(), fetchMarketHistory()]);
+  var loaded = await Promise.all([loadAll(), fetchMarketHistory(), fetchEtfRank()]);
   var result = loaded[0];
   state.data = result.data;
   state.status = result.status;
   state.marketHistory = loaded[1];
+  state.etfRank = loaded[2];
 
   var daily = state.data.daily;
   if (!daily || !Object.keys(daily).length) {
@@ -174,6 +176,7 @@ async function boot() {
   $("market-count").textContent = state.list.length;
   renderDataDate();
   renderStatus();
+  renderEtfRank();
 
   bindEvents();
   switchView("search");
@@ -234,6 +237,59 @@ function bindEvents() {
 }
 
 /* ===== 查詢分頁 ===== */
+
+/* 定期定額熱門標的：搜尋框上方的發現機制。不用先想好要查什麼代號，
+   打開查詢分頁就有東西可以先看——證交所自己統計的定期定額交易戶數
+   排行，個股和 ETF 分開列，點了直接跳去那檔明細。只渲染一次（開機時），
+   排行榜不會因為打字而變動。 */
+function renderEtfRank() {
+  var box = $("etf-rank");
+  if (!box) return;
+
+  var rows = state.etfRank || [];
+  if (!rows.length) {
+    box.innerHTML = "";
+    return;
+  }
+
+  function col(code, name, accounts) {
+    if (!code) return '<div class="rank-cell empty">—</div>';
+    return (
+      '<button class="rank-cell" data-code="' + esc(code) + '">' +
+      '<span class="rank-name">' + esc(name) + "</span>" +
+      '<span class="rank-code">' + esc(code) + "</span>" +
+      '<span class="rank-accounts">' + fmtInt(accounts) + " 戶</span>" +
+      "</button>"
+    );
+  }
+
+  box.innerHTML =
+    '<div class="card">' +
+    "<h3>🔥 定期定額熱門標的 <span class=\"tag\">交易戶數排行</span></h3>" +
+    '<div class="rank-table">' +
+    '<div class="rank-head"><span>個股</span><span>ETF</span></div>' +
+    rows
+      .map(function (r) {
+        return (
+          '<div class="rank-row">' +
+          '<span class="rank-no">' + (r.rank || "") + "</span>" +
+          col(r.stockCode, r.stockName, r.stockAccounts) +
+          col(r.etfCode, r.etfName, r.etfAccounts) +
+          "</div>"
+        );
+      })
+      .join("") +
+    "</div>" +
+    '<p class="caveat">證交所公布的定期定額交易戶數排行，反映的是<strong>大家實際在扣款什麼</strong>，' +
+    "不是漲跌訊號——戶數多不代表報酬會好，只是提供一個「別人在看什麼」的起點。</p>" +
+    "</div>";
+
+  Array.prototype.forEach.call(box.querySelectorAll(".rank-cell[data-code]"), function (el) {
+    el.addEventListener("click", function () {
+      selectStock(el.dataset.code);
+    });
+  });
+}
 
 function search(query) {
   var q = String(query || "").trim().toLowerCase();

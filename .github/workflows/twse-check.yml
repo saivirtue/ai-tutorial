@@ -34,6 +34,7 @@ jobs:
             "exchangeReport/STOCK_DAY_ALL|收盤價、漲跌、成交量（必要）"
             "exchangeReport/BWIBBU_ALL|本益比、殖利率、股價淨值比"
             "opendata/t187ap05_L|每月營業收入"
+            "ETFReport/ETFRank|定期定額交易戶數排行"
           )
 
           TABLE=$(mktemp)    # 摘要表格

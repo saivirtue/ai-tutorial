@@ -68,11 +68,12 @@ jobs:
               "$key" "$label" "$path" "$status" "$n" "$http" >> "$META"
           }
 
-          # ===== 三個 openapi.twse.com.tw 端點：回應本來就是陣列 =====
+          # ===== 四個 openapi.twse.com.tw 端點：回應本來就是陣列 =====
           for entry in \
             "daily|exchangeReport/STOCK_DAY_ALL|個股日成交資訊" \
             "valuation|exchangeReport/BWIBBU_ALL|本益比、殖利率、股價淨值比" \
-            "revenue|opendata/t187ap05_L|每月營業收入"
+            "revenue|opendata/t187ap05_L|每月營業收入" \
+            "etfRank|ETFReport/ETFRank|定期定額交易戶數排行"
           do
             key="${entry%%|*}"
             rest="${entry#*|}"

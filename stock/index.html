@@ -369,6 +369,80 @@
     .dca-summary { margin-top: 14px; }
     .dca-holdings { margin-top: 10px; }
 
+    /* ===== 定期定額熱門標的排行 ===== */
+    .rank-table { margin-top: 8px; }
+
+    .rank-head {
+      display: grid;
+      grid-template-columns: 24px 1fr 1fr;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--dim);
+      padding: 0 2px 6px;
+    }
+
+    .rank-head span:nth-child(2) { padding-left: 2px; }
+    .rank-head span:nth-child(3) { padding-left: 2px; }
+
+    .rank-row {
+      display: grid;
+      grid-template-columns: 24px 1fr 1fr;
+      gap: 8px;
+      align-items: stretch;
+      margin-bottom: 6px;
+    }
+
+    .rank-no {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--dim);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .rank-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px 9px;
+      color: var(--text);
+      font-family: inherit;
+      text-align: left;
+      cursor: pointer;
+      min-width: 0; /* 讓內部文字可以正常省略，不撐破 grid */
+    }
+
+    .rank-cell.empty {
+      color: var(--dim);
+      justify-content: center;
+      align-items: center;
+      cursor: default;
+    }
+
+    .rank-name {
+      font-size: 13px;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .rank-code {
+      font-size: 10px;
+      color: var(--dim);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .rank-accounts {
+      font-size: 10px;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+
     /* ===== 大盤估值小圖 ===== */
     .spark-wrap { margin-top: 14px; color: var(--accent); }
 
@@ -522,6 +596,7 @@
   <div id="app" style="display:none">
 
     <main id="view-search" class="view">
+      <div id="etf-rank"></div>
       <input id="search-input" type="search" placeholder="輸入股票代號或名稱，例如 2330 或 台積" autocomplete="off">
       <div id="search-results"></div>
       <div id="detail"></div>

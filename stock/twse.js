@@ -311,6 +311,33 @@ async function fetchMarketHistory() {
   return result.ok ? result.rows : [];
 }
 
+/* 定期定額交易戶數排行（ETFReport/ETFRank）：證交所自己統計「現在最多人
+   真的在扣款什麼」，個股前十名、ETF 前十名並列，用實際戶數排序。
+
+   這份資料形狀跟 SOURCES 裡其他來源不一樣——不是「代號 → 資料」的表，
+   是固定的排行榜（第 1～10 名），所以不放進 SOURCES／loadAll() 那套
+   map 導向的流程，獨立處理。回傳一個陣列，照名次排好序。 */
+async function fetchEtfRank() {
+  var result = await tryJson(SNAPSHOT_DIR + "etfRank.json");
+  if (!result.ok) return [];
+
+  return result.rows
+    .map(function (row) {
+      return {
+        rank: num(pick(row, ["No"])),
+        stockCode: normCode(pick(row, ["STOCKsSecurityCode"])),
+        stockName: String(pick(row, ["STOCKsName"]) || "").trim(),
+        stockAccounts: num(pick(row, ["STOCKsNumberofTradingAccounts"])),
+        etfCode: normCode(pick(row, ["ETFsSecurityCode"])),
+        etfName: String(pick(row, ["ETFsName"]) || "").trim(),
+        etfAccounts: num(pick(row, ["ETFsNumberofTradingAccounts"])),
+      };
+    })
+    .sort(function (a, b) {
+      return (a.rank || 0) - (b.rank || 0);
+    });
+}
+
 /* 全部資料源一起抓。回傳 { data, status, meta }。 */
 async function loadAll() {
   var results = await Promise.all(SOURCES.map(fetchSource));
