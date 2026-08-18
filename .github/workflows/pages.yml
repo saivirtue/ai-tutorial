@@ -10,6 +10,13 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # 「更新台股快照」跑完也要重新部署。
+  # 為什麼需要這一段：那個工作流程用內建的 GITHUB_TOKEN 把資料 commit 進
+  # main，而 GitHub 為了防止無限迴圈，**用 GITHUB_TOKEN 推的 commit 不會
+  # 觸發其他工作流程**——所以光靠上面的 push 事件，資料更新後網站不會更新。
+  workflow_run:
+    workflows: ["更新台股快照"]
+    types: [completed]
 
 permissions:
   contents: read
@@ -23,6 +30,11 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # 被 workflow_run 觸發時，只有前一個工作流程成功才部署；
+    # 其他觸發方式（push、手動）不受這個條件影響。
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
