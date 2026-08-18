@@ -32,60 +32,86 @@ jobs:
       - name: 抓取快照
         run: |
           BASE="https://openapi.twse.com.tw/v1"
+          TAIPEI_DATE=$(TZ=Asia/Taipei date +%Y%m%d)
           mkdir -p stock/data
-
-          # 檔名|端點路徑|說明
-          SOURCES=(
-            "daily|exchangeReport/STOCK_DAY_ALL|個股日成交資訊"
-            "valuation|exchangeReport/BWIBBU_ALL|本益比、殖利率、股價淨值比"
-            "revenue|opendata/t187ap05_L|每月營業收入"
-            "institution|fund/T86|三大法人買賣超"
-          )
 
           META=$(mktemp)
           echo '{' > "$META"
           echo "  \"fetchedAt\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"," >> "$META"
           echo '  "sources": {' >> "$META"
-
           FIRST=1
-          for entry in "${SOURCES[@]}"; do
+
+          # 把「這個來源拿到的資料」寫進快照或標成過期。所有來源共用同一套
+          # 判定：拿到非空陣列才算成功；否則保留既有快照（不用錯誤覆蓋好資料），
+          # 完全沒有既有快照才標成 missing。
+          record() {
+            local key="$1" label="$2" path="$3" tmp="$4" http="$5"
+            local n=0 status
+
+            if [ -s "$tmp" ] && jq -e 'type == "array" and length > 0' "$tmp" >/dev/null 2>&1; then
+              n=$(jq 'length' "$tmp")
+              jq -c '.' "$tmp" > "stock/data/$key.json"
+              echo "  ✅ $n 筆，已寫入 stock/data/$key.json"
+              status="ok"
+            elif [ -f "stock/data/$key.json" ]; then
+              n=$(jq 'length' "stock/data/$key.json" 2>/dev/null || echo 0)
+              echo "  ⚠️ 沒有取得有效資料（HTTP $http）— 保留既有快照（$n 筆）"
+              status="stale"
+            else
+              echo "  ❌ 沒有取得有效資料（HTTP $http），也沒有既有快照可用"
+              status="missing"
+            fi
+
+            [ "$FIRST" = "1" ] || echo "," >> "$META"
+            FIRST=0
+            printf '    "%s": {"label": "%s", "path": "%s", "status": "%s", "count": %s, "http": "%s"}' \
+              "$key" "$label" "$path" "$status" "$n" "$http" >> "$META"
+          }
+
+          # ===== 三個 openapi.twse.com.tw 端點：回應本來就是陣列 =====
+          for entry in \
+            "daily|exchangeReport/STOCK_DAY_ALL|個股日成交資訊" \
+            "valuation|exchangeReport/BWIBBU_ALL|本益比、殖利率、股價淨值比" \
+            "revenue|opendata/t187ap05_L|每月營業收入"
+          do
             key="${entry%%|*}"
             rest="${entry#*|}"
             path="${rest%%|*}"
             label="${rest#*|}"
 
             echo "→ $key ($path)"
-            # -L 跟隨轉址：fund/T86 之前回 302，可能只是路徑正規化
-            code=$(curl -sSL -o /tmp/new.json -w '%{http_code}' \
+            tmp=$(mktemp)
+            code=$(curl -sSL -o "$tmp" -w '%{http_code}' \
                     -H 'Accept: application/json' --max-time 120 \
                     "$BASE/$path" 2>/dev/null || true)
             code="${code:-000}"
-
-            if [ "$code" = "200" ] && jq -e 'type == "array" and length > 0' /tmp/new.json >/dev/null 2>&1; then
-              n=$(jq 'length' /tmp/new.json)
-              # 壓成單行，省 repo 空間；反正是機器讀的
-              jq -c '.' /tmp/new.json > "stock/data/$key.json"
-              echo "  ✅ $n 筆，已寫入 stock/data/$key.json"
-              status="ok"
-            else
-              # 關鍵：抓失敗時「保留上一份快照」，不要用錯誤覆蓋掉好資料。
-              # 網頁寧可顯示昨天的資料，也不要突然整頁空白。
-              n=0
-              if [ -f "stock/data/$key.json" ]; then
-                n=$(jq 'length' "stock/data/$key.json" 2>/dev/null || echo 0)
-                echo "  ⚠️ HTTP $code — 保留既有快照（$n 筆）"
-                status="stale"
-              else
-                echo "  ❌ HTTP $code — 而且沒有既有快照可用"
-                status="missing"
-              fi
-            fi
-
-            [ "$FIRST" = "1" ] || echo "," >> "$META"
-            FIRST=0
-            printf '    "%s": {"label": "%s", "path": "%s", "status": "%s", "count": %s, "http": "%s"}' \
-              "$key" "$label" "$path" "$status" "$n" "$code" >> "$META"
+            record "$key" "$label" "$path" "$tmp" "$code"
           done
+
+          # ===== 三大法人：不在 openapi.twse.com.tw 底下 =====
+          # 一開始誤用了 openapi.twse.com.tw/v1/fund/T86，行為時好時壞
+          # （時而 302、時而 200 但空、時而 404）。查證後發現這份資料根本
+          # 不屬於 OpenAPI，是證交所官網自己的報表 API：
+          #   https://www.twse.com.tw/rwd/zh/fund/T86?date=YYYYMMDD&selectType=ALL&response=json
+          # 回應格式也不同——不是陣列，是 {stat, date, fields, data}，
+          # data 是「跟 fields 對應順序」的二維陣列，要自己轉成物件陣列。
+          # 好處是這樣轉出來的物件，key 就是證交所自己回的欄位名稱，
+          # 不用像其他端點一樣用猜的。
+          echo "→ institution (www.twse.com.tw/rwd/zh/fund/T86)"
+          inst_url="https://www.twse.com.tw/rwd/zh/fund/T86?date=${TAIPEI_DATE}&selectType=ALL&response=json"
+          inst_raw=$(mktemp)
+          inst_code=$(curl -sSL -o "$inst_raw" -w '%{http_code}' \
+                        -A 'Mozilla/5.0 (compatible; stock-data-snapshot/1.0)' \
+                        -H 'Accept: application/json' --max-time 120 \
+                        "$inst_url" 2>/dev/null || true)
+          inst_code="${inst_code:-000}"
+
+          inst_tmp=$(mktemp)
+          jq '[(.data // [])[] | [$__fields, .] | transpose | map({(.[0]): .[1]}) | add]' \
+            --argjson __fields "$(jq -c '.fields // []' "$inst_raw" 2>/dev/null || echo '[]')" \
+            "$inst_raw" > "$inst_tmp" 2>/dev/null || echo '[]' > "$inst_tmp"
+
+          record "institution" "三大法人買賣超" "www.twse.com.tw/rwd/zh/fund/T86" "$inst_tmp" "$inst_code"
 
           echo "" >> "$META"
           echo '  }' >> "$META"

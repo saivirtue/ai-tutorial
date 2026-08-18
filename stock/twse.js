@@ -180,7 +180,14 @@ var SOURCES = [
   {
     key: "institution",
     label: "三大法人買賣超",
-    path: "fund/T86",
+    /* 這份資料不在 openapi.twse.com.tw 底下——它是證交所官網自己的報表 API
+       （www.twse.com.tw/rwd/zh/fund/T86），回應也不是陣列，是
+       {stat, date, fields, data}。抓取與轉換都在
+       .github/workflows/stock-data.yml 裡用 jq 完成，轉出來的物件 key
+       就是證交所自己回的欄位名稱。liveFallback:false——瀏覽器直連這裡
+       用不上（不同網域、格式也不同），只能靠每日快照。 */
+    path: "www.twse.com.tw/rwd/zh/fund/T86",
+    liveFallback: false,
     required: false,
     note: "外資／投信當日動向",
     normalize: function (rows) {
@@ -189,15 +196,20 @@ var SOURCES = [
         var code = normCode(pick(row, ["證券代號", "Code"]));
         if (!code) return;
         map[code] = {
+          /* 欄位名稱是第一次真正拿到證交所回應才確認的，列幾種可能的
+             寫法保底——證交所的欄位命名不同報表常常不一致。 */
           foreign: num(
             pick(row, [
-              "外陸資買賣超股數(不含外資自營商)",
               "外資買賣超股數",
+              "外陸資買賣超股數(不含外資自營商)",
               "外陸資買賣超股數",
+              "外資及陸資買賣超股數",
             ])
           ),
           trust: num(pick(row, ["投信買賣超股數"])),
-          dealer: num(pick(row, ["自營商買賣超股數"])),
+          dealer: num(
+            pick(row, ["自營商買賣超股數", "自營商買賣超股數(自行買賣)"])
+          ),
           total: num(pick(row, ["三大法人買賣超股數"])),
         };
       });
@@ -243,6 +255,16 @@ async function fetchSource(source) {
       via: "每日快照",
       data: data,
       count: Object.keys(data).length,
+      ms: Date.now() - started,
+    };
+  }
+
+  if (source.liveFallback === false) {
+    return {
+      key: source.key,
+      ok: false,
+      error: "快照：" + snap.error + "（這個來源不支援瀏覽器直連——不同網域、" +
+        "格式也不同，只能等下一次每日快照）",
       ms: Date.now() - started,
     };
   }

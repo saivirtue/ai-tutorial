@@ -27,11 +27,13 @@ jobs:
           ORIGIN="https://saivirtue.github.io"
 
           # 端點｜這一頁拿它做什麼
+          # 三大法人買賣超不在這裡——它不是 openapi.twse.com.tw 底下的端點，
+          # 回應格式也不是陣列，用同一套檢查邏輯只會顯示誤導的結果。
+          # 見下面「驗證三大法人端點」那個獨立步驟。
           ENDPOINTS=(
             "exchangeReport/STOCK_DAY_ALL|收盤價、漲跌、成交量（必要）"
             "exchangeReport/BWIBBU_ALL|本益比、殖利率、股價淨值比"
             "opendata/t187ap05_L|每月營業收入"
-            "fund/T86|三大法人買賣超"
           )
 
           TABLE=$(mktemp)    # 摘要表格
@@ -141,52 +143,59 @@ jobs:
           # 不然會跟「工作流程本身壞了」混在一起。結果一律看上面的報告。
           exit 0
 
-      - name: 找出三大法人的正確端點
+
+
+      - name: 驗證三大法人端點
         run: |
-          BASE="https://openapi.twse.com.tw"
+          # 三大法人買賣超（T86）查證結果：不屬於 openapi.twse.com.tw，是
+          # 證交所官網自己的報表 API，回應格式也不同——不是陣列，是
+          # {stat, date, fields, data}。這裡直接打確切的網址並驗證格式。
+          TAIPEI_DATE=$(TZ=Asia/Taipei date +%Y%m%d)
+          URL="https://www.twse.com.tw/rwd/zh/fund/T86?date=${TAIPEI_DATE}&selectType=ALL&response=json"
 
-          echo "########## 1. 目前這個路徑到底轉去哪 ##########"
-          curl -sS -o /dev/null -D /tmp/h.txt -w 'HTTP %{http_code}\n' \
-            --max-time 60 "$BASE/v1/fund/T86" 2>/dev/null || true
-          echo "轉址目標："
-          grep -i '^location:' /tmp/h.txt || echo "  （沒有 Location 標頭）"
+          echo "查詢日期：$TAIPEI_DATE（台北）"
+          echo "網址：$URL"
           echo ""
-          echo "跟隨轉址後："
-          curl -sSL -o /tmp/f.json -w 'HTTP %{http_code}, 內容開頭：\n' \
-            --max-time 60 "$BASE/v1/fund/T86" 2>/dev/null || true
-          head -c 300 /tmp/f.json; echo ""
+
+          code=$(curl -sSL -o /tmp/t86.json -w '%{http_code}' \
+                  -A 'Mozilla/5.0 (compatible; stock-data-snapshot/1.0)' \
+                  -H 'Accept: application/json' --max-time 60 "$URL" 2>/dev/null || true)
+          code="${code:-000}"
+          echo "HTTP $code"
+          echo ""
+
+          if [ "$code" != "200" ]; then
+            echo "❌ 連不到，回應開頭："
+            head -c 300 /tmp/t86.json
+            exit 0
+          fi
+
+          if ! jq -e '.fields and .data' /tmp/t86.json >/dev/null 2>&1; then
+            echo "⚠️ HTTP 200，但格式不是預期的 {fields, data}。回應開頭："
+            head -c 500 /tmp/t86.json
+            exit 0
+          fi
+
+          echo "stat: $(jq -r '.stat // "（無）"' /tmp/t86.json)"
+          echo "date: $(jq -r '.date // "（無）"' /tmp/t86.json)"
+          echo ""
+          echo "欄位名稱："
+          jq -r '.fields | join(" · ")' /tmp/t86.json
+          echo ""
+
+          rows=$(jq '.data | length' /tmp/t86.json)
+          echo "資料筆數：$rows"
+
+          if [ "$rows" = "0" ]; then
+            echo ""
+            echo "⚠️ 筆數是 0——今天可能還沒公布（約傍晚才更新）、或今天不是交易日。"
+            echo "   不代表端點壞了，過陣子或換個交易日再測即可。"
+            exit 0
+          fi
 
           echo ""
-          echo "########## 2. 從 OpenAPI 規格找出所有法人相關端點 ##########"
-          FOUND=0
-          for spec in "/v1/swagger.json" "/openapi.json" "/v1/openapi.json" "/swagger/v1/swagger.json" "/v1/swagger/v1/swagger.json"; do
-            codeq=$(curl -sS -o /tmp/spec.json -w '%{http_code}' --max-time 60 "$BASE$spec" 2>/dev/null || true)
-            codeq="${codeq:-000}"
-            echo "--- $spec → HTTP $codeq"
-            if [ "$codeq" = "200" ] && jq -e '.paths' /tmp/spec.json >/dev/null 2>&1; then
-              FOUND=1
-              echo ""
-              echo "含「法人」或 fund 的端點："
-              jq -r '.paths | to_entries[] | "\(.key)  ——  \(.value | to_entries[0].value.summary // .value | tostring | .[0:90])"' /tmp/spec.json 2>/dev/null \
-                | grep -iE '法人|fund|T86|BFI' || echo "  （規格裡找不到）"
-              echo ""
-              echo "全部端點數：$(jq '.paths | length' /tmp/spec.json)"
-              break
-            fi
-          done
-          [ "$FOUND" = "0" ] && echo "⚠️ 找不到 OpenAPI 規格檔，只能靠下面的候選路徑試"
-
-          echo ""
-          echo "########## 3. 直接試幾個候選路徑 ##########"
-          for cand in "fund/T86" "fund/BFI82U" "fund/TWT38U" "fund/TWT44U" "fund/MI_QFIIS"; do
-            c=$(curl -sSL -o /tmp/c.json -w '%{http_code}' --max-time 60 "$BASE/v1/$cand" 2>/dev/null || true)
-            c="${c:-000}"
-            if [ "$c" = "200" ] && jq -e 'type=="array" and length>0' /tmp/c.json >/dev/null 2>&1; then
-              echo "✅ $cand → $c，$(jq 'length' /tmp/c.json) 筆"
-              echo "   欄位：$(jq -r '(max_by(keys|length)//{}) | keys_unsorted | join(" · ")' /tmp/c.json)"
-              echo "   範例：$(jq -c '(max_by(keys|length)//{})' /tmp/c.json | head -c 300)"
-            else
-              echo "❌ $cand → $c"
-            fi
-          done
+          echo "轉成物件陣列後的第一筆（stock-data.yml 實際會產生的格式）："
+          jq -c '[(.data // [])[] | [$__fields, .] | transpose | map({(.[0]): .[1]}) | add] | .[0]' \
+            --argjson __fields "$(jq -c '.fields' /tmp/t86.json)" \
+            /tmp/t86.json
           exit 0
