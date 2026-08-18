@@ -1,0 +1,33 @@
+{
+  "fetchedAt": "2026-08-18T06:09:59Z",
+  "sources": {
+    "daily": {
+      "label": "個股日成交資訊",
+      "path": "exchangeReport/STOCK_DAY_ALL",
+      "status": "ok",
+      "count": 1378,
+      "http": "200"
+    },
+    "valuation": {
+      "label": "本益比、殖利率、股價淨值比",
+      "path": "exchangeReport/BWIBBU_ALL",
+      "status": "ok",
+      "count": 1083,
+      "http": "200"
+    },
+    "revenue": {
+      "label": "每月營業收入",
+      "path": "opendata/t187ap05_L",
+      "status": "ok",
+      "count": 1085,
+      "http": "200"
+    },
+    "institution": {
+      "label": "三大法人買賣超",
+      "path": "fund/T86",
+      "status": "missing",
+      "count": 0,
+      "http": "200"
+    }
+  }
+}
