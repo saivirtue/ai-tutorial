@@ -301,6 +301,16 @@ async function fetchMeta() {
   }
 }
 
+/* 全市場本益比／殖利率中位數的歷史序列，每個交易日一筆，由
+   .github/workflows/stock-data.yml 逐日累積寫入。已經是
+   [{date, peMedian, yieldMedian, sampleSize}, ...]（按日期由舊到新排序）
+   的乾淨格式，不需要再 normalize。拿不到就回傳空陣列，不當成致命錯誤——
+   這是輔助資訊，沒有它其他功能照常運作。 */
+async function fetchMarketHistory() {
+  var result = await tryJson(SNAPSHOT_DIR + "market-history.json");
+  return result.ok ? result.rows : [];
+}
+
 /* 全部資料源一起抓。回傳 { data, status, meta }。 */
 async function loadAll() {
   var results = await Promise.all(SOURCES.map(fetchSource));

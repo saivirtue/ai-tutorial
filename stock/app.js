@@ -19,6 +19,7 @@ var state = {
   view: "search",  // "search" | "watchlist" | "dca"
   current: null,   // 查詢分頁：目前選中的代號
   dcaCode: null,   // 定期定額分頁：目前打開的個股帳本；null = 顯示總覽
+  marketHistory: [],  // 全市場估值中位數的歷史序列，每個交易日一筆
 };
 
 /* ===== 小工具 ===== */
@@ -135,9 +136,11 @@ async function boot() {
   $("proxy-input").value = getProxy();
   $("loading").textContent = "正在跟證交所要資料…";
 
-  var result = await loadAll();
+  var loaded = await Promise.all([loadAll(), fetchMarketHistory()]);
+  var result = loaded[0];
   state.data = result.data;
   state.status = result.status;
+  state.marketHistory = loaded[1];
 
   var daily = state.data.daily;
   if (!daily || !Object.keys(daily).length) {
@@ -583,6 +586,111 @@ function renderDcaView() {
   }
 }
 
+/* ===== 大盤估值概況 =====
+   放在定期定額總覽最上方——「這個月要不要多扣一點」正是這個資訊該出現
+   的時機，比放在查詢分頁更貼近實際用途。
+
+   注意這不是「大盤本益比」：正規算法要市值加權，市值需要在外流通股數，
+   免費 API 沒有這個資料。這裡算的是全市場本益比／殖利率的「中位數」，
+   只用已經在抓的 daily/valuation 兩份資料算出來，每個交易日一筆，
+   由 stock-data.yml 逐日累積進 market-history.json。也因為歷史是從
+   這個功能上線那天才開始算，河流圖式的「跟自己過去幾年比」在資料還很少
+   的時候沒有意義——樣本不足時只顯示原始數字，不假裝有結論。 */
+
+var MARKET_MIN_FOR_PERCENTILE = 10;  // 至少要有這麼多天才顯示「相對位置」
+var MARKET_MIN_FOR_SPARK = 5;        // 至少要有這麼多天才畫小圖
+
+function renderMarketOverview() {
+  var history = state.marketHistory || [];
+  if (!history.length) {
+    return (
+      '<div class="card muted">' +
+      "<h3>大盤估值概況</h3>" +
+      '<p class="empty">還沒有資料——這個功能剛上線，資料會從今天開始每天累積。</p>' +
+      "</div>"
+    );
+  }
+
+  var today = history[history.length - 1];
+  var days = history.length;
+  var peSeries = history.map(function (h) { return h.peMedian; }).filter(function (v) { return v !== null; });
+  var yieldSeries = history.map(function (h) { return h.yieldMedian; }).filter(function (v) { return v !== null; });
+
+  var enoughForPct = days >= MARKET_MIN_FOR_PERCENTILE;
+  var pePct = enoughForPct ? percentile(peSeries.slice().sort(function (a, b) { return a - b; }), today.peMedian) : null;
+  var yieldPct = enoughForPct ? percentile(yieldSeries.slice().sort(function (a, b) { return a - b; }), today.yieldMedian) : null;
+
+  var spark = days >= MARKET_MIN_FOR_SPARK ? buildSparkline(peSeries) : "";
+
+  return (
+    '<div class="card">' +
+    "<h3>大盤估值概況 <span class=\"tag\">全市場中位數</span></h3>" +
+    '<div class="grid">' +
+    statCell(
+      "本益比中位數",
+      fmt(today.peMedian) +
+        (pePct === null
+          ? ""
+          : subNote("比過去 " + days + " 個交易日中的 " + pePct + "% 都高（相對較貴）"))
+    ) +
+    statCell(
+      "殖利率中位數",
+      fmt(today.yieldMedian) + "%" +
+        (yieldPct === null
+          ? ""
+          : subNote("比過去 " + days + " 個交易日中的 " + yieldPct + "% 都高"))
+    ) +
+    "</div>" +
+    (spark
+      ? '<div class="spark-wrap">' + spark +
+        '<div class="spark-labels"><span>' + esc(history[0].date) + "</span><span>" +
+        esc(today.date) + "</span></div></div>"
+      : "") +
+    '<p class="caveat">' +
+    (enoughForPct
+      ? "「相對較貴／便宜」是跟<strong>自己過去 " + days + " 個交易日</strong>比，不是跟其他市場比。"
+      : "資料只有 " + days + " 個交易日，還不夠算相對位置（至少需要 " + MARKET_MIN_FOR_PERCENTILE + " 天）。") +
+    "這不是官方公布的「大盤本益比」——正規算法要市值加權，免費資料沒有在外流通股數算不出來，" +
+    "這裡是全市場的<strong>中位數</strong>，比較抗少數極端值干擾，但終究是自己算的，僅供參考。" +
+    "傳統的本益比河流圖通常要幾年的資料才有意義，這裡的歷史從今天才開始累積，會需要時間。</p>" +
+    "</div>"
+  );
+}
+
+/* 用目前累積的歷史畫一條極簡的折線圖（inline SVG，沒有任何外部套件）。
+   不用漲跌紅綠配色——本益比走高不必然是「壞事」，用中性的強調色，
+   把「貴／便宜」的判斷留給旁邊的文字說明。 */
+function buildSparkline(values) {
+  if (!values || values.length < 2) return "";
+
+  var width = 280;
+  var height = 48;
+  var min = Math.min.apply(null, values);
+  var max = Math.max.apply(null, values);
+  var range = max - min || 1; // 全部數值相同時避免除以 0
+
+  var stepX = width / (values.length - 1);
+  var points = values
+    .map(function (v, i) {
+      var x = i * stepX;
+      var y = height - ((v - min) / range) * height;
+      return x.toFixed(1) + "," + y.toFixed(1);
+    })
+    .join(" ");
+
+  var lastIdx = values.length - 1;
+  var lastX = lastIdx * stepX;
+  var lastY = height - ((values[lastIdx] - min) / range) * height;
+
+  return (
+    '<svg class="spark" viewBox="0 0 ' + width + " " + height + '" preserveAspectRatio="none">' +
+    '<polyline points="' + points + '" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>' +
+    '<circle cx="' + lastX.toFixed(1) + '" cy="' + lastY.toFixed(1) + '" r="3" fill="currentColor"/>' +
+    "</svg>"
+  );
+}
+
 function renderDcaOverview() {
   var codes = getDcaCodes();
   var rows = codes.map(function (code) {
@@ -635,6 +743,7 @@ function renderDcaOverview() {
 
   return (
     '<h2 class="view-title">💰 定期定額</h2>' +
+    renderMarketOverview() +
     body +
     '<h3 class="section-title">新增扣款</h3>' +
     '<input id="dca-search-input" type="search" placeholder="輸入股票代號或名稱" autocomplete="off">' +

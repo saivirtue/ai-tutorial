@@ -122,6 +122,84 @@ jobs:
           echo "=== meta.json ==="
           cat stock/data/meta.json
 
+      - name: 累積全市場估值中位數
+        run: |
+          # 「大盤本益比」的正規算法要市值加權，市值需要在外流通股數——
+          # 免費 API 沒有這個資料，所以不假裝算得出來。改算全市場本益比／
+          # 殖利率的「中位數」：只用我們已經在抓的 daily/valuation 兩份
+          # 資料，不用新端點、不碰新網域，也就沒有新的 CORS 風險。中位數
+          # 比平均數更抗極端值干擾（少數本益比 200 的公司不會把它拉爆）。
+          #
+          # 每個交易日一筆，append 進 stock/data/market-history.json，
+          # 隨時間自然累積——這是「大盤估值河流圖」要有歷史深度的唯一辦法，
+          # 沒有捷徑。同一天重跑會覆蓋掉那天的舊值，不會產生重複。
+          if [ ! -f stock/data/daily.json ] || [ ! -f stock/data/valuation.json ]; then
+            echo "daily 或 valuation 快照都不存在，跳過（通常是第一次跑就失敗的情況）"
+            exit 0
+          fi
+
+          JQ_MARKET=$(mktemp)
+          cat > "$JQ_MARKET" <<'JQEOF'
+          def numOrNull(s):
+            if (s == null) then null
+            elif (s | type) != "string" then null
+            elif (s | test("^-?[0-9]+(\\.[0-9]+)?$")) then (s | tonumber)
+            else null end;
+
+          def median(a):
+            (a | sort) as $s |
+            ($s | length) as $n |
+            if $n == 0 then null
+            elif ($n % 2) == 1 then $s[($n - 1) / 2]
+            else ($s[$n / 2 - 1] + $s[$n / 2]) / 2
+            end;
+
+          # 本益比 <= 0（虧損/無意義）、殖利率 <= 0（不配息）都排除，
+          # 不然中位數會被這些「沒有估值意義」的公司拉偏。
+          ($v[0]
+            | map(
+                numOrNull(.PEratio) as $pe
+                | numOrNull(.DividendYield) as $y
+                | select($pe != null and $pe > 0 and $y != null and $y > 0)
+                | {pe: $pe, yield: $y}
+              )
+          ) as $rows
+          | {
+              date: $date,
+              peMedian: (median($rows | map(.pe))),
+              yieldMedian: (median($rows | map(.yield))),
+              sampleSize: ($rows | length)
+            }
+          JQEOF
+
+          # 日期用資料本身的交易日（daily.json 的 Date，民國轉西元），
+          # 不用「現在跑的時間」——這樣即使某次是保留舊快照重算，日期
+          # 也還是對應到那份資料實際的交易日，不會標錯。
+          TRADE_DATE_ROC=$(jq -r '.[0].Date // empty' stock/data/daily.json)
+          if [ -n "$TRADE_DATE_ROC" ] && [ "${#TRADE_DATE_ROC}" = "7" ]; then
+            TRADE_DATE=$(jq -rn --arg d "$TRADE_DATE_ROC" \
+              '($d[0:3] | tonumber + 1911 | tostring) + "-" + $d[3:5] + "-" + $d[5:7]')
+          else
+            TRADE_DATE=$(TZ=Asia/Taipei date +%Y-%m-%d)
+          fi
+          echo "交易日：$TRADE_DATE_ROC → $TRADE_DATE"
+
+          # 用 --slurpfile 直接從檔案讀，不要把整包 JSON 塞進命令列參數——
+          # valuation.json 有上千檔股票，塞進 argv 會撞到系統的參數長度上限
+          # （實測「Argument list too long」）。--slurpfile 給的是
+          # 「陣列包住檔案內容」，所以 jq 程式裡用 $v[0] 取出真正的陣列。
+          ROW=$(jq -n --slurpfile v stock/data/valuation.json \
+                  --arg date "$TRADE_DATE" -f "$JQ_MARKET")
+          echo "今日估算：$ROW"
+
+          HIST=stock/data/market-history.json
+          [ -f "$HIST" ] || echo '[]' > "$HIST"
+          jq --argjson row "$ROW" \
+            '(map(select(.date != $row.date))) + [$row] | sort_by(.date)' \
+            "$HIST" > "$HIST.tmp" && mv "$HIST.tmp" "$HIST"
+
+          echo "累積天數：$(jq 'length' "$HIST")"
+
       - name: 有變更才 commit
         run: |
           git config user.name "github-actions[bot]"
