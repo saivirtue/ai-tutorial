@@ -56,7 +56,8 @@ jobs:
 
             code=$(curl -sS -o /tmp/body.json -D /tmp/head.txt -w '%{http_code}' \
                     -H "Origin: $ORIGIN" -H 'Accept: application/json' \
-                    --max-time 60 "$BASE/$path" 2>/dev/null || echo "000")
+                    --max-time 60 "$BASE/$path" 2>/dev/null || true)
+            code="${code:-000}"
 
             acao=$(grep -i '^access-control-allow-origin:' /tmp/head.txt \
                     | head -1 | cut -d' ' -f2- | tr -d '\r')
@@ -138,4 +139,54 @@ jobs:
 
           # 這個工作流程是「回報現況」用的，端點掛掉不該讓它顯示成紅色失敗，
           # 不然會跟「工作流程本身壞了」混在一起。結果一律看上面的報告。
+          exit 0
+
+      - name: 找出三大法人的正確端點
+        run: |
+          BASE="https://openapi.twse.com.tw"
+
+          echo "########## 1. 目前這個路徑到底轉去哪 ##########"
+          curl -sS -o /dev/null -D /tmp/h.txt -w 'HTTP %{http_code}\n' \
+            --max-time 60 "$BASE/v1/fund/T86" 2>/dev/null || true
+          echo "轉址目標："
+          grep -i '^location:' /tmp/h.txt || echo "  （沒有 Location 標頭）"
+          echo ""
+          echo "跟隨轉址後："
+          curl -sSL -o /tmp/f.json -w 'HTTP %{http_code}, 內容開頭：\n' \
+            --max-time 60 "$BASE/v1/fund/T86" 2>/dev/null || true
+          head -c 300 /tmp/f.json; echo ""
+
+          echo ""
+          echo "########## 2. 從 OpenAPI 規格找出所有法人相關端點 ##########"
+          FOUND=0
+          for spec in "/v1/swagger.json" "/openapi.json" "/v1/openapi.json" "/swagger/v1/swagger.json" "/v1/swagger/v1/swagger.json"; do
+            codeq=$(curl -sS -o /tmp/spec.json -w '%{http_code}' --max-time 60 "$BASE$spec" 2>/dev/null || true)
+            codeq="${codeq:-000}"
+            echo "--- $spec → HTTP $codeq"
+            if [ "$codeq" = "200" ] && jq -e '.paths' /tmp/spec.json >/dev/null 2>&1; then
+              FOUND=1
+              echo ""
+              echo "含「法人」或 fund 的端點："
+              jq -r '.paths | to_entries[] | "\(.key)  ——  \(.value | to_entries[0].value.summary // .value | tostring | .[0:90])"' /tmp/spec.json 2>/dev/null \
+                | grep -iE '法人|fund|T86|BFI' || echo "  （規格裡找不到）"
+              echo ""
+              echo "全部端點數：$(jq '.paths | length' /tmp/spec.json)"
+              break
+            fi
+          done
+          [ "$FOUND" = "0" ] && echo "⚠️ 找不到 OpenAPI 規格檔，只能靠下面的候選路徑試"
+
+          echo ""
+          echo "########## 3. 直接試幾個候選路徑 ##########"
+          for cand in "fund/T86" "fund/BFI82U" "fund/TWT38U" "fund/TWT44U" "fund/MI_QFIIS"; do
+            c=$(curl -sSL -o /tmp/c.json -w '%{http_code}' --max-time 60 "$BASE/v1/$cand" 2>/dev/null || true)
+            c="${c:-000}"
+            if [ "$c" = "200" ] && jq -e 'type=="array" and length>0' /tmp/c.json >/dev/null 2>&1; then
+              echo "✅ $cand → $c，$(jq 'length' /tmp/c.json) 筆"
+              echo "   欄位：$(jq -r '(max_by(keys|length)//{}) | keys_unsorted | join(" · ")' /tmp/c.json)"
+              echo "   範例：$(jq -c '(max_by(keys|length)//{})' /tmp/c.json | head -c 300)"
+            else
+              echo "❌ $cand → $c"
+            fi
+          done
           exit 0

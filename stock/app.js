@@ -128,11 +128,13 @@ async function boot() {
       return a.code.localeCompare(b.code);
     });
 
-  state.pools = buildPercentiles(state.data.valuation || {});
+  state.pools = buildPercentiles(state.data.valuation || {}, state.data.revenue || {});
+  state.meta = result.meta;
 
   $("loading").style.display = "none";
   $("main").style.display = "block";
   $("market-count").textContent = state.list.length;
+  renderDataDate();
 
   renderStatus();
   renderWatchlist();
@@ -292,39 +294,55 @@ function statCell(label, value) {
   );
 }
 
-/* 估值：數字本身沒有感覺，加上「在全市場的相對位置」才讀得懂 */
+/* 估值：數字本身沒有感覺，加上「相對位置」才讀得懂。
+   有產業別就跟同業比——金融股和 IC 設計的合理本益比本來就不同，
+   拿全市場一起排意義不大。同業樣本太少（< 5 檔）時才退回全市場。 */
 function renderValuation(code) {
   var v = (state.data.valuation || {})[code];
   if (!v) {
     return unavailableCard("估值", "本益比 / 殖利率 / 股價淨值比");
   }
 
-  var pePct = percentile(state.pools.pe, v.pe);
-  var yieldPct = percentile(state.pools.yield, v.yield);
-  var pbPct = percentile(state.pools.pb, v.pb);
+  var rev = (state.data.revenue || {})[code];
+  var industry = rev && rev.industry;
+  var industryPool = industry ? state.pools.byIndustry[industry] : null;
+  var useIndustry = !!(industryPool && industryPool.pe.length >= 5);
+
+  var basis = useIndustry ? industryPool : state.pools.market;
+  var scope = useIndustry ? industry : "全市場";
+  var sampleSize = useIndustry ? industryPool.pe.length : state.pools.market.pe.length;
+
+  var pePct = percentile(basis.pe, v.pe);
+  var yieldPct = percentile(basis.yield, v.yield);
+  var pbPct = percentile(basis.pb, v.pb);
 
   return (
     '<div class="card">' +
-    '<h3>估值 <span class="tag">慢資料</span></h3>' +
+    '<h3>估值 <span class="tag">慢資料</span>' +
+    (useIndustry ? ' <span class="tag">與' + esc(industry) + "同業比較</span>" : "") +
+    "</h3>" +
     '<div class="grid">' +
     statCell(
       "本益比",
-      fmt(v.pe) + (pePct === null ? "" : subNote("比全市場 " + pePct + "% 的股票貴"))
+      fmt(v.pe) + (pePct === null ? "" : subNote("比" + scope + " " + pePct + "% 的股票貴"))
     ) +
     statCell(
       "殖利率",
       fmt(v.yield) + "%" +
-        (yieldPct === null ? "" : subNote("贏過全市場 " + yieldPct + "% 的股票"))
+        (yieldPct === null ? "" : subNote("贏過" + scope + " " + yieldPct + "% 的股票"))
     ) +
     statCell(
       "股價淨值比",
-      fmt(v.pb) + (pbPct === null ? "" : subNote("比全市場 " + pbPct + "% 的股票高"))
+      fmt(v.pb) + (pbPct === null ? "" : subNote("比" + scope + " " + pbPct + "% 的股票高"))
     ) +
     "</div>" +
-    '<p class="caveat">百分位是拿全部上市股票一起排的<strong>跨產業</strong>比較。' +
-    "金融股和 IC 設計的合理本益比本來就不一樣，所以這是粗略的參考位置，不是估值結論。" +
-    (v.yieldYear ? "殖利率依據 " + esc(v.yieldYear) + " 的股利。" : "") +
-    "</p>" +
+    '<p class="caveat">' +
+    (useIndustry
+      ? "百分位是跟<strong>" + esc(industry) + "</strong>的其他 " + (sampleSize - 1) +
+        " 檔一起排出來的。同業比較才有意義，但同一個產業裡的公司規模與商業模式仍可能差很多。"
+      : "這檔沒有產業別資料（ETF 和少數標的沒有），所以百分位是拿<strong>全部上市股票</strong>一起排的" +
+        "<strong>跨產業</strong>比較——金融股和 IC 設計的合理本益比本來就不一樣，只能當粗略參考。") +
+    "這些是估值的相對位置，不是買賣建議。</p>" +
     "</div>"
   );
 }
@@ -339,6 +357,7 @@ function renderRevenue(code) {
     '<div class="card">' +
     "<h3>月營收" +
     (r.month ? ' <span class="tag">' + esc(r.month) + "</span>" : "") +
+    (r.industry ? ' <span class="tag">' + esc(r.industry) + "</span>" : "") +
     "</h3>" +
     '<div class="grid">' +
     statCell("當月營收", fmtInt(r.current) + " 千元") +
@@ -350,9 +369,15 @@ function renderRevenue(code) {
       "月增率 (MoM)",
       '<span class="' + trendClass(r.momPct) + '">' + withSign(r.momPct) + "%</span>"
     ) +
+    statCell("今年累計", fmtInt(r.ytd) + " 千元") +
+    statCell(
+      "累計年增率",
+      '<span class="' + trendClass(r.ytdPct) + '">' + withSign(r.ytdPct) + "%</span>"
+    ) +
     "</div>" +
-    '<p class="caveat">月增率受淡旺季影響很大，看<strong>年增率</strong>比較有意義。' +
-    "單月數字本來就會跳，要看連續幾個月的方向。</p>" +
+    '<p class="caveat">月增率受淡旺季影響很大，看<strong>年增率</strong>比較有意義；' +
+    "而單月的年增率也會被去年的基期高低扭曲，<strong>累計年增率</strong>雜訊最小。" +
+    "任何一個月的數字都不該單獨解讀，要看連續幾個月的方向。</p>" +
     "</div>"
   );
 }
@@ -587,6 +612,7 @@ function renderStatus() {
         "<div>" +
         "<strong>" + esc(s.label) + "</strong>" +
         (s.required ? ' <span class="tag req">必要</span>' : "") +
+        (s.ok && s.via ? ' <span class="tag">' + esc(s.via) + "</span>" : "") +
         '<div class="status-path">' + esc(s.path) + "</div>" +
         '<div class="status-detail">' +
         (s.ok
@@ -598,6 +624,25 @@ function renderStatus() {
       );
     })
     .join("");
+}
+
+/* 資料日期：這一頁最容易被誤解的就是「這是哪一天的數字」。
+   優先用個股資料裡的交易日，退而求其次用快照的產生時間。 */
+function renderDataDate() {
+  var box = $("data-date");
+  if (!box) return;
+
+  var daily = state.data.daily || {};
+  var firstCode = Object.keys(daily)[0];
+  var tradeDate = firstCode ? daily[firstCode].date : null;
+
+  if (tradeDate) {
+    box.textContent = "資料日期：" + tradeDate + "（收盤後）";
+  } else if (state.meta && state.meta.fetchedAt) {
+    box.textContent = "快照產生於 " + state.meta.fetchedAt;
+  } else {
+    box.textContent = "";
+  }
 }
 
 boot();

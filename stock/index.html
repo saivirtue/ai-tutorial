@@ -395,6 +395,7 @@
     <div class="subtitle">
       資料來自臺灣證券交易所 OpenAPI，收錄 <span id="market-count">—</span> 檔上市股票
     </div>
+    <div class="subtitle" id="data-date"></div>
     <div class="disclaimer">
       <strong>這不是即時報價。</strong>官方免金鑰的資料是<strong>收盤後才更新的日頻資料</strong>，
       盤中不會跳動。這一頁刻意只做「慢資料」——估值、月營收、法人動向，
@@ -425,8 +426,10 @@
 
     <div class="proxy-box">
       <div class="caveat">
-        如果上面顯示 CORS 被擋，可以填一個 proxy 前綴（例如自己架的 Cloudflare Worker）。
-        含 <code>{url}</code> 會把網址編碼後代入，不含就直接接在前面。留空 = 直接連證交所。
+        線上版讀的是 <code>data/</code> 底下的每日快照（由 GitHub Actions 每天收盤後更新），
+        所以不需要 proxy。這格只在<strong>讀不到快照、必須直連證交所</strong>時才會用到——
+        而證交所實測不回 CORS 標頭，本機開發時直連會被瀏覽器擋掉，那時才需要填。
+        含 <code>{url}</code> 會把網址編碼後代入，不含就直接接在前面。
       </div>
       <input id="proxy-input" type="text" placeholder="https://your-worker.workers.dev/?url={url}">
       <button id="proxy-save">儲存並重新載入</button>

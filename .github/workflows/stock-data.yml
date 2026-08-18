@@ -1,0 +1,113 @@
+name: 更新台股快照
+
+# 每天收盤後抓一次證交所資料，把 JSON 直接 commit 進 stock/data/。
+#
+# 為什麼要這樣做：證交所的 OpenAPI 不回 Access-Control-Allow-Origin，
+# 瀏覽器沒辦法直接抓（實測四個端點都沒有）。與其另外架一個 proxy 服務，
+# 不如利用「資料本來就一天只變一次」這件事——把快照放進 repo，網頁讀
+# 同源的靜態檔案，CORS 問題根本不存在，載入也快很多。
+#
+# 附帶好處：每天的快照會累積在 git 歷史裡，將來要做回測就有資料了。
+
+on:
+  schedule:
+    # UTC 10:30 = 台北 18:30，週一到週五。挑這個時間是因為三大法人的
+    # 資料大約傍晚才會更新完，太早抓會拿到前一天的。
+    - cron: '30 10 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stock-data
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 抓取快照
+        run: |
+          BASE="https://openapi.twse.com.tw/v1"
+          mkdir -p stock/data
+
+          # 檔名|端點路徑|說明
+          SOURCES=(
+            "daily|exchangeReport/STOCK_DAY_ALL|個股日成交資訊"
+            "valuation|exchangeReport/BWIBBU_ALL|本益比、殖利率、股價淨值比"
+            "revenue|opendata/t187ap05_L|每月營業收入"
+            "institution|fund/T86|三大法人買賣超"
+          )
+
+          META=$(mktemp)
+          echo '{' > "$META"
+          echo "  \"fetchedAt\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"," >> "$META"
+          echo '  "sources": {' >> "$META"
+
+          FIRST=1
+          for entry in "${SOURCES[@]}"; do
+            key="${entry%%|*}"
+            rest="${entry#*|}"
+            path="${rest%%|*}"
+            label="${rest#*|}"
+
+            echo "→ $key ($path)"
+            # -L 跟隨轉址：fund/T86 之前回 302，可能只是路徑正規化
+            code=$(curl -sSL -o /tmp/new.json -w '%{http_code}' \
+                    -H 'Accept: application/json' --max-time 120 \
+                    "$BASE/$path" 2>/dev/null || true)
+            code="${code:-000}"
+
+            if [ "$code" = "200" ] && jq -e 'type == "array" and length > 0' /tmp/new.json >/dev/null 2>&1; then
+              n=$(jq 'length' /tmp/new.json)
+              # 壓成單行，省 repo 空間；反正是機器讀的
+              jq -c '.' /tmp/new.json > "stock/data/$key.json"
+              echo "  ✅ $n 筆，已寫入 stock/data/$key.json"
+              status="ok"
+            else
+              # 關鍵：抓失敗時「保留上一份快照」，不要用錯誤覆蓋掉好資料。
+              # 網頁寧可顯示昨天的資料，也不要突然整頁空白。
+              n=0
+              if [ -f "stock/data/$key.json" ]; then
+                n=$(jq 'length' "stock/data/$key.json" 2>/dev/null || echo 0)
+                echo "  ⚠️ HTTP $code — 保留既有快照（$n 筆）"
+                status="stale"
+              else
+                echo "  ❌ HTTP $code — 而且沒有既有快照可用"
+                status="missing"
+              fi
+            fi
+
+            [ "$FIRST" = "1" ] || echo "," >> "$META"
+            FIRST=0
+            printf '    "%s": {"label": "%s", "path": "%s", "status": "%s", "count": %s, "http": "%s"}' \
+              "$key" "$label" "$path" "$status" "$n" "$code" >> "$META"
+          done
+
+          echo "" >> "$META"
+          echo '  }' >> "$META"
+          echo '}' >> "$META"
+          jq '.' "$META" > stock/data/meta.json
+
+          echo ""
+          echo "=== meta.json ==="
+          cat stock/data/meta.json
+
+      - name: 有變更才 commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add stock/data
+          if git diff --cached --quiet; then
+            echo "資料沒有變化，不產生 commit"
+            exit 0
+          fi
+          # 只列出檔案大小變化，不要把整包 JSON 塞進 commit message
+          SUMMARY=$(cd stock/data && for f in *.json; do
+            printf '%s (%s)\n' "$f" "$(jq 'if type=="array" then length else "meta" end' "$f" 2>/dev/null)"
+          done)
+          git commit -m "更新台股快照 $(TZ=Asia/Taipei date '+%Y-%m-%d')" -m "$SUMMARY"
+          git push
