@@ -4,7 +4,9 @@ name: 台股 API 端點檢查
 # 用到的四個證交所端點還通不通、CORS 有沒有開、欄位名稱有沒有被改掉。
 #
 # 怎麼用：Actions 分頁 → 左邊選「台股 API 端點檢查」→ Run workflow
-# → 跑完點進去看 Summary（手機上可讀，不用翻 log）。
+# （分支選哪個都可以）。跑完結果會同時出現在兩個地方：
+#   1. job 的 log 裡（純文字，往下捲就看得到）
+#   2. run 頁面的 Summary 區塊（排版好的表格，在 job 列表下方）
 
 on:
   workflow_dispatch:
@@ -19,7 +21,9 @@ jobs:
       - name: 檢查四個端點
         run: |
           BASE="${TWSE_BASE:-https://openapi.twse.com.tw/v1}"
-          # 帶上真實的 Origin，才看得出證交所有沒有回 CORS 標頭
+          # 帶上真實的 Origin，才看得出證交所有沒有回 CORS 標頭。
+          # 注意：curl 看得到標頭但不會執行同源政策，所以這裡的 CORS 結果
+          # 只代表「證交所有沒有給」，瀏覽器實際行為仍要開網頁才算數。
           ORIGIN="https://saivirtue.github.io"
 
           # 端點｜這一頁拿它做什麼
@@ -30,26 +34,30 @@ jobs:
             "fund/T86|三大法人買賣超"
           )
 
-          SUM="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
-          DETAILS=$(mktemp)
+          TABLE=$(mktemp)    # 摘要表格
+          DETAILS=$(mktemp)  # 每個端點的欄位與範例
           FAILED=0
 
-          echo "## 台股 API 端點檢查" >> "$SUM"
-          echo "" >> "$SUM"
-          echo "檢查時間：$(TZ=Asia/Taipei date '+%Y-%m-%d %H:%M') (台北)" >> "$SUM"
-          echo "" >> "$SUM"
-          echo "| 端點 | HTTP | CORS | 筆數 | 用途 |" >> "$SUM"
-          echo "|---|---|---|---|---|" >> "$SUM"
+          {
+            echo "## 台股 API 端點檢查"
+            echo ""
+            echo "檢查時間：$(TZ=Asia/Taipei date '+%Y-%m-%d %H:%M') (台北)"
+            echo ""
+            echo "| 端點 | HTTP | CORS | 筆數 | 用途 |"
+            echo "|---|---|---|---|---|"
+          } >> "$TABLE"
 
           for entry in "${ENDPOINTS[@]}"; do
             path="${entry%%|*}"
             purpose="${entry##*|}"
 
+            # 進度即時印到 log，跑很慢的時候才知道卡在哪一個
+            echo "→ 正在檢查 $path ..."
+
             code=$(curl -sS -o /tmp/body.json -D /tmp/head.txt -w '%{http_code}' \
                     -H "Origin: $ORIGIN" -H 'Accept: application/json' \
                     --max-time 60 "$BASE/$path" 2>/dev/null || echo "000")
 
-            # CORS：有沒有回 Access-Control-Allow-Origin
             acao=$(grep -i '^access-control-allow-origin:' /tmp/head.txt \
                     | head -1 | cut -d' ' -f2- | tr -d '\r')
             if [ -n "$acao" ]; then
@@ -61,7 +69,8 @@ jobs:
             if [ "$code" = "200" ] && jq -e 'type == "array"' /tmp/body.json >/dev/null 2>&1; then
               count=$(jq 'length' /tmp/body.json)
               status="✅ 200"
-              # 把實際欄位名稱印出來——證交所改欄位時，這是最快的定位方式
+              # 欄位取「keys 最多的那一筆」而不是第 0 筆——月營收那個端點的
+              # 開頭是只有「出表日期」的雜訊列，取第 0 筆會看不到真正的欄位。
               {
                 echo ""
                 echo "### \`$path\`"
@@ -81,7 +90,7 @@ jobs:
               } >> "$DETAILS"
             else
               count="—"
-              status="❌ $code"
+              if [ "$code" = "200" ]; then status="❌ 200 但非陣列"; else status="❌ $code"; fi
               FAILED=1
               {
                 echo ""
@@ -96,21 +105,37 @@ jobs:
               } >> "$DETAILS"
             fi
 
-            echo "| \`$path\` | $status | $cors | $count | $purpose |" >> "$SUM"
+            echo "| \`$path\` | $status | $cors | $count | $purpose |" >> "$TABLE"
           done
 
-          echo "" >> "$SUM"
-          if [ "$FAILED" = "0" ]; then
-            echo "> ✅ 四個端點都通。" >> "$SUM"
-          else
-            echo "> ⚠️ 有端點失敗，看下面的細節。" >> "$SUM"
-          fi
-          echo "" >> "$SUM"
-          echo "**CORS 欄位怎麼讀：** 顯示 OK 代表瀏覽器可以直接抓，stock/ 那一頁不用架 proxy；顯示「無」就需要一個 proxy 中轉。" >> "$SUM"
-          echo "" >> "$SUM"
-          echo "---" >> "$SUM"
-          cat "$DETAILS" >> "$SUM"
+          {
+            echo ""
+            if [ "$FAILED" = "0" ]; then
+              echo "> ✅ 四個端點都通。"
+            else
+              echo "> ⚠️ 有端點失敗，看下面的細節。"
+            fi
+            echo ""
+            echo "**CORS 欄位怎麼讀：** 顯示 OK 代表證交所有給跨域授權，stock/ 那一頁不用架 proxy；顯示「無」就需要一個 proxy 中轉。"
+            echo ""
+            echo "---"
+          } >> "$TABLE"
+
+          REPORT=$(mktemp)
+          cat "$TABLE" "$DETAILS" > "$REPORT"
+
+          # 寫進 Summary（排版好的表格）
+          cat "$REPORT" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+
+          # 同時印到 log——不然 job 的 log 會是空白的，
+          # 還要特地退出 log 檢視才找得到結果。
+          echo ""
+          echo "=================== 檢查結果 ==================="
+          cat "$REPORT"
+          echo "================================================"
+          echo ""
+          echo "（上面這份也在 run 頁面的 Summary 區塊，排版比較好讀）"
 
           # 這個工作流程是「回報現況」用的，端點掛掉不該讓它顯示成紅色失敗，
-          # 不然會跟「工作流程本身壞了」混在一起。結果一律看 Summary。
+          # 不然會跟「工作流程本身壞了」混在一起。結果一律看上面的報告。
           exit 0
