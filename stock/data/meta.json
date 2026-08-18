@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-08-18T10:39:49Z",
+  "fetchedAt": "2026-08-18T10:57:26Z",
   "sources": {
     "daily": {
       "label": "個股日成交資訊",
@@ -11,9 +11,9 @@
     "valuation": {
       "label": "本益比、殖利率、股價淨值比",
       "path": "exchangeReport/BWIBBU_ALL",
-      "status": "ok",
+      "status": "stale",
       "count": 1083,
-      "http": "200"
+      "http": "000"
     },
     "revenue": {
       "label": "每月營業收入",
@@ -24,9 +24,9 @@
     },
     "institution": {
       "label": "三大法人買賣超",
-      "path": "fund/T86",
-      "status": "missing",
-      "count": 0,
+      "path": "www.twse.com.tw/rwd/zh/fund/T86",
+      "status": "ok",
+      "count": 15527,
       "http": "200"
     }
   }
