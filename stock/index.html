@@ -28,7 +28,8 @@
       color: var(--text);
       font-family: "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", sans-serif;
       line-height: 1.6;
-      padding: 24px 16px 80px;
+      /* 底部留給固定分頁列的空間（列高約 60px + 手機安全區） */
+      padding: 24px 16px calc(76px + env(safe-area-inset-bottom));
       -webkit-text-size-adjust: 100%;
     }
 
@@ -36,9 +37,28 @@
 
     header { margin-bottom: 20px; }
 
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
     h1 { font-size: 26px; letter-spacing: 1px; }
 
     .subtitle { color: var(--dim); font-size: 14px; margin-top: 4px; }
+
+    #settings-btn {
+      flex-shrink: 0;
+      width: 40px;
+      height: 40px;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--dim);
+      font-size: 18px;
+      cursor: pointer;
+    }
 
     /* 這個警語是整頁最重要的一句話，不能被當成裝飾 */
     .disclaimer {
@@ -72,6 +92,15 @@
       letter-spacing: 0.5px;
     }
 
+    .view-title { font-size: 20px; margin-bottom: 14px; }
+
+    .section-title {
+      font-size: 15px;
+      color: var(--dim);
+      margin: 18px 0 10px;
+      letter-spacing: 0.5px;
+    }
+
     .tag {
       display: inline-block;
       background: var(--panel-2);
@@ -86,7 +115,7 @@
     .tag.req { background: #4a3a1a; color: #ffb020; }
 
     /* ===== 搜尋 ===== */
-    #search-input {
+    #search-input, #dca-search-input {
       width: 100%;
       background: var(--panel);
       border: 1px solid var(--line);
@@ -97,14 +126,14 @@
       font-family: inherit;
     }
 
-    #search-input:focus { outline: none; border-color: var(--accent); }
+    #search-input:focus, #dca-search-input:focus { outline: none; border-color: var(--accent); }
 
-    #search-results { margin-top: 8px; }
+    #search-results, #dca-search-results { margin-top: 8px; }
 
     .result-row, .watch-row {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       width: 100%;
       background: var(--panel);
       border: 1px solid var(--line);
@@ -134,7 +163,9 @@
       font-weight: 600;
     }
 
-    .watch-row .chg { min-width: 68px; text-align: right; }
+    .watch-row .chg { min-width: 60px; text-align: right; }
+
+    .star-badge { color: #ffd93d; font-size: 13px; }
 
     /* ===== 漲跌顏色 ===== */
     .up { color: var(--up); }
@@ -147,10 +178,13 @@
       justify-content: space-between;
       align-items: flex-start;
       gap: 12px;
+      flex-wrap: wrap;
     }
 
     .detail-name { font-size: 22px; font-weight: 700; }
     .detail-code { color: var(--dim); font-size: 13px; font-variant-numeric: tabular-nums; }
+
+    .detail-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
     .watch-btn {
       background: var(--panel-2);
@@ -165,6 +199,16 @@
     }
 
     .watch-btn.on { color: #ffd93d; border-color: #6b5a1a; }
+
+    .back-btn {
+      background: none;
+      border: none;
+      color: var(--accent);
+      font-family: inherit;
+      font-size: 14px;
+      cursor: pointer;
+      padding: 4px 0 14px;
+    }
 
     .quote {
       display: flex;
@@ -181,6 +225,13 @@
     }
 
     .quote-change { font-size: 17px; font-variant-numeric: tabular-nums; }
+
+    .quote-mini {
+      font-size: 14px;
+      color: var(--dim);
+      margin: 6px 0 14px;
+      font-variant-numeric: tabular-nums;
+    }
 
     /* ===== 數據格 ===== */
     .grid {
@@ -316,18 +367,61 @@
     }
 
     .dca-summary { margin-top: 14px; }
+    .dca-holdings { margin-top: 10px; }
 
-    /* ===== 資料源狀態 / 設定 ===== */
-    .foot { margin-top: 30px; }
+    /* ===== 底部分頁列 ===== */
+    #tabbar {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: none; /* 資料載入完成後才顯示 */
+      background: var(--panel);
+      border-top: 1px solid var(--line);
+      padding-bottom: env(safe-area-inset-bottom);
+      z-index: 50;
+    }
 
-    #status-toggle, .foot summary {
+    #tabbar button {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
       background: none;
       border: none;
       color: var(--dim);
-      font-size: 13px;
+      font-family: inherit;
+      font-size: 11px;
+      padding: 9px 4px 8px;
+      cursor: pointer;
+    }
+
+    #tabbar button .icon { font-size: 20px; }
+    #tabbar button.active { color: var(--accent); }
+
+    /* ===== 設定面板（資料源狀態／proxy）：全螢幕覆蓋，不常用所以獨立出去 ===== */
+    #settings-panel {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 100;
+      overflow-y: auto;
+      padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+    }
+
+    #settings-panel .wrap { max-width: 760px; margin: 0 auto; }
+
+    #settings-close {
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 8px 14px;
+      font-size: 14px;
       font-family: inherit;
       cursor: pointer;
-      padding: 6px 0;
+      margin-bottom: 20px;
     }
 
     .status-row {
@@ -349,7 +443,7 @@
 
     .status-detail { color: var(--dim); font-size: 12px; margin-top: 2px; }
 
-    .proxy-box { margin-top: 16px; }
+    .proxy-box { margin-top: 8px; }
 
     .proxy-box input {
       width: 100%;
@@ -391,11 +485,16 @@
   <a class="back" href="../">← 回首頁</a>
 
   <header>
-    <h1>📈 台股速查</h1>
-    <div class="subtitle">
-      資料來自臺灣證券交易所 OpenAPI，收錄 <span id="market-count">—</span> 檔上市股票
+    <div class="header-top">
+      <div>
+        <h1>📈 台股速查</h1>
+        <div class="subtitle">
+          資料來自臺灣證券交易所 OpenAPI，收錄 <span id="market-count">—</span> 檔上市股票
+        </div>
+        <div class="subtitle" id="data-date"></div>
+      </div>
+      <button id="settings-btn" title="資料源狀態與設定">⚙</button>
     </div>
-    <div class="subtitle" id="data-date"></div>
     <div class="disclaimer">
       <strong>這不是即時報價。</strong>官方免金鑰的資料是<strong>收盤後才更新的日頻資料</strong>，
       盤中不會跳動。這一頁刻意只做「慢資料」——估值、月營收、法人動向，
@@ -406,24 +505,36 @@
 
   <div id="loading">正在載入…</div>
 
-  <main id="main" style="display:none">
+  <div id="app" style="display:none">
 
-    <input id="search-input" type="search" placeholder="輸入股票代號或名稱，例如 2330 或 台積" autocomplete="off">
-    <div id="search-results"></div>
+    <main id="view-search" class="view">
+      <input id="search-input" type="search" placeholder="輸入股票代號或名稱，例如 2330 或 台積" autocomplete="off">
+      <div id="search-results"></div>
+      <div id="detail"></div>
+    </main>
 
-    <div id="detail"></div>
+    <main id="view-watchlist" class="view" hidden></main>
 
-    <div class="card">
-      <h3>我的自選</h3>
-      <div id="watchlist"></div>
-    </div>
+    <main id="view-dca" class="view" hidden></main>
 
-  </main>
+  </div>
 
-  <div class="foot">
-    <button id="status-toggle">▸ 資料源狀態</button>
-    <div id="status-body" style="display:none"></div>
+</div>
 
+<nav id="tabbar">
+  <button data-view="search"><span class="icon">🔍</span>查詢</button>
+  <button data-view="watchlist"><span class="icon">⭐</span>自選</button>
+  <button data-view="dca"><span class="icon">💰</span>定期定額</button>
+</nav>
+
+<div id="settings-panel" hidden>
+  <div class="wrap">
+    <button id="settings-close">✕ 關閉</button>
+
+    <h3 class="section-title">資料源狀態</h3>
+    <div id="status-body"></div>
+
+    <h3 class="section-title">Proxy 設定</h3>
     <div class="proxy-box">
       <div class="caveat">
         線上版讀的是 <code>data/</code> 底下的每日快照（由 GitHub Actions 每天收盤後更新），
@@ -435,7 +546,6 @@
       <button id="proxy-save">儲存並重新載入</button>
     </div>
   </div>
-
 </div>
 
 <script src="twse.js"></script>

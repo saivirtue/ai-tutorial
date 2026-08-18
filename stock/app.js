@@ -3,7 +3,9 @@
    設計原則（跟這個頁面想解決的問題有關）：
    1. 只呈現「慢資料」——收盤價、估值、月營收、法人動向。刻意不做任何
       短期趨勢預測或買賣訊號，因為那是這件事裡最難、最多人做輸的部分。
-   2. 定期定額紀錄簿完全存在本機，不需要任何 API，也不會離開你的瀏覽器。 */
+   2. 定期定額紀錄簿完全存在本機，不需要任何 API，也不會離開你的瀏覽器。
+   3. 三個視圖（查詢／自選／定期定額）用底部固定分頁列切換，不是一路往下
+      滑的長條——定期定額尤其獨立成跨股票的總覽，不是掛在某一檔底下。 */
 
 var WATCH_KEY = "tw-stock-watchlist";
 var DCA_KEY = "tw-stock-dca";
@@ -12,8 +14,11 @@ var state = {
   data: {},      // { daily: {code:…}, valuation: {…}, revenue: {…}, institution: {…} }
   status: [],    // 各資料源的成敗
   list: [],      // 全部個股 [{ code, name }]，給搜尋用
-  pools: null,   // 全市場估值分布，算百分位用
-  current: null, // 目前選中的代號
+  pools: null,   // 估值分布（全市場＋各產業），算百分位用
+  meta: null,
+  view: "search",  // "search" | "watchlist" | "dca"
+  current: null,   // 查詢分頁：目前選中的代號
+  dcaCode: null,   // 定期定額分頁：目前打開的個股帳本；null = 顯示總覽
 };
 
 /* ===== 小工具 ===== */
@@ -57,6 +62,29 @@ function withSign(value, digits) {
   return (value > 0 ? "+" : "") + fmt(value, digits);
 }
 
+function statCell(label, value) {
+  return (
+    '<div class="stat">' +
+    '<div class="stat-label">' + esc(label) + "</div>" +
+    '<div class="stat-value">' + value + "</div>" +
+    "</div>"
+  );
+}
+
+function subNote(text) {
+  return '<div class="sub-note">' + esc(text) + "</div>";
+}
+
+function unavailableCard(title, what) {
+  return (
+    '<div class="card muted">' +
+    "<h3>" + esc(title) + "</h3>" +
+    '<p class="empty">這檔沒有' + esc(what) + "的資料，" +
+    "或該資料源這次沒抓到（見右上角 ⚙ 資料源狀態）。</p>" +
+    "</div>"
+  );
+}
+
 /* ===== localStorage 存取（無痕模式會丟例外，一律包起來） ===== */
 
 function readJson(key, fallback) {
@@ -95,6 +123,12 @@ function setDca(code, entries) {
   writeJson(DCA_KEY, all);
 }
 
+/* 有紀錄的股票代號列表——定期定額總覽要列出每一檔 */
+function getDcaCodes() {
+  var all = readJson(DCA_KEY, {});
+  return all && typeof all === "object" ? Object.keys(all) : [];
+}
+
 /* ===== 啟動 ===== */
 
 async function boot() {
@@ -113,8 +147,8 @@ async function boot() {
       '<div class="fatal">' +
       "<strong>抓不到證交所的資料。</strong><br>" +
       "最可能是瀏覽器的 CORS 限制擋住了跨域請求。" +
-      "往下看「資料源狀態」有每一個端點的實際錯誤訊息，" +
-      "或在下面設定一個 proxy 前綴再重新整理。" +
+      "點右上角 ⚙ 看「資料源狀態」裡每一個端點的實際錯誤訊息，" +
+      "或在裡面設定一個 proxy 前綴再重新整理。" +
       "</div>";
     renderStatus();
     return;
@@ -132,16 +166,36 @@ async function boot() {
   state.meta = result.meta;
 
   $("loading").style.display = "none";
-  $("main").style.display = "block";
+  $("app").style.display = "block";
+  $("tabbar").style.display = "flex";
   $("market-count").textContent = state.list.length;
   renderDataDate();
-
   renderStatus();
-  renderWatchlist();
+
   bindEvents();
+  switchView("search");
 }
 
-/* ===== 搜尋 ===== */
+/* ===== 分頁切換 ===== */
+
+var VIEWS = ["search", "watchlist", "dca"];
+
+function switchView(view) {
+  state.view = view;
+
+  VIEWS.forEach(function (v) {
+    $("view-" + v).hidden = v !== view;
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll("#tabbar button"), function (btn) {
+    btn.classList.toggle("active", btn.dataset.view === view);
+  });
+
+  if (view === "watchlist") renderWatchlistView();
+  if (view === "dca") renderDcaView();
+
+  window.scrollTo(0, 0);
+}
 
 function bindEvents() {
   var input = $("search-input");
@@ -157,18 +211,26 @@ function bindEvents() {
     if (matches.length) selectStock(matches[0].code);
   });
 
+  Array.prototype.forEach.call(document.querySelectorAll("#tabbar button"), function (btn) {
+    btn.addEventListener("click", function () {
+      switchView(btn.dataset.view);
+    });
+  });
+
+  $("settings-btn").addEventListener("click", function () {
+    $("settings-panel").hidden = false;
+  });
+  $("settings-close").addEventListener("click", function () {
+    $("settings-panel").hidden = true;
+  });
+
   $("proxy-save").addEventListener("click", function () {
     setProxy($("proxy-input").value.trim());
     location.reload();
   });
-
-  $("status-toggle").addEventListener("click", function () {
-    var box = $("status-body");
-    var open = box.style.display !== "none";
-    box.style.display = open ? "none" : "block";
-    $("status-toggle").textContent = open ? "▸ 資料源狀態" : "▾ 資料源狀態";
-  });
 }
+
+/* ===== 查詢分頁 ===== */
 
 function search(query) {
   var q = String(query || "").trim().toLowerCase();
@@ -197,11 +259,15 @@ function renderSearch(query) {
     return;
   }
 
+  var watching = getWatchlist();
+
   box.innerHTML = matches
     .map(function (item) {
       var d = state.data.daily[item.code];
+      var starred = watching.indexOf(item.code) >= 0;
       return (
         '<button class="result-row" data-code="' + esc(item.code) + '">' +
+        (starred ? '<span class="star-badge">★</span>' : "") +
         '<span class="code">' + esc(item.code) + "</span>" +
         '<span class="name">' + esc(item.name) + "</span>" +
         '<span class="price ' + trendClass(d.change) + '">' +
@@ -219,12 +285,14 @@ function renderSearch(query) {
   });
 }
 
-/* ===== 個股明細 ===== */
-
+/* 打開個股明細。清掉搜尋結果列表——不然明細會被壓到一長串結果下面，
+   每次都要滑過去才看得到剛選的東西。 */
 function selectStock(code) {
   state.current = code;
+  $("search-results").innerHTML = "";
   renderDetail();
-  $("detail").scrollIntoView({ behavior: "smooth", block: "start" });
+  if (state.view !== "search") switchView("search");
+  else window.scrollTo(0, 0);
 }
 
 function renderDetail() {
@@ -247,6 +315,7 @@ function renderDetail() {
       : null;
 
   var watching = getWatchlist().indexOf(code) >= 0;
+  var hasDca = getDca(code).length > 0;
 
   box.innerHTML =
     '<div class="card">' +
@@ -255,9 +324,14 @@ function renderDetail() {
     '      <div class="detail-name">' + esc(d.name) + "</div>" +
     '      <div class="detail-code">' + esc(code) + "</div>" +
     "    </div>" +
-    '    <button class="watch-btn' + (watching ? " on" : "") + '" id="watch-toggle">' +
+    '    <div class="detail-actions">' +
+    '      <button class="watch-btn' + (watching ? " on" : "") + '" id="watch-toggle">' +
     (watching ? "★ 已在自選" : "☆ 加入自選") +
-    "    </button>" +
+    "      </button>" +
+    '      <button class="watch-btn' + (hasDca ? " on" : "") + '" id="goto-dca">' +
+    "💰 定期定額" +
+    "      </button>" +
+    "    </div>" +
     "  </div>" +
     '  <div class="quote ' + trendClass(d.change) + '">' +
     '    <span class="quote-price">' + fmt(d.close) + "</span>" +
@@ -275,23 +349,15 @@ function renderDetail() {
     "</div>" +
     renderValuation(code) +
     renderRevenue(code) +
-    renderInstitution(code) +
-    renderDcaCard(code);
+    renderInstitution(code);
 
   $("watch-toggle").addEventListener("click", function () {
     toggleWatch(code);
   });
-
-  bindDcaEvents(code);
-}
-
-function statCell(label, value) {
-  return (
-    '<div class="stat">' +
-    '<div class="stat-label">' + esc(label) + "</div>" +
-    '<div class="stat-value">' + value + "</div>" +
-    "</div>"
-  );
+  $("goto-dca").addEventListener("click", function () {
+    state.dcaCode = code;
+    switchView("dca");
+  });
 }
 
 /* 估值：數字本身沒有感覺，加上「相對位置」才讀得懂。
@@ -412,21 +478,7 @@ function renderInstitution(code) {
   );
 }
 
-function unavailableCard(title, what) {
-  return (
-    '<div class="card muted">' +
-    "<h3>" + esc(title) + "</h3>" +
-    '<p class="empty">這檔沒有' + esc(what) + "的資料，" +
-    "或該資料源這次沒抓到（見下方「資料源狀態」）。</p>" +
-    "</div>"
-  );
-}
-
-function subNote(text) {
-  return '<div class="sub-note">' + esc(text) + "</div>";
-}
-
-/* ===== 自選 ===== */
+/* ===== 自選分頁 ===== */
 
 function toggleWatch(code) {
   var list = getWatchlist();
@@ -434,47 +486,49 @@ function toggleWatch(code) {
   if (idx >= 0) list.splice(idx, 1);
   else list.push(code);
   writeJson(WATCH_KEY, list);
-  renderWatchlist();
+
   renderDetail();
+  renderSearch($("search-input").value);
+  if (state.view === "watchlist") renderWatchlistView();
 }
 
-function renderWatchlist() {
+function renderWatchlistView() {
+  var box = $("view-watchlist");
   var list = getWatchlist();
-  var box = $("watchlist");
 
-  if (!list.length) {
-    box.innerHTML =
-      '<div class="empty">還沒有自選股。查到想追蹤的，按「☆ 加入自選」。</div>';
-    return;
-  }
+  var body = !list.length
+    ? '<p class="empty">還沒有自選股。到「查詢」分頁找到想追蹤的，按「☆ 加入自選」。</p>'
+    : '<div id="watchlist">' +
+      list
+        .map(function (code) {
+          var d = state.data.daily[code];
+          if (!d) {
+            return (
+              '<button class="watch-row" data-code="' + esc(code) + '">' +
+              '<span class="code">' + esc(code) + "</span>" +
+              '<span class="name">今日無資料</span>' +
+              "</button>"
+            );
+          }
+          var pct =
+            d.change !== null && d.close !== null && d.close - d.change !== 0
+              ? (d.change / (d.close - d.change)) * 100
+              : null;
+          return (
+            '<button class="watch-row" data-code="' + esc(code) + '">' +
+            '<span class="code">' + esc(code) + "</span>" +
+            '<span class="name">' + esc(d.name) + "</span>" +
+            '<span class="price ' + trendClass(d.change) + '">' + fmt(d.close) + "</span>" +
+            '<span class="chg ' + trendClass(d.change) + '">' +
+            (pct === null ? "—" : withSign(pct) + "%") +
+            "</span>" +
+            "</button>"
+          );
+        })
+        .join("") +
+      "</div>";
 
-  box.innerHTML = list
-    .map(function (code) {
-      var d = state.data.daily[code];
-      if (!d) {
-        return (
-          '<button class="watch-row" data-code="' + esc(code) + '">' +
-          '<span class="code">' + esc(code) + "</span>" +
-          '<span class="name">今日無資料</span>' +
-          "</button>"
-        );
-      }
-      var pct =
-        d.change !== null && d.close !== null && d.close - d.change !== 0
-          ? (d.change / (d.close - d.change)) * 100
-          : null;
-      return (
-        '<button class="watch-row" data-code="' + esc(code) + '">' +
-        '<span class="code">' + esc(code) + "</span>" +
-        '<span class="name">' + esc(d.name) + "</span>" +
-        '<span class="price ' + trendClass(d.change) + '">' + fmt(d.close) + "</span>" +
-        '<span class="chg ' + trendClass(d.change) + '">' +
-        (pct === null ? "—" : withSign(pct) + "%") +
-        "</span>" +
-        "</button>"
-      );
-    })
-    .join("");
+  box.innerHTML = '<h2 class="view-title">⭐ 我的自選</h2>' + body;
 
   Array.prototype.forEach.call(box.querySelectorAll(".watch-row"), function (el) {
     el.addEventListener("click", function () {
@@ -483,12 +537,13 @@ function renderWatchlist() {
   });
 }
 
-/* ===== 定期定額紀錄簿 =====
-   這一段完全不碰 API。證交所的免費資料沒有個股歷史股價，所以做不了真正的
-   回測——與其用假設報酬率算一個看起來很專業但其實是編的數字，不如讓你把
-   實際扣款記下來，算出真實的平均成本。 */
+/* ===== 定期定額分頁 =====
+   跨股票的總覽，不是掛在某一檔明細底下。這一段完全不碰 API——證交所的
+   免費資料沒有個股歷史股價，所以做不了真正的回測，與其用假設報酬率算一個
+   看起來很專業但其實是編的數字，不如讓你把實際扣款記下來，算出真實的
+   平均成本。 */
 
-function renderDcaCard(code) {
+function computeDcaSummary(code) {
   var entries = getDca(code);
   var d = state.data.daily[code];
   var close = d ? d.close : null;
@@ -505,7 +560,155 @@ function renderDcaCard(code) {
   var profit = marketValue !== null ? marketValue - totalCost : null;
   var profitPct = profit !== null && totalCost > 0 ? (profit / totalCost) * 100 : null;
 
-  var rows = entries
+  return {
+    entries: entries,
+    close: close,
+    totalCost: totalCost,
+    totalShares: totalShares,
+    avgCost: avgCost,
+    marketValue: marketValue,
+    profit: profit,
+    profitPct: profitPct,
+  };
+}
+
+function renderDcaView() {
+  var box = $("view-dca");
+  if (state.dcaCode) {
+    box.innerHTML = renderDcaLedger(state.dcaCode);
+    bindDcaLedgerEvents(state.dcaCode);
+  } else {
+    box.innerHTML = renderDcaOverview();
+    bindDcaOverviewEvents();
+  }
+}
+
+function renderDcaOverview() {
+  var codes = getDcaCodes();
+  var rows = codes.map(function (code) {
+    var name = (state.data.daily[code] || {}).name || code;
+    return { code: code, name: name, s: computeDcaSummary(code) };
+  });
+
+  var totalCost = 0;
+  var totalMarket = 0;
+  var hasAllPrices = true;
+  rows.forEach(function (r) {
+    totalCost += r.s.totalCost;
+    if (r.s.marketValue !== null) totalMarket += r.s.marketValue;
+    else hasAllPrices = false;
+  });
+  var totalProfit = hasAllPrices ? totalMarket - totalCost : null;
+  var totalProfitPct = totalProfit !== null && totalCost > 0 ? (totalProfit / totalCost) * 100 : null;
+
+  var body = !rows.length
+    ? '<p class="empty">還沒有任何定期定額紀錄。在下面搜尋股票，新增第一筆扣款。</p>'
+    : '<div class="grid">' +
+      statCell("總投入", fmtInt(totalCost) + " 元") +
+      statCell("總市值", hasAllPrices ? fmtInt(totalMarket) + " 元" : "—") +
+      statCell(
+        "總損益",
+        totalProfit === null
+          ? "—"
+          : '<span class="' + trendClass(totalProfit) + '">' +
+            withSign(totalProfit, 0) + " 元" +
+            (totalProfitPct === null ? "" : subNote(withSign(totalProfitPct) + "%")) +
+            "</span>"
+      ) +
+      "</div>" +
+      '<div class="dca-holdings">' +
+      rows
+        .map(function (r) {
+          return (
+            '<button class="watch-row" data-code="' + esc(r.code) + '">' +
+            '<span class="code">' + esc(r.code) + "</span>" +
+            '<span class="name">' + esc(r.name) + "</span>" +
+            '<span class="price">' + fmtInt(r.s.totalCost) + " 元</span>" +
+            '<span class="chg ' + trendClass(r.s.profit) + '">' +
+            (r.s.profitPct === null ? "—" : withSign(r.s.profitPct) + "%") +
+            "</span>" +
+            "</button>"
+          );
+        })
+        .join("") +
+      "</div>";
+
+  return (
+    '<h2 class="view-title">💰 定期定額</h2>' +
+    body +
+    '<h3 class="section-title">新增扣款</h3>' +
+    '<input id="dca-search-input" type="search" placeholder="輸入股票代號或名稱" autocomplete="off">' +
+    '<div id="dca-search-results"></div>' +
+    '<p class="caveat">只存在這台裝置的瀏覽器裡，不會上傳。手動記下每次扣款，就能看到真實的平均成本。</p>'
+  );
+}
+
+function bindDcaOverviewEvents() {
+  Array.prototype.forEach.call($("view-dca").querySelectorAll(".dca-holdings .watch-row"), function (el) {
+    el.addEventListener("click", function () {
+      state.dcaCode = el.dataset.code;
+      renderDcaView();
+    });
+  });
+
+  var input = $("dca-search-input");
+  if (!input) return;
+
+  input.addEventListener("input", function () {
+    renderDcaSearch(input.value);
+  });
+  input.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter") return;
+    var matches = search(input.value);
+    if (matches.length) {
+      state.dcaCode = matches[0].code;
+      renderDcaView();
+    }
+  });
+}
+
+function renderDcaSearch(query) {
+  var box = $("dca-search-results");
+  var matches = search(query);
+
+  if (!matches.length) {
+    box.innerHTML = String(query || "").trim()
+      ? '<div class="empty">找不到符合的股票</div>'
+      : "";
+    return;
+  }
+
+  var tracked = getDcaCodes();
+
+  box.innerHTML = matches
+    .map(function (item) {
+      var d = state.data.daily[item.code];
+      var already = tracked.indexOf(item.code) >= 0;
+      return (
+        '<button class="result-row" data-code="' + esc(item.code) + '">' +
+        (already ? '<span class="star-badge">●</span>' : "") +
+        '<span class="code">' + esc(item.code) + "</span>" +
+        '<span class="name">' + esc(item.name) + "</span>" +
+        '<span class="price ' + trendClass(d.change) + '">' + fmt(d.close) + "</span>" +
+        "</button>"
+      );
+    })
+    .join("");
+
+  Array.prototype.forEach.call(box.querySelectorAll(".result-row"), function (el) {
+    el.addEventListener("click", function () {
+      state.dcaCode = el.dataset.code;
+      renderDcaView();
+    });
+  });
+}
+
+function renderDcaLedger(code) {
+  var d = state.data.daily[code];
+  var name = d ? d.name : code;
+  var s = computeDcaSummary(code);
+
+  var rows = s.entries
     .map(function (e, i) {
       return (
         "<tr>" +
@@ -520,48 +723,56 @@ function renderDcaCard(code) {
     .join("");
 
   return (
-    '<div class="card">' +
-    "<h3>定期定額紀錄簿</h3>" +
-    '<p class="caveat">只存在這台裝置的瀏覽器裡，不會上傳。' +
-    "手動記下每次扣款，就能看到真實的平均成本。</p>" +
+    '<button class="back-btn" id="dca-back">← 返回總覽</button>' +
+    '<div class="detail-head">' +
+    "<div>" +
+    '<div class="detail-name">' + esc(name) + "</div>" +
+    '<div class="detail-code">' + esc(code) + "</div>" +
+    "</div>" +
+    "</div>" +
+    (d ? '<div class="quote-mini">目前股價 <span class="' + trendClass(d.change) + '">' + fmt(d.close) + "</span></div>" : "") +
     '<div class="dca-form">' +
     '  <label>扣款日<input type="date" id="dca-date"></label>' +
     '  <label>成交價<input type="number" id="dca-price" step="0.01" min="0" ' +
-    'placeholder="' + (close === null ? "0.00" : fmt(close)) + '"></label>' +
+    'placeholder="' + (s.close === null ? "0.00" : fmt(s.close)) + '"></label>' +
     '  <label>金額（元）<input type="number" id="dca-amount" step="1" min="0" ' +
     'placeholder="3000"></label>' +
     '  <button class="primary" id="dca-add">新增扣款</button>' +
     "</div>" +
-    (entries.length
+    (s.entries.length
       ? '<table class="dca-table">' +
         "<thead><tr><th>日期</th><th>價格</th><th>金額</th><th>股數</th><th></th></tr></thead>" +
         "<tbody>" + rows + "</tbody>" +
         "</table>" +
         '<div class="grid dca-summary">' +
-        statCell("累計投入", fmtInt(totalCost) + " 元") +
-        statCell("累計股數", fmt(totalShares)) +
-        statCell("平均成本", fmt(avgCost)) +
-        statCell("目前股價", fmt(close)) +
-        statCell("市值", fmtInt(marketValue) + " 元") +
+        statCell("累計投入", fmtInt(s.totalCost) + " 元") +
+        statCell("累計股數", fmt(s.totalShares)) +
+        statCell("平均成本", fmt(s.avgCost)) +
+        statCell("目前股價", fmt(s.close)) +
+        statCell("市值", fmtInt(s.marketValue) + " 元") +
         statCell(
           "損益",
-          '<span class="' + trendClass(profit) + '">' +
-            (profit === null ? "—" : withSign(profit, 0) + " 元") +
-            (profitPct === null ? "" : subNote(withSign(profitPct) + "%")) +
+          '<span class="' + trendClass(s.profit) + '">' +
+            (s.profit === null ? "—" : withSign(s.profit, 0) + " 元") +
+            (s.profitPct === null ? "" : subNote(withSign(s.profitPct) + "%")) +
             "</span>"
         ) +
         "</div>" +
-        (avgCost !== null && close !== null && close < avgCost
+        (s.avgCost !== null && s.close !== null && s.close < s.avgCost
           ? '<p class="caveat down-note">目前股價低於你的平均成本。' +
             "如果你還在扣款期、而且當初買它的理由沒變，這個月的錢會買到比平常更多的股數" +
             "——那正是定期定額運作的方式，不是它失效了。</p>"
           : "")
-      : '<p class="empty">還沒有紀錄。</p>') +
-    "</div>"
+      : '<p class="empty">還沒有紀錄，填上面的表單新增第一筆。</p>')
   );
 }
 
-function bindDcaEvents(code) {
+function bindDcaLedgerEvents(code) {
+  $("dca-back").addEventListener("click", function () {
+    state.dcaCode = null;
+    renderDcaView();
+  });
+
   var addBtn = $("dca-add");
   if (!addBtn) return;
 
@@ -586,7 +797,7 @@ function bindDcaEvents(code) {
       return a.date.localeCompare(b.date);
     });
     setDca(code, entries);
-    renderDetail();
+    renderDcaView();
   });
 
   Array.prototype.forEach.call(document.querySelectorAll(".dca-table .del"), function (el) {
@@ -594,7 +805,7 @@ function bindDcaEvents(code) {
       var entries = getDca(code);
       entries.splice(Number(el.dataset.index), 1);
       setDca(code, entries);
-      renderDetail();
+      renderDcaView();
     });
   });
 }
