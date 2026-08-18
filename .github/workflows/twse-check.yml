@@ -1,0 +1,116 @@
+name: 台股 API 端點檢查
+
+# 手動觸發專用。用途：不用筆電、不用開瀏覽器，就能確認 stock/ 這一頁
+# 用到的四個證交所端點還通不通、CORS 有沒有開、欄位名稱有沒有被改掉。
+#
+# 怎麼用：Actions 分頁 → 左邊選「台股 API 端點檢查」→ Run workflow
+# → 跑完點進去看 Summary（手機上可讀，不用翻 log）。
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 檢查四個端點
+        run: |
+          BASE="${TWSE_BASE:-https://openapi.twse.com.tw/v1}"
+          # 帶上真實的 Origin，才看得出證交所有沒有回 CORS 標頭
+          ORIGIN="https://saivirtue.github.io"
+
+          # 端點｜這一頁拿它做什麼
+          ENDPOINTS=(
+            "exchangeReport/STOCK_DAY_ALL|收盤價、漲跌、成交量（必要）"
+            "exchangeReport/BWIBBU_ALL|本益比、殖利率、股價淨值比"
+            "opendata/t187ap05_L|每月營業收入"
+            "fund/T86|三大法人買賣超"
+          )
+
+          SUM="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
+          DETAILS=$(mktemp)
+          FAILED=0
+
+          echo "## 台股 API 端點檢查" >> "$SUM"
+          echo "" >> "$SUM"
+          echo "檢查時間：$(TZ=Asia/Taipei date '+%Y-%m-%d %H:%M') (台北)" >> "$SUM"
+          echo "" >> "$SUM"
+          echo "| 端點 | HTTP | CORS | 筆數 | 用途 |" >> "$SUM"
+          echo "|---|---|---|---|---|" >> "$SUM"
+
+          for entry in "${ENDPOINTS[@]}"; do
+            path="${entry%%|*}"
+            purpose="${entry##*|}"
+
+            code=$(curl -sS -o /tmp/body.json -D /tmp/head.txt -w '%{http_code}' \
+                    -H "Origin: $ORIGIN" -H 'Accept: application/json' \
+                    --max-time 60 "$BASE/$path" 2>/dev/null || echo "000")
+
+            # CORS：有沒有回 Access-Control-Allow-Origin
+            acao=$(grep -i '^access-control-allow-origin:' /tmp/head.txt \
+                    | head -1 | cut -d' ' -f2- | tr -d '\r')
+            if [ -n "$acao" ]; then
+              cors="OK \`$acao\`"
+            else
+              cors="無"
+            fi
+
+            if [ "$code" = "200" ] && jq -e 'type == "array"' /tmp/body.json >/dev/null 2>&1; then
+              count=$(jq 'length' /tmp/body.json)
+              status="✅ 200"
+              # 把實際欄位名稱印出來——證交所改欄位時，這是最快的定位方式
+              {
+                echo ""
+                echo "### \`$path\`"
+                echo ""
+                echo "實際欄位名稱："
+                echo ""
+                echo '```'
+                jq -r '(max_by(keys|length) // {}) | keys_unsorted | join(" · ")' /tmp/body.json
+                echo '```'
+                echo ""
+                echo "資料範例（取欄位最完整的一筆）："
+                echo ""
+                echo '```json'
+                jq -c '(max_by(keys|length) // {})' /tmp/body.json | head -c 500
+                echo ""
+                echo '```'
+              } >> "$DETAILS"
+            else
+              count="—"
+              status="❌ $code"
+              FAILED=1
+              {
+                echo ""
+                echo "### \`$path\` — 失敗"
+                echo ""
+                echo "HTTP \`$code\`。回應開頭："
+                echo ""
+                echo '```'
+                head -c 300 /tmp/body.json
+                echo ""
+                echo '```'
+              } >> "$DETAILS"
+            fi
+
+            echo "| \`$path\` | $status | $cors | $count | $purpose |" >> "$SUM"
+          done
+
+          echo "" >> "$SUM"
+          if [ "$FAILED" = "0" ]; then
+            echo "> ✅ 四個端點都通。" >> "$SUM"
+          else
+            echo "> ⚠️ 有端點失敗，看下面的細節。" >> "$SUM"
+          fi
+          echo "" >> "$SUM"
+          echo "**CORS 欄位怎麼讀：** 顯示 OK 代表瀏覽器可以直接抓，stock/ 那一頁不用架 proxy；顯示「無」就需要一個 proxy 中轉。" >> "$SUM"
+          echo "" >> "$SUM"
+          echo "---" >> "$SUM"
+          cat "$DETAILS" >> "$SUM"
+
+          # 這個工作流程是「回報現況」用的，端點掛掉不該讓它顯示成紅色失敗，
+          # 不然會跟「工作流程本身壞了」混在一起。結果一律看 Summary。
+          exit 0
