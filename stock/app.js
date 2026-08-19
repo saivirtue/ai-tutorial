@@ -176,7 +176,6 @@ async function boot() {
   $("market-count").textContent = state.list.length;
   renderDataDate();
   renderStatus();
-  renderEtfRank();
 
   bindEvents();
   switchView("search");
@@ -237,59 +236,6 @@ function bindEvents() {
 }
 
 /* ===== 查詢分頁 ===== */
-
-/* 定期定額熱門標的：搜尋框上方的發現機制。不用先想好要查什麼代號，
-   打開查詢分頁就有東西可以先看——證交所自己統計的定期定額交易戶數
-   排行，個股和 ETF 分開列，點了直接跳去那檔明細。只渲染一次（開機時），
-   排行榜不會因為打字而變動。 */
-function renderEtfRank() {
-  var box = $("etf-rank");
-  if (!box) return;
-
-  var rows = state.etfRank || [];
-  if (!rows.length) {
-    box.innerHTML = "";
-    return;
-  }
-
-  function col(code, name, accounts) {
-    if (!code) return '<div class="rank-cell empty">—</div>';
-    return (
-      '<button class="rank-cell" data-code="' + esc(code) + '">' +
-      '<span class="rank-name">' + esc(name) + "</span>" +
-      '<span class="rank-code">' + esc(code) + "</span>" +
-      '<span class="rank-accounts">' + fmtInt(accounts) + " 戶</span>" +
-      "</button>"
-    );
-  }
-
-  box.innerHTML =
-    '<div class="card">' +
-    "<h3>🔥 定期定額熱門標的 <span class=\"tag\">交易戶數排行</span></h3>" +
-    '<div class="rank-table">' +
-    '<div class="rank-head"><span>個股</span><span>ETF</span></div>' +
-    rows
-      .map(function (r) {
-        return (
-          '<div class="rank-row">' +
-          '<span class="rank-no">' + (r.rank || "") + "</span>" +
-          col(r.stockCode, r.stockName, r.stockAccounts) +
-          col(r.etfCode, r.etfName, r.etfAccounts) +
-          "</div>"
-        );
-      })
-      .join("") +
-    "</div>" +
-    '<p class="caveat">證交所公布的定期定額交易戶數排行，反映的是<strong>大家實際在扣款什麼</strong>，' +
-    "不是漲跌訊號——戶數多不代表報酬會好，只是提供一個「別人在看什麼」的起點。</p>" +
-    "</div>";
-
-  Array.prototype.forEach.call(box.querySelectorAll(".rank-cell[data-code]"), function (el) {
-    el.addEventListener("click", function () {
-      selectStock(el.dataset.code);
-    });
-  });
-}
 
 function search(query) {
   var q = String(query || "").trim().toLowerCase();
@@ -747,6 +693,53 @@ function buildSparkline(values) {
   );
 }
 
+/* ===== 定期定額熱門標的 =====
+   證交所自己統計的定期定額交易戶數排行，個股和 ETF 分開列前十名。
+   放在定期定額總覽——「不知道要扣什麼」時，這裡是找靈感的地方，剛好接在
+   「新增扣款」的搜尋框前面。原本放在查詢分頁最上方會擋到搜尋，改到這裡。
+
+   回傳 HTML 字串（不是直接操作 DOM）——要接在 renderDcaOverview() 組出來
+   的一大串 HTML 裡，事件綁定跟總覽的其他部分一樣，統一交給
+   bindDcaOverviewEvents() 在插入畫面後才做。沒有資料就回傳空字串，
+   不佔位置。 */
+function buildEtfRankHtml() {
+  var rows = state.etfRank || [];
+  if (!rows.length) return "";
+
+  function col(code, name, accounts) {
+    if (!code) return '<div class="rank-cell empty">—</div>';
+    return (
+      '<button class="rank-cell" data-code="' + esc(code) + '">' +
+      '<span class="rank-name">' + esc(name) + "</span>" +
+      '<span class="rank-code">' + esc(code) + "</span>" +
+      '<span class="rank-accounts">' + fmtInt(accounts) + " 戶</span>" +
+      "</button>"
+    );
+  }
+
+  return (
+    '<div class="card">' +
+    "<h3>🔥 定期定額熱門標的 <span class=\"tag\">交易戶數排行</span></h3>" +
+    '<div class="rank-table">' +
+    '<div class="rank-head"><span>個股</span><span>ETF</span></div>' +
+    rows
+      .map(function (r) {
+        return (
+          '<div class="rank-row">' +
+          '<span class="rank-no">' + (r.rank || "") + "</span>" +
+          col(r.stockCode, r.stockName, r.stockAccounts) +
+          col(r.etfCode, r.etfName, r.etfAccounts) +
+          "</div>"
+        );
+      })
+      .join("") +
+    "</div>" +
+    '<p class="caveat">證交所公布的定期定額交易戶數排行，反映的是<strong>大家實際在扣款什麼</strong>，' +
+    "不是漲跌訊號——戶數多不代表報酬會好，只是提供一個「別人在看什麼」的起點。</p>" +
+    "</div>"
+  );
+}
+
 function renderDcaOverview() {
   var codes = getDcaCodes();
   var rows = codes.map(function (code) {
@@ -801,6 +794,7 @@ function renderDcaOverview() {
     '<h2 class="view-title">💰 定期定額</h2>' +
     renderMarketOverview() +
     body +
+    buildEtfRankHtml() +
     '<h3 class="section-title">新增扣款</h3>' +
     '<input id="dca-search-input" type="search" placeholder="輸入股票代號或名稱" autocomplete="off">' +
     '<div id="dca-search-results"></div>' +
@@ -810,6 +804,16 @@ function renderDcaOverview() {
 
 function bindDcaOverviewEvents() {
   Array.prototype.forEach.call($("view-dca").querySelectorAll(".dca-holdings .watch-row"), function (el) {
+    el.addEventListener("click", function () {
+      state.dcaCode = el.dataset.code;
+      renderDcaView();
+    });
+  });
+
+  /* 熱門標的排行的點擊——直接開該檔的定期定額帳本，不是跳去查詢分頁。
+     這裡本來就是「不知道扣什麼、來找靈感」的情境，點了直接接上新增
+     扣款的流程比較順，跟上面「我的持股」點進去是同一個目的地。 */
+  Array.prototype.forEach.call($("view-dca").querySelectorAll(".rank-cell[data-code]"), function (el) {
     el.addEventListener("click", function () {
       state.dcaCode = el.dataset.code;
       renderDcaView();
