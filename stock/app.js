@@ -233,6 +233,37 @@ function bindEvents() {
     setProxy($("proxy-input").value.trim());
     location.reload();
   });
+
+  $("dca-clear-all").addEventListener("click", clearAllDca);
+}
+
+/* 一次清空所有定期定額紀錄——主要是給測試用的假資料收尾，不用逐檔逐筆
+   點刪除。只清 DCA_KEY，自選清單（WATCH_KEY）不受影響。清掉前用
+   confirm() 講清楚會刪多少、講清楚不能復原，這是真的會清掉資料的操作，
+   不能只靠一個按鈕就動手。 */
+function clearAllDca() {
+  var codes = getDcaCodes();
+  if (!codes.length) {
+    alert("目前沒有任何定期定額紀錄，不用清。");
+    return;
+  }
+
+  var totalEntries = codes.reduce(function (sum, code) {
+    return sum + getDca(code).length;
+  }, 0);
+
+  var ok = confirm(
+    "確定要清空全部定期定額紀錄嗎？\n\n" +
+      "將刪除 " + codes.length + " 檔、共 " + totalEntries + " 筆扣款紀錄。\n" +
+      "這個動作不能復原（自選清單不受影響）。"
+  );
+  if (!ok) return;
+
+  writeJson(DCA_KEY, {});
+  state.dcaCode = null;
+
+  if (state.view === "dca") renderDcaView();
+  if (state.current) renderDetail(); // 明細卡片上的「💰 定期定額」按鈕亮起狀態要跟著更新
 }
 
 /* ===== 查詢分頁 ===== */

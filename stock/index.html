@@ -556,6 +556,21 @@
       cursor: pointer;
     }
 
+    /* 用琥珀色（跟頁首警語同一色系）標示「有點危險、會刪資料」，
+       不用紅色——紅色在這頁已經是「股價上漲」的意思，混用會誤導。 */
+    .danger-btn {
+      background: rgba(255, 176, 32, 0.12);
+      border: 1px solid #6b5a1a;
+      border-radius: 8px;
+      color: #ffb020;
+      padding: 9px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      width: 100%;
+    }
+
     #loading { color: var(--dim); padding: 20px 0; }
 
     .back {
@@ -632,6 +647,15 @@
       </div>
       <input id="proxy-input" type="text" placeholder="https://your-worker.workers.dev/?url={url}">
       <button id="proxy-save">儲存並重新載入</button>
+    </div>
+
+    <h3 class="section-title">資料管理</h3>
+    <div class="proxy-box">
+      <div class="caveat">
+        定期定額紀錄只存在這台裝置的瀏覽器裡。測試用的假紀錄可以逐筆刪除（帳本裡每一列都有「刪除」），
+        或用下面這顆按鈕一次清空——會先跟你確認，清掉<strong>不能復原</strong>。自選清單不受影響。
+      </div>
+      <button id="dca-clear-all" class="danger-btn">清空所有定期定額紀錄</button>
     </div>
   </div>
 </div>
