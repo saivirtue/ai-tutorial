@@ -416,6 +416,24 @@ async function fetchValuationHistory() {
   }
 }
 
+/* 個股三大法人買賣超的累積歷史——不算百分位（買賣超沒有「相對貴便宜」
+   這種概念），前端用這份資料自己算「連續同方向天數」和「近 N 日累計」。
+   跟其他累積檔同一套邏輯（見 stock-data.yml 的「累積三大法人歷史」），
+   只保留 daily.json 有的代號（institution.json 涵蓋權證等更廣的證券
+   類型，全部存會爆量）。
+
+   格式：{ "2330": { d: [...], f: [外資,...], t: [投信,...],
+             deal: [自營商,...], tot: [合計,...] }, ... }，單位是股。 */
+async function fetchInstitutionHistory() {
+  try {
+    var res = await fetch(SNAPSHOT_DIR + "institution-history.json");
+    if (!res.ok) return {};
+    return await res.json();
+  } catch (e) {
+    return {};
+  }
+}
+
 /* 全部資料源一起抓。回傳 { data, status, meta }。 */
 async function loadAll() {
   var results = await Promise.all(SOURCES.map(fetchSource));

@@ -23,6 +23,7 @@ var state = {
   etfRank: [],         // 定期定額交易戶數排行（證交所給幾名就顯示幾名，目前實測是前 20 名）
   priceHistory: {},    // 每檔逐日累積的收盤價，算「近一年報酬」用
   valuationHistory: {}, // 每檔逐日累積的本益比／殖利率，算「跟自己過去比」的河流圖用
+  institutionHistory: {}, // 每檔逐日累積的三大法人買賣超，算連續天數／近N日累計用
 };
 
 /* ===== 小工具 ===== */
@@ -145,6 +146,7 @@ async function boot() {
     fetchEtfRank(),
     fetchPriceHistory(),
     fetchValuationHistory(),
+    fetchInstitutionHistory(),
   ]);
   var result = loaded[0];
   state.data = result.data;
@@ -153,6 +155,7 @@ async function boot() {
   state.etfRank = loaded[2];
   state.priceHistory = loaded[3];
   state.valuationHistory = loaded[4];
+  state.institutionHistory = loaded[5];
 
   var daily = state.data.daily;
   if (!daily || !Object.keys(daily).length) {
@@ -661,6 +664,41 @@ function renderRevenue(code) {
   );
 }
 
+/* 從最新一天往回數，正負號相同的連續天數。0 或 null 會直接打斷連續，
+   不算進買超也不算進賣超——不是雜訊，是「這天沒有明確方向」。 */
+function computeStreak(series) {
+  if (!series || !series.length) return null;
+  var n = series.length;
+  var last = series[n - 1];
+  if (last === null || last === 0) return { direction: null, days: 0 };
+
+  var dir = last > 0 ? "buy" : "sell";
+  var days = 0;
+  for (var i = n - 1; i >= 0; i--) {
+    var v = series[i];
+    if (v === null) break;
+    var d = v > 0 ? "buy" : v < 0 ? "sell" : null;
+    if (d !== dir) break;
+    days++;
+  }
+  return { direction: dir, days: days };
+}
+
+/* 近 n 天的加總（n 可能比實際累積天數多，取交集）。忽略 null 那幾天，
+   不會因為中間缺一天資料就整個加總失敗。 */
+function sumRecent(series, n) {
+  if (!series || !series.length) return { sum: null, days: 0 };
+  var slice = series.slice(Math.max(0, series.length - n));
+  var valid = slice.filter(function (v) { return v !== null; });
+  if (!valid.length) return { sum: null, days: 0 };
+  return {
+    sum: valid.reduce(function (a, b) { return a + b; }, 0),
+    days: valid.length,
+  };
+}
+
+var INSTITUTION_TREND_MIN_DAYS = 2; // 少於這個天數，連續天數／近N日累計沒有意義
+
 function renderInstitution(code) {
   var t = (state.data.institution || {})[code];
   if (!t) {
@@ -676,6 +714,39 @@ function renderInstitution(code) {
           "</span>";
   }
 
+  var h = (state.institutionHistory || {})[code];
+  var days = h && h.d ? h.d.length : 0;
+  var trendCells = "";
+
+  if (days >= INSTITUTION_TREND_MIN_DAYS) {
+    var cats = [
+      { label: "外資", series: h.f },
+      { label: "投信", series: h.t },
+      { label: "自營商", series: h.deal },
+      { label: "合計", series: h.tot },
+    ];
+    trendCells = cats
+      .map(function (c) {
+        var streak = computeStreak(c.series);
+        var recent = sumRecent(c.series, 10);
+
+        var streakText = !streak || streak.direction === null
+          ? '<span class="flat">近日無明確方向</span>'
+          : '<span class="' + (streak.direction === "buy" ? "up" : "down") + '">' +
+            "連續 " + streak.days + " 天" + (streak.direction === "buy" ? "買超" : "賣超") +
+            "</span>";
+
+        return statCell(
+          c.label + "趨勢",
+          streakText +
+            (recent.sum === null
+              ? ""
+              : subNote("近 " + recent.days + " 日累計 " + withSign(recent.sum / 1000, 0) + " 張"))
+        );
+      })
+      .join("");
+  }
+
   return (
     '<div class="card">' +
     "<h3>三大法人買賣超（張）</h3>" +
@@ -685,8 +756,14 @@ function renderInstitution(code) {
     statCell("自營商", lots(t.dealer)) +
     statCell("合計", lots(t.total)) +
     "</div>" +
-    '<p class="caveat">這是<strong>單日</strong>資料。單一天的買賣超雜訊很大，' +
-    "不要拿來當進出依據——真正有訊號的是連續多日的同方向累積。</p>" +
+    (trendCells
+      ? '<div class="grid" style="margin-top:10px">' + trendCells + "</div>"
+      : '<p class="empty" style="margin-top:10px">連續天數與近期累計還在累積中（目前 ' + days + ' 天）。</p>') +
+    '<p class="caveat">上排是<strong>單日</strong>資料，雜訊很大，不要單獨拿來當進出依據；' +
+    (trendCells
+      ? "下排的連續天數和近期累計，才是比較不受單日雜訊干擾的訊號——但這仍然是<strong>歷史紀錄，不是預測</strong>，不保證方向會延續。"
+      : "真正有訊號的是連續多日的同方向累積，這裡還在累積中，會需要時間。") +
+    "</p>" +
     "</div>"
   );
 }

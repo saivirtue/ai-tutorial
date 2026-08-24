@@ -338,6 +338,94 @@ jobs:
             echo "以 $SAMPLE_CODE 為例，累積天數：$(jq --arg c "$SAMPLE_CODE" '.[$c].d | length' "$HIST")"
           fi
 
+      - name: 累積三大法人歷史
+        run: |
+          # 三大法人版的「多日趨勢」——跟個股估值河流圖同一套累積邏輯，
+          # 但這裡不算百分位（買賣超沒有「相對貴便宜」的概念），是算
+          # 「連續同方向天數」和「近 N 日累計」，這兩個判斷留給前端算。
+          #
+          # institution.json 涵蓋權證等更廣的證券類型（現在約 15000 筆），
+          # 遠超過我們 app 實際會查的 ~1400 檔（daily.json 的範圍）。全部
+          # 累積會讓檔案暴增到不合理的大小，所以只保留 daily.json 有的
+          # 代號——反正使用者也只查得到這些。
+          if [ ! -f stock/data/daily.json ] || [ ! -f stock/data/institution.json ]; then
+            echo "daily.json 或 institution.json 不存在，跳過"
+            exit 0
+          fi
+
+          TRADE_DATE_ROC=$(jq -r '.[0].Date // empty' stock/data/daily.json)
+          if [ -n "$TRADE_DATE_ROC" ] && [ "${#TRADE_DATE_ROC}" = "7" ]; then
+            TRADE_DATE=$(jq -rn --arg d "$TRADE_DATE_ROC" \
+              '($d[0:3] | tonumber + 1911 | tostring) + "-" + $d[3:5] + "-" + $d[5:7]')
+          else
+            TRADE_DATE=$(TZ=Asia/Taipei date +%Y-%m-%d)
+          fi
+          CUTOFF_DATE=$(date -u -d "$TRADE_DATE - 400 days" +%Y-%m-%d 2>/dev/null \
+            || date -u -j -v-400d -f "%Y-%m-%d" "$TRADE_DATE" +%Y-%m-%d)
+          echo "交易日：$TRADE_DATE，只保留 $CUTOFF_DATE 之後的資料"
+
+          jq '[.[].Code]' stock/data/daily.json > /tmp/daily_codes.json
+
+          JQ_INST=$(mktemp)
+          cat > "$JQ_INST" <<'JQEOF'
+          # 法人買賣超的股數欄位帶千分位逗號（例如 "-1,620,725"），跟
+          # daily.json/valuation.json 的價格、本益比欄位不一樣，要先去逗號
+          # 再判斷是不是數字，不然全部會解析失敗變成 null。
+          def numOrNull(s):
+            if (s == null) then null
+            elif (s | type) != "string" then null
+            else
+              (s | gsub(","; "")) as $clean |
+              if ($clean | test("^-?[0-9]+(\\.[0-9]+)?$")) then ($clean | tonumber)
+              else null end
+            end;
+
+          $h[0] as $h | $rows[0] as $rows |
+          ($codes[0] | map({(.): true}) | add // {}) as $valid |
+
+          reduce $rows[] as $row (
+            $h;
+            ($row."證券代號") as $code |
+            if $code == null or $code == "" or ($valid[$code] // false | not) then .
+            else
+              numOrNull($row."外陸資買賣超股數(不含外資自營商)") as $foreign |
+              numOrNull($row."投信買賣超股數") as $trust |
+              numOrNull($row."自營商買賣超股數") as $dealer |
+              numOrNull($row."三大法人買賣超股數") as $total |
+              (.[$code] // {d: [], f: [], t: [], deal: [], tot: []}) as $existing |
+              ( [$existing.d, $existing.f, $existing.t, $existing.deal, $existing.tot] | transpose
+                | map(select(.[0] != $date))
+              ) as $kept |
+              ( ($kept + [[$date, $foreign, $trust, $dealer, $total]])
+                | sort_by(.[0])
+                | map(select(.[0] >= $cutoff))
+              ) as $final |
+              .[$code] = {
+                d: ($final | map(.[0])),
+                f: ($final | map(.[1])),
+                t: ($final | map(.[2])),
+                deal: ($final | map(.[3])),
+                tot: ($final | map(.[4]))
+              }
+            end
+          )
+          JQEOF
+
+          HIST=stock/data/institution-history.json
+          [ -f "$HIST" ] || echo '{}' > "$HIST"
+
+          jq --slurpfile h "$HIST" --slurpfile rows stock/data/institution.json \
+            --slurpfile codes /tmp/daily_codes.json \
+            --arg date "$TRADE_DATE" --arg cutoff "$CUTOFF_DATE" \
+            -n -f "$JQ_INST" \
+            > "$HIST.tmp" && mv "$HIST.tmp" "$HIST"
+
+          echo "追蹤中的代號數：$(jq 'keys | length' "$HIST")"
+          SAMPLE_CODE=$(jq -r 'keys[0] // empty' "$HIST")
+          if [ -n "$SAMPLE_CODE" ]; then
+            echo "以 $SAMPLE_CODE 為例，累積天數：$(jq --arg c "$SAMPLE_CODE" '.[$c].d | length' "$HIST")"
+          fi
+
       - name: 有變更才 commit
         run: |
           git config user.name "github-actions[bot]"
