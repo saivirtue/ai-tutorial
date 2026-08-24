@@ -379,6 +379,22 @@ async function fetchPriceHistory() {
   }
 }
 
+/* 個股本益比／殖利率的累積歷史——個股版的「河流圖」，跟大盤估值概況
+   同一個精神，但比的是「這檔跟它自己過去比」，不是跟全市場比。
+   跟 fetchPriceHistory() 同一套累積邏輯（見 stock-data.yml 的
+   「累積個股估值歷史」步驟），只是多存一個數列。
+
+   格式：{ "2330": { d: ["2026-08-18", ...], pe: [27.5, ...], y: [0.93, ...] }, ... } */
+async function fetchValuationHistory() {
+  try {
+    var res = await fetch(SNAPSHOT_DIR + "valuation-history.json");
+    if (!res.ok) return {};
+    return await res.json();
+  } catch (e) {
+    return {};
+  }
+}
+
 /* 全部資料源一起抓。回傳 { data, status, meta }。 */
 async function loadAll() {
   var results = await Promise.all(SOURCES.map(fetchSource));

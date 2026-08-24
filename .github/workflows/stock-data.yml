@@ -271,6 +271,73 @@ jobs:
             echo "以 $SAMPLE_CODE 為例，累積天數：$(jq --arg c "$SAMPLE_CODE" '.[$c].d | length' "$HIST")"
           fi
 
+      - name: 累積個股估值歷史
+        run: |
+          # 個股版的河流圖——跟大盤估值概況（market-history.json）同一個
+          # 精神，但這裡是「這檔本益比／殖利率跟它自己過去比」，不是跟
+          # 全市場比。跟「累積個股價格歷史」那一步幾乎同一套邏輯，只是
+          # 來源換成 valuation.json，而且一次存兩個數列（本益比＋殖利率）
+          # 不是一個。
+          if [ ! -f stock/data/daily.json ] || [ ! -f stock/data/valuation.json ]; then
+            echo "daily.json 或 valuation.json 不存在，跳過"
+            exit 0
+          fi
+
+          TRADE_DATE_ROC=$(jq -r '.[0].Date // empty' stock/data/daily.json)
+          if [ -n "$TRADE_DATE_ROC" ] && [ "${#TRADE_DATE_ROC}" = "7" ]; then
+            TRADE_DATE=$(jq -rn --arg d "$TRADE_DATE_ROC" \
+              '($d[0:3] | tonumber + 1911 | tostring) + "-" + $d[3:5] + "-" + $d[5:7]')
+          else
+            TRADE_DATE=$(TZ=Asia/Taipei date +%Y-%m-%d)
+          fi
+          CUTOFF_DATE=$(date -u -d "$TRADE_DATE - 400 days" +%Y-%m-%d 2>/dev/null \
+            || date -u -j -v-400d -f "%Y-%m-%d" "$TRADE_DATE" +%Y-%m-%d)
+          echo "交易日：$TRADE_DATE，只保留 $CUTOFF_DATE 之後的資料"
+
+          JQ_VAL=$(mktemp)
+          cat > "$JQ_VAL" <<'JQEOF'
+          def numOrNull(s):
+            if (s == null) then null
+            elif (s | type) != "string" then null
+            elif (s | test("^-?[0-9]+(\\.[0-9]+)?$")) then (s | tonumber)
+            else null end;
+
+          $h[0] as $h | $rows[0] as $rows |
+
+          reduce $rows[] as $row (
+            $h;
+            ($row.Code) as $code |
+            numOrNull($row.PEratio) as $pe |
+            numOrNull($row.DividendYield) as $y |
+            if $code == null or $code == "" then .
+            else
+              (.[$code] // {d: [], pe: [], y: []}) as $existing |
+              ( [$existing.d, $existing.pe, $existing.y] | transpose
+                | map(select(.[0] != $date))
+              ) as $kept |
+              ( ($kept + [[$date, $pe, $y]])
+                | sort_by(.[0])
+                | map(select(.[0] >= $cutoff))
+              ) as $final |
+              .[$code] = { d: ($final | map(.[0])), pe: ($final | map(.[1])), y: ($final | map(.[2])) }
+            end
+          )
+          JQEOF
+
+          HIST=stock/data/valuation-history.json
+          [ -f "$HIST" ] || echo '{}' > "$HIST"
+
+          jq --slurpfile h "$HIST" --slurpfile rows stock/data/valuation.json \
+            --arg date "$TRADE_DATE" --arg cutoff "$CUTOFF_DATE" \
+            -n -f "$JQ_VAL" \
+            > "$HIST.tmp" && mv "$HIST.tmp" "$HIST"
+
+          echo "追蹤中的代號數：$(jq 'keys | length' "$HIST")"
+          SAMPLE_CODE=$(jq -r 'keys[0] // empty' "$HIST")
+          if [ -n "$SAMPLE_CODE" ]; then
+            echo "以 $SAMPLE_CODE 為例，累積天數：$(jq --arg c "$SAMPLE_CODE" '.[$c].d | length' "$HIST")"
+          fi
+
       - name: 有變更才 commit
         run: |
           git config user.name "github-actions[bot]"

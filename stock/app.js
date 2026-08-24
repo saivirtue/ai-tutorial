@@ -22,6 +22,7 @@ var state = {
   marketHistory: [],  // 全市場估值中位數的歷史序列，每個交易日一筆
   etfRank: [],         // 定期定額交易戶數排行（證交所給幾名就顯示幾名，目前實測是前 20 名）
   priceHistory: {},    // 每檔逐日累積的收盤價，算「近一年報酬」用
+  valuationHistory: {}, // 每檔逐日累積的本益比／殖利率，算「跟自己過去比」的河流圖用
 };
 
 /* ===== 小工具 ===== */
@@ -143,6 +144,7 @@ async function boot() {
     fetchMarketHistory(),
     fetchEtfRank(),
     fetchPriceHistory(),
+    fetchValuationHistory(),
   ]);
   var result = loaded[0];
   state.data = result.data;
@@ -150,6 +152,7 @@ async function boot() {
   state.marketHistory = loaded[1];
   state.etfRank = loaded[2];
   state.priceHistory = loaded[3];
+  state.valuationHistory = loaded[4];
 
   var daily = state.data.daily;
   if (!daily || !Object.keys(daily).length) {
@@ -392,6 +395,7 @@ function renderDetail() {
     "</div>" +
     renderPriceHistory(code) +
     renderValuation(code) +
+    renderValuationHistory(code) +
     renderRevenue(code) +
     renderInstitution(code);
 
@@ -538,6 +542,78 @@ function renderValuation(code) {
       : "這檔沒有產業別資料（ETF 和少數標的沒有），所以百分位是拿<strong>全部上市股票</strong>一起排的" +
         "<strong>跨產業</strong>比較——金融股和 IC 設計的合理本益比本來就不一樣，只能當粗略參考。") +
     "這些是估值的相對位置，不是買賣建議。</p>" +
+    "</div>"
+  );
+}
+
+/* ===== 估值河流圖 =====
+   上面的「估值」卡片比的是「跟同業今天比」；這裡比的是「跟這檔自己
+   過去比」——是完全不同的兩種相對位置，卡片標題和文字都要講清楚，
+   不然使用者會被兩個「百分位」搞混。
+
+   跟大盤估值概況（renderMarketOverview）同一套邏輯：累積不滿一段時間
+   前只顯示原始數字，不假裝算得出來。門檻沿用同樣的天數——沒有理由
+   個股跟大盤用不同標準。 */
+function renderValuationHistory(code) {
+  var h = (state.valuationHistory || {})[code];
+  if (!h || !h.d || !h.d.length) {
+    return unavailableCard("估值河流圖", "本益比／殖利率的歷史走勢");
+  }
+
+  var days = h.d.length;
+  var todayPe = h.pe[h.pe.length - 1];
+  var todayY = h.y[h.y.length - 1];
+
+  var peSeries = h.pe
+    .filter(function (v) { return v !== null && v > 0; })
+    .sort(function (a, b) { return a - b; });
+  var ySeries = h.y
+    .filter(function (v) { return v !== null && v > 0; })
+    .sort(function (a, b) { return a - b; });
+
+  var enoughPct = days >= MARKET_MIN_FOR_PERCENTILE;
+  var pePct = enoughPct && todayPe !== null && todayPe > 0
+    ? percentile(peSeries, todayPe)
+    : null;
+  var yPct = enoughPct && todayY !== null && todayY > 0
+    ? percentile(ySeries, todayY)
+    : null;
+
+  var spark = days >= MARKET_MIN_FOR_SPARK
+    ? buildSparkline(h.pe.filter(function (v) { return v !== null; }))
+    : "";
+
+  return (
+    '<div class="card">' +
+    "<h3>估值河流圖 <span class=\"tag\">跟自己過去比</span></h3>" +
+    '<div class="grid">' +
+    statCell(
+      "本益比",
+      fmt(todayPe) +
+        (pePct === null
+          ? ""
+          : subNote("比這檔過去 " + days + " 個交易日中的 " + pePct + "% 都高（相對較貴）"))
+    ) +
+    statCell(
+      "殖利率",
+      fmt(todayY) + "%" +
+        (yPct === null
+          ? ""
+          : subNote("比這檔過去 " + days + " 個交易日中的 " + yPct + "% 都高"))
+    ) +
+    "</div>" +
+    (spark
+      ? '<div class="spark-wrap">' + spark +
+        '<div class="spark-labels"><span>' + esc(h.d[0]) + "</span><span>" +
+        esc(h.d[days - 1]) + "</span></div></div>"
+      : "") +
+    '<p class="caveat">' +
+    (enoughPct
+      ? "「相對較貴／便宜」是跟<strong>這檔自己過去 " + days + " 個交易日</strong>比，" +
+        "不是跟同業比（同業比較在上面「估值」卡片）。"
+      : "資料只有 " + days + " 個交易日，還不夠算相對位置（至少需要 " +
+        MARKET_MIN_FOR_PERCENTILE + " 天）。") +
+    "這不是預測，過去的估值高低不代表接下來會怎樣，不建議當加減碼依據。</p>" +
     "</div>"
   );
 }
