@@ -455,16 +455,20 @@ function renderPriceHistory(code) {
   var trailing = computeTrailingReturn(code);
 
   if (!yr && !trailing) {
-    return unavailableCard("價格歷史", "今年價格區間或近一年報酬");
+    return unavailableCard("價格歷史", "去年價格區間或近一年報酬");
   }
 
   var cells = "";
 
   if (yr) {
+    /* 一開始誤以為 FMNPTK_ALL 是「今年至今」，實測發現 Year 欄位固定回
+       「去年」——證交所要等一整年結束才會出這份年度統計，不是即時累計。
+       標籤跟著資料本身的年份走（yr.year），不要寫死「今年」。 */
+    var yLabel = yr.year ? yr.year + "年" : "去年";
     cells +=
-      statCell("今年最高", fmt(yr.high) + (yr.highDate ? subNote(yr.highDate) : "")) +
-      statCell("今年最低", fmt(yr.low) + (yr.lowDate ? subNote(yr.lowDate) : "")) +
-      statCell("今年均價", fmt(yr.avgClose));
+      statCell(yLabel + "最高", fmt(yr.high) + (yr.highDate ? subNote(yr.highDate) : "")) +
+      statCell(yLabel + "最低", fmt(yr.low) + (yr.lowDate ? subNote(yr.lowDate) : "")) +
+      statCell(yLabel + "均價", fmt(yr.avgClose));
   }
 
   if (trailing && trailing.ready) {
@@ -485,7 +489,11 @@ function renderPriceHistory(code) {
     '<div class="card">' +
     '<h3>價格歷史 <span class="tag">純紀錄，非預測</span></h3>' +
     '<div class="grid">' + cells + "</div>" +
-    '<p class="caveat">「今年最高／最低／均價」是西元今年 1 月以來的區間；' +
+    '<p class="caveat">' +
+    (yr
+      ? "「" + (yr.year ? yr.year + "年" : "去年") + "最高／最低／均價」是證交所公布的<strong>已完整結束的年度</strong>" +
+        "統計，不是「今年至今」——這個端點要等一整年過完才會出資料；"
+      : "") +
     "「近一年報酬」是這個功能上線後逐日累積收盤價自己算出來的，累積不滿約 " +
     PRICE_HISTORY_MIN_DAYS + " 個交易日前會顯示「累積中」，會需要時間。" +
     "這兩者都是<strong>歷史紀錄，不是預測</strong>，過去漲跌不代表接下來會怎樣，不建議當加減碼依據。</p>" +

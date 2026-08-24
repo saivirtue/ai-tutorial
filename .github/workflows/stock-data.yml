@@ -74,7 +74,7 @@ jobs:
             "valuation|exchangeReport/BWIBBU_ALL|本益比、殖利率、股價淨值比" \
             "revenue|opendata/t187ap05_L|每月營業收入" \
             "etfRank|ETFReport/ETFRank|定期定額交易戶數排行" \
-            "ytd|exchangeReport/FMNPTK_ALL|個股年成交資訊（今年至今）"
+            "yearRange|exchangeReport/FMNPTK_ALL|個股年成交資訊（今年至今）"
           do
             key="${entry%%|*}"
             rest="${entry#*|}"

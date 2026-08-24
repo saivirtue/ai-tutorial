@@ -94,6 +94,21 @@ function rocMonth(value) {
   return Number(s.slice(0, cut)) + 1911 + "-" + s.slice(cut);
 }
 
+function pad2(n) {
+  var s = String(n);
+  return s.length < 2 ? "0" + s : s;
+}
+
+/* FMNPTK_ALL 的 HDate/LDate 是「12月31日」這種格式（月不補零、日補零），
+   跟這個 API 家族其他端點的 7 碼民國日期完全不一樣，年份要另外從同一列
+   的 Year 欄位（民國，例如 "114"）拼回去。 */
+function rocMonthDay(rocYear, mdStr) {
+  var m = String(mdStr || "").match(/^(\d{1,2})月(\d{1,2})日$/);
+  var year = Number(rocYear);
+  if (!m || !rocYear || isNaN(year)) return null;
+  return year + 1911 + "-" + pad2(m[1]) + "-" + pad2(m[2]);
+}
+
 /* ===== 資料源定義 =====
    每一個都獨立抓、獨立失敗。其中一個掛掉不會拖垮整頁——畫面上那張卡片
    會顯示「沒資料」，而且下方的「資料源狀態」會告訴你是哪個、為什麼。
@@ -182,18 +197,24 @@ var SOURCES = [
     label: "個股年成交資訊",
     path: "exchangeReport/FMNPTK_ALL",
     required: false,
-    note: "今年至今的最高/最低/均價——純紀錄，不是「近一年報酬」",
+    /* 一開始誤以為這是「今年至今」，實測發現 Year 欄位固定回「去年」
+       （現在是西元 2026 年，這裡給的是民國 114＝西元 2025 年整年的資料）
+       ——證交所要等一個年度完整結束才會出這份年度統計，不是即時累計。
+       所以卡片文字要講清楚這是「去年整年」，不是「今年至今」。 */
+    note: "去年整年的最高/最低/均價——純紀錄，不是「近一年報酬」",
     normalize: function (rows) {
       var map = {};
       rows.forEach(function (row) {
         var code = normCode(pick(row, ["Code"]));
         if (!code) return;
+        var rocYear = pick(row, ["Year"]);
         map[code] = {
-          year: pick(row, ["Year"]),
+          rocYear: rocYear,
+          year: rocYear ? Number(rocYear) + 1911 : null,
           high: num(pick(row, ["HighestPrice"])),
-          highDate: rocDate(pick(row, ["HDate"])),
+          highDate: rocMonthDay(rocYear, pick(row, ["HDate"])),
           low: num(pick(row, ["LowestPrice"])),
-          lowDate: rocDate(pick(row, ["LDate"])),
+          lowDate: rocMonthDay(rocYear, pick(row, ["LDate"])),
           avgClose: num(pick(row, ["AvgClosingPrice"])),
         };
       });
