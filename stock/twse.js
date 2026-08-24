@@ -178,6 +178,29 @@ var SOURCES = [
     },
   },
   {
+    key: "yearRange",
+    label: "個股年成交資訊",
+    path: "exchangeReport/FMNPTK_ALL",
+    required: false,
+    note: "今年至今的最高/最低/均價——純紀錄，不是「近一年報酬」",
+    normalize: function (rows) {
+      var map = {};
+      rows.forEach(function (row) {
+        var code = normCode(pick(row, ["Code"]));
+        if (!code) return;
+        map[code] = {
+          year: pick(row, ["Year"]),
+          high: num(pick(row, ["HighestPrice"])),
+          highDate: rocDate(pick(row, ["HDate"])),
+          low: num(pick(row, ["LowestPrice"])),
+          lowDate: rocDate(pick(row, ["LDate"])),
+          avgClose: num(pick(row, ["AvgClosingPrice"])),
+        };
+      });
+      return map;
+    },
+  },
+  {
     key: "institution",
     label: "三大法人買賣超",
     /* 這份資料不在 openapi.twse.com.tw 底下——它是證交所官網自己的報表 API
@@ -336,6 +359,24 @@ async function fetchEtfRank() {
     .sort(function (a, b) {
       return (a.rank || 0) - (b.rank || 0);
     });
+}
+
+/* 個股每日收盤價的累積歷史——證交所沒有免費端點可以直接查「一年前收盤價」，
+   openapi.twse.com.tw 也沒有參數可以指定查哪一年。唯一誠實的辦法是自己
+   逐日累積：.github/workflows/stock-data.yml 每天把當天收盤價存一筆，
+   只保留最近 400 天。累積不滿一年前，這裡回傳的資料還很淺，用的地方
+   要自己判斷夠不夠算「近一年」。
+
+   格式：{ "2330": { d: ["2026-08-18", ...], c: [1010, ...] }, ... }
+   拿不到就回傳空物件——這是輔助資訊，沒有它其他功能照常運作。 */
+async function fetchPriceHistory() {
+  try {
+    var res = await fetch(SNAPSHOT_DIR + "price-history.json");
+    if (!res.ok) return {};
+    return await res.json();
+  } catch (e) {
+    return {};
+  }
 }
 
 /* 全部資料源一起抓。回傳 { data, status, meta }。 */

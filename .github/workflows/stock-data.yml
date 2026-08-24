@@ -68,12 +68,13 @@ jobs:
               "$key" "$label" "$path" "$status" "$n" "$http" >> "$META"
           }
 
-          # ===== 四個 openapi.twse.com.tw 端點：回應本來就是陣列 =====
+          # ===== 五個 openapi.twse.com.tw 端點：回應本來就是陣列 =====
           for entry in \
             "daily|exchangeReport/STOCK_DAY_ALL|個股日成交資訊" \
             "valuation|exchangeReport/BWIBBU_ALL|本益比、殖利率、股價淨值比" \
             "revenue|opendata/t187ap05_L|每月營業收入" \
-            "etfRank|ETFReport/ETFRank|定期定額交易戶數排行"
+            "etfRank|ETFReport/ETFRank|定期定額交易戶數排行" \
+            "ytd|exchangeReport/FMNPTK_ALL|個股年成交資訊（今年至今）"
           do
             key="${entry%%|*}"
             rest="${entry#*|}"
@@ -200,6 +201,75 @@ jobs:
             "$HIST" > "$HIST.tmp" && mv "$HIST.tmp" "$HIST"
 
           echo "累積天數：$(jq 'length' "$HIST")"
+
+      - name: 累積個股價格歷史
+        run: |
+          # 「近一年報酬」證交所沒有現成端點可以直接查——openapi.twse.com.tw
+          # 沒有參數可以指定查哪一年（FMNPTK_ALL 固定回今年至今），要湊出
+          # 「跟一年前收盤價比」，唯一誠實的辦法就是像 market-history.json
+          # 那樣自己逐日累積：每天把今天的收盤價存起來，滿一年後最舊的一筆
+          # 自然就是「大約一年前」，不用等到、也不假裝現在就有。
+          #
+          # 為了不要讓檔案無限長大，只保留最近 400 天（留一點緩衝，確保
+          # 滿一年時「最舊的一筆」不會因為假日/國定假日湊不滿 365 天）。
+          if [ ! -f stock/data/daily.json ]; then
+            echo "daily.json 不存在，跳過"
+            exit 0
+          fi
+
+          TRADE_DATE_ROC=$(jq -r '.[0].Date // empty' stock/data/daily.json)
+          if [ -n "$TRADE_DATE_ROC" ] && [ "${#TRADE_DATE_ROC}" = "7" ]; then
+            TRADE_DATE=$(jq -rn --arg d "$TRADE_DATE_ROC" \
+              '($d[0:3] | tonumber + 1911 | tostring) + "-" + $d[3:5] + "-" + $d[5:7]')
+          else
+            TRADE_DATE=$(TZ=Asia/Taipei date +%Y-%m-%d)
+          fi
+          CUTOFF_DATE=$(date -u -d "$TRADE_DATE - 400 days" +%Y-%m-%d 2>/dev/null \
+            || date -u -j -v-400d -f "%Y-%m-%d" "$TRADE_DATE" +%Y-%m-%d)
+          echo "交易日：$TRADE_DATE，只保留 $CUTOFF_DATE 之後的資料"
+
+          JQ_PRICE=$(mktemp)
+          cat > "$JQ_PRICE" <<'JQEOF'
+          def numOrNull(s):
+            if (s == null) then null
+            elif (s | type) != "string" then null
+            elif (s | test("^-?[0-9]+(\\.[0-9]+)?$")) then (s | tonumber)
+            else null end;
+
+          $h[0] as $h | $rows[0] as $rows |
+
+          reduce $rows[] as $row (
+            $h;
+            ($row.Code) as $code |
+            numOrNull($row.ClosingPrice) as $close |
+            if $code == null or $code == "" or $close == null then .
+            else
+              (.[$code] // {d: [], c: []}) as $existing |
+              ( [$existing.d, $existing.c] | transpose
+                | map(select(.[0] != $date))
+              ) as $kept |
+              ( ($kept + [[$date, $close]])
+                | sort_by(.[0])
+                | map(select(.[0] >= $cutoff))
+              ) as $final |
+              .[$code] = { d: ($final | map(.[0])), c: ($final | map(.[1])) }
+            end
+          )
+          JQEOF
+
+          HIST=stock/data/price-history.json
+          [ -f "$HIST" ] || echo '{}' > "$HIST"
+
+          jq --slurpfile h "$HIST" --slurpfile rows stock/data/daily.json \
+            --arg date "$TRADE_DATE" --arg cutoff "$CUTOFF_DATE" \
+            -n -f "$JQ_PRICE" \
+            > "$HIST.tmp" && mv "$HIST.tmp" "$HIST"
+
+          echo "追蹤中的代號數：$(jq 'keys | length' "$HIST")"
+          SAMPLE_CODE=$(jq -r 'keys[0] // empty' "$HIST")
+          if [ -n "$SAMPLE_CODE" ]; then
+            echo "以 $SAMPLE_CODE 為例，累積天數：$(jq --arg c "$SAMPLE_CODE" '.[$c].d | length' "$HIST")"
+          fi
 
       - name: 有變更才 commit
         run: |

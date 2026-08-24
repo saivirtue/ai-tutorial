@@ -21,6 +21,7 @@ var state = {
   dcaCode: null,   // 定期定額分頁：目前打開的個股帳本；null = 顯示總覽
   marketHistory: [],  // 全市場估值中位數的歷史序列，每個交易日一筆
   etfRank: [],         // 定期定額交易戶數排行（證交所給幾名就顯示幾名，目前實測是前 20 名）
+  priceHistory: {},    // 每檔逐日累積的收盤價，算「近一年報酬」用
 };
 
 /* ===== 小工具 ===== */
@@ -137,12 +138,18 @@ async function boot() {
   $("proxy-input").value = getProxy();
   $("loading").textContent = "正在跟證交所要資料…";
 
-  var loaded = await Promise.all([loadAll(), fetchMarketHistory(), fetchEtfRank()]);
+  var loaded = await Promise.all([
+    loadAll(),
+    fetchMarketHistory(),
+    fetchEtfRank(),
+    fetchPriceHistory(),
+  ]);
   var result = loaded[0];
   state.data = result.data;
   state.status = result.status;
   state.marketHistory = loaded[1];
   state.etfRank = loaded[2];
+  state.priceHistory = loaded[3];
 
   var daily = state.data.daily;
   if (!daily || !Object.keys(daily).length) {
@@ -383,6 +390,7 @@ function renderDetail() {
     statCell("成交量", fmtInt(d.volume === null ? null : d.volume / 1000) + " 張") +
     "  </div>" +
     "</div>" +
+    renderPriceHistory(code) +
     renderValuation(code) +
     renderRevenue(code) +
     renderInstitution(code);
@@ -394,6 +402,91 @@ function renderDetail() {
     state.dcaCode = code;
     switchView("dca");
   });
+}
+
+/* ===== 價格歷史 =====
+   兩個數字，來源不一樣、意義也不一樣，不要混為一談：
+
+   「今年最高/最低/均價」來自證交所的 FMNPTK_ALL，馬上就有、但只是
+   西元今年 1 月以來的區間，不是「近一年」。
+
+   「近一年報酬」證交所沒有現成端點——openapi.twse.com.tw 沒有參數能
+   指定查哪一年，唯一誠實的辦法是自己逐日累積收盤價（見 stock-data.yml），
+   累積不滿約 300 個交易日前，這裡只會顯示「累積中」，不假裝算得出來。
+
+   兩者都刻意不帶任何判斷語氣——這是歷史紀錄，不是預測，過去漲跌不代表
+   接下來會怎樣，不建議當加減碼依據。 */
+var PRICE_HISTORY_MIN_DAYS = 300; // 至少要有這麼多天，「近一年」才算數
+
+function computeTrailingReturn(code) {
+  var h = (state.priceHistory || {})[code];
+  if (!h || !h.d || !h.d.length) return null;
+
+  if (h.d.length < PRICE_HISTORY_MIN_DAYS) {
+    return { ready: false, days: h.d.length };
+  }
+
+  var fromDate = h.d[0];
+  var fromClose = h.c[0];
+  var toDate = h.d[h.d.length - 1];
+  var toClose = h.c[h.c.length - 1];
+
+  if (!(fromClose > 0) || toClose === null || toClose === undefined) {
+    return { ready: false, days: h.d.length };
+  }
+
+  return {
+    ready: true,
+    days: h.d.length,
+    fromDate: fromDate,
+    fromClose: fromClose,
+    toDate: toDate,
+    toClose: toClose,
+    pct: ((toClose - fromClose) / fromClose) * 100,
+  };
+}
+
+function renderPriceHistory(code) {
+  var yr = (state.data.yearRange || {})[code];
+  var trailing = computeTrailingReturn(code);
+
+  if (!yr && !trailing) {
+    return unavailableCard("價格歷史", "今年價格區間或近一年報酬");
+  }
+
+  var cells = "";
+
+  if (yr) {
+    cells +=
+      statCell("今年最高", fmt(yr.high) + (yr.highDate ? subNote(yr.highDate) : "")) +
+      statCell("今年最低", fmt(yr.low) + (yr.lowDate ? subNote(yr.lowDate) : "")) +
+      statCell("今年均價", fmt(yr.avgClose));
+  }
+
+  if (trailing && trailing.ready) {
+    cells += statCell(
+      "近一年報酬",
+      '<span class="' + trendClass(trailing.pct) + '">' + withSign(trailing.pct) + "%</span>" +
+        subNote("與 " + trailing.fromDate + " 收盤 " + fmt(trailing.fromClose) + " 相比")
+    );
+  } else {
+    var days = trailing ? trailing.days : 0;
+    cells += statCell(
+      "近一年報酬",
+      "累積中" + subNote(days + " / 約 " + PRICE_HISTORY_MIN_DAYS + " 個交易日")
+    );
+  }
+
+  return (
+    '<div class="card">' +
+    '<h3>價格歷史 <span class="tag">純紀錄，非預測</span></h3>' +
+    '<div class="grid">' + cells + "</div>" +
+    '<p class="caveat">「今年最高／最低／均價」是西元今年 1 月以來的區間；' +
+    "「近一年報酬」是這個功能上線後逐日累積收盤價自己算出來的，累積不滿約 " +
+    PRICE_HISTORY_MIN_DAYS + " 個交易日前會顯示「累積中」，會需要時間。" +
+    "這兩者都是<strong>歷史紀錄，不是預測</strong>，過去漲跌不代表接下來會怎樣，不建議當加減碼依據。</p>" +
+    "</div>"
+  );
 }
 
 /* 估值：數字本身沒有感覺，加上「相對位置」才讀得懂。
