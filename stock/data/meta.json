@@ -1,18 +1,18 @@
 {
-  "fetchedAt": "2026-08-24T11:26:18Z",
+  "fetchedAt": "2026-08-25T11:01:41Z",
   "sources": {
     "daily": {
       "label": "個股日成交資訊",
       "path": "exchangeReport/STOCK_DAY_ALL",
       "status": "ok",
-      "count": 1377,
+      "count": 1378,
       "http": "200"
     },
     "valuation": {
       "label": "本益比、殖利率、股價淨值比",
       "path": "exchangeReport/BWIBBU_ALL",
       "status": "ok",
-      "count": 1081,
+      "count": 1082,
       "http": "200"
     },
     "revenue": {
@@ -29,7 +29,7 @@
       "count": 20,
       "http": "200"
     },
-    "ytd": {
+    "yearRange": {
       "label": "個股年成交資訊（今年至今）",
       "path": "exchangeReport/FMNPTK_ALL",
       "status": "stale",
@@ -40,7 +40,7 @@
       "label": "三大法人買賣超",
       "path": "www.twse.com.tw/rwd/zh/fund/T86",
       "status": "ok",
-      "count": 14900,
+      "count": 15463,
       "http": "200"
     }
   }
