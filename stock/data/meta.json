@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-08-25T11:01:41Z",
+  "fetchedAt": "2026-08-26T11:03:40Z",
   "sources": {
     "daily": {
       "label": "個股日成交資訊",
@@ -32,7 +32,7 @@
     "yearRange": {
       "label": "個股年成交資訊（今年至今）",
       "path": "exchangeReport/FMNPTK_ALL",
-      "status": "stale",
+      "status": "ok",
       "count": 72048,
       "http": "200"
     },
@@ -40,7 +40,7 @@
       "label": "三大法人買賣超",
       "path": "www.twse.com.tw/rwd/zh/fund/T86",
       "status": "ok",
-      "count": 15463,
+      "count": 17572,
       "http": "200"
     }
   }
