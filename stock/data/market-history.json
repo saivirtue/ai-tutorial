@@ -64,5 +64,11 @@
     "peMedian": 16.66,
     "yieldMedian": 3.57,
     "sampleSize": 793
+  },
+  {
+    "date": "2026-09-01",
+    "peMedian": 16.73,
+    "yieldMedian": 3.51,
+    "sampleSize": 793
   }
 ]
