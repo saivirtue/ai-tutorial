@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-09-04T14:30:04Z",
+  "fetchedAt": "2026-09-07T15:59:44Z",
   "sources": {
     "daily": {
       "label": "個股日成交資訊",
@@ -40,7 +40,7 @@
       "label": "三大法人買賣超",
       "path": "www.twse.com.tw/rwd/zh/fund/T86",
       "status": "ok",
-      "count": 16777,
+      "count": 17350,
       "http": "200"
     }
   }
