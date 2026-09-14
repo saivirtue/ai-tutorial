@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-09-11T14:34:21Z",
+  "fetchedAt": "2026-09-14T16:29:01Z",
   "sources": {
     "daily": {
       "label": "個股日成交資訊",
@@ -19,7 +19,7 @@
       "label": "每月營業收入",
       "path": "opendata/t187ap05_L",
       "status": "ok",
-      "count": 1085,
+      "count": 1074,
       "http": "200"
     },
     "etfRank": {
@@ -39,7 +39,7 @@
     "institution": {
       "label": "三大法人買賣超",
       "path": "www.twse.com.tw/rwd/zh/fund/T86",
-      "status": "ok",
+      "status": "stale",
       "count": 16539,
       "http": "200"
     }
