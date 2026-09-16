@@ -186,8 +186,20 @@
 
     .target.popping { animation: star-pop 0.3s ease forwards; }
 
-    /* 撈金魚：網子正罩著這條魚，撈到一半 */
+    /* 撈金魚：網子正罩著這條魚，撈到一半。
+       ::after 畫一個會慢慢填滿的圈——原來只有發光，小孩看不出「還要
+       罩多久」，常常提早放手；現在圈填滿一圈＝差不多要撈起來了。 */
     .target.scooping { filter: drop-shadow(0 0 12px var(--star)); }
+
+    .target.scooping::after {
+      content: "";
+      position: absolute;
+      inset: -14px;
+      border-radius: 50%;
+      background: conic-gradient(var(--star) calc(var(--scoop, 0) * 360deg), transparent 0);
+      opacity: 0.8;
+      z-index: -1;
+    }
 
     #status {
       font-size: clamp(18px, 3.4vw, 24px);
@@ -384,7 +396,19 @@
 
       // 掛在外面，手勢和滑鼠點擊都用同一套判定
       window.whackHole = function (hole) {
-        if (!playing || !hole || !hole.classList.contains("up")) return;
+        if (!playing) return;
+
+        // 揮了／點了，但那個洞沒地鼠：要有反應，不然小孩不知道
+        // 「是揮空了」還是「手勢根本沒被抓到」，會很挫折。
+        if (!hole || !hole.classList.contains("up")) {
+          playSound("wrong");
+          if (hole) {
+            hole.classList.add("shake");
+            setTimeout(function () { hole.classList.remove("shake"); }, 300);
+          }
+          return;
+        }
+
         hole.classList.remove("up");
         hole.classList.add("hit");
         setTimeout(function () { hole.classList.remove("hit"); }, 150);
@@ -567,12 +591,16 @@
         var near = aim.active ? fishNear(aim.x, aim.y) : null;
         if (near && near === holdOn) {
           holdMs += dt;
+          near.el.style.setProperty("--scoop", Math.min(1, holdMs / FISH_SCOOP_MS));
           if (holdMs >= FISH_SCOOP_MS) scoopFish(near);
         } else {
           if (holdOn) holdOn.el.classList.remove("scooping");
           holdOn = near;
           holdMs = 0;
-          if (near) near.el.classList.add("scooping");
+          if (near) {
+            near.el.classList.add("scooping");
+            near.el.style.setProperty("--scoop", 0);
+          }
         }
 
         fieldAnim = requestAnimationFrame(frame);

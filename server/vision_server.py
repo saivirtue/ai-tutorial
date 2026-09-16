@@ -142,6 +142,7 @@ SWIPE_WINDOW = 0.40      # 秒
 GESTURE_COOLDOWN = 0.45  # 出了一個手勢之後，這段時間內不再出下一個
                          # （打地鼠要連打，所以不能設太久；出過手勢會把
                          #   歷史清空，本來就至少要再累積 PUSH_WINDOW 秒）
+LOST_GRACE = 0.2         # 手不見超過這麼久才真的清掉手勢歷史（見下方說明）
 
 pending_gestures = []              # 視覺執行緒放進來，廣播迴圈拿走
 gesture_lock = threading.Lock()    # 兩個執行緒都會碰，要上鎖
@@ -179,7 +180,14 @@ class GestureTracker:
         self.last_fired = 0.0
 
     def reset(self):
-        """看不到手了：把歷史清掉，免得手再出現時算出一個假的大位移。"""
+        """手真的不見了（超過 LOST_GRACE）：清掉歷史，免得手再出現時
+        拿一筆很舊的資料去算出一個假的大位移。
+
+        重要：不要一偵測不到手就馬上呼叫這個。往前揮拳是最快的動作，
+        MediaPipe 常常會在揮到一半時追蹤失敗個 1、2 幀（動作模糊），
+        如果那一瞬間就把歷史清空，等手再被抓到時反而找不到「揮之前」
+        的基準點可以比較，揮拳就會直接判定失敗——偏偏這是最該被抓到
+        的那一下。呼叫端應該只在手消失超過 LOST_GRACE 才真的呼叫。"""
         self.history = []
 
     def update(self, x, y, scale):
@@ -458,12 +466,14 @@ def vision_loop(source):
         return
 
     tracker = GestureTracker()
+    hand_lost_since = None    # 手從什麼時候開始不見的（見 LOST_GRACE 說明）
 
     for frame in frames:
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         result = hands.process(rgb)
 
         if result.multi_hand_landmarks:
+            hand_lost_since = None
             total = 0
             for hand, handedness in zip(result.multi_hand_landmarks, result.multi_handedness):
                 total += count_fingers(hand, handedness.classification[0].label)
@@ -483,7 +493,14 @@ def vision_loop(source):
             latest["count"] = None   # 沒看到手
             latest_hand["x"] = None
             latest_hand["y"] = None
-            tracker.reset()
+
+            # 追蹤丟失短於 LOST_GRACE 就先別清歷史——揮拳揮到一半常常
+            # 會有 1、2 幀抓不到手，這時候清掉歷史反而會讓揮拳判定失敗。
+            now = time.monotonic()
+            if hand_lost_since is None:
+                hand_lost_since = now
+            elif now - hand_lost_since >= LOST_GRACE:
+                tracker.reset()
 
         time.sleep(1 / 20)           # 最多 20fps，別把 CPU 吃滿
 
