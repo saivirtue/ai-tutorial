@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, target-densitydpi=device-dpi">
+  <title>手勢 POC（純瀏覽器端）</title>
+  <link rel="stylesheet" href="../../shared/style.css">
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      overflow: auto;
+    }
+
+    #title {
+      font-size: clamp(22px, 4vw, 32px);
+      font-weight: bold;
+      text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+    }
+
+    #intro {
+      max-width: 640px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: rgba(255, 255, 255, 0.85);
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 14px;
+      padding: 10px 16px;
+    }
+
+    #intro b { color: var(--star); }
+
+    /* 影像＋疊圖疊在一起：video 用 CSS 鏡射（看起來像真的鏡子），
+       canvas 不鏡射——鏡射過的座標（跟伺服器端 hand.x 是同一套算法）
+       畫在不鏡射的 canvas 上，效果剛好對得起來，不用算兩次。 */
+    #stage {
+      position: relative;
+      width: min(94vw, 640px);
+      aspect-ratio: 4 / 3;
+      background: #000;
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 8px 0 rgba(0, 0, 0, 0.3);
+    }
+
+    #video, #overlay {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #video {
+      object-fit: cover;
+      transform: scaleX(-1);   /* 看起來像鏡子；canvas 故意不加這個 */
+    }
+
+    #cursor-dot {
+      position: absolute;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: var(--star);
+      opacity: 0.85;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      transition: left 0.05s linear, top 0.05s linear;
+      box-shadow: 0 0 14px var(--star);
+    }
+
+    #cursor-dot[hidden] { display: none; }
+
+    #cursor-dot.flash { animation: star-pop 0.3s ease; }
+
+    #status {
+      font-size: 16px;
+      font-weight: bold;
+      color: var(--star);
+      text-align: center;
+      min-height: 1.6em;
+    }
+
+    #log {
+      width: min(94vw, 640px);
+      max-height: 22vh;
+      overflow-y: auto;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 12px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-family: ui-monospace, monospace;
+      color: rgba(255, 255, 255, 0.85);
+    }
+
+    #log div:first-child { color: var(--star); }
+
+    .home-link {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 18px;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="title">🧪 手勢 POC（純瀏覽器端）</div>
+  <div id="intro">
+    這頁在測一件事：<b>手勢辨識能不能完全在手機/筆電瀏覽器裡跑，不需要另外開一台筆電伺服器。</b>
+    跟現有的夜市／機器人遊戲用的是<b>同一套判定邏輯</b>（往前揮、上下左右揮），差別是這裡改用瀏覽器內建的
+    MediaPipe（WASM）直接處理鏡頭畫面，不透過 WebSocket。<br><br>
+    <b>已知限制：</b>iPhone 上的 Safari 沒有語音辨識 API、也沒有 Web Bluetooth，
+    跟讀小鸚鵡和 SwitchBot 這兩個功能沒辦法用這個方法搬過來，還是要靠有伺服器的筆電。<br><br>
+    需要允許鏡頭權限，而且<b>網址必須是 https 或 localhost</b>（手機瀏覽器的規定），
+    用 <code>http://筆電IP:8000</code> 這種區網網址是打不開鏡頭的。
+  </div>
+
+  <div id="stage">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+    <div id="cursor-dot" hidden></div>
+  </div>
+
+  <div id="status">正在載入模型…</div>
+  <div id="log"><div>手勢紀錄：</div></div>
+
+  <a class="home-link" href="../../">⬅ 回遊戲樂園</a>
+
+  <script src="../../shared/game-utils.js"></script>
+  <script type="module">
+    import { HandLandmarker, FilesetResolver } from
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+    import { GestureTracker, countFingers, palmScale, cursorPosition } from "./gesture-tracker.js";
+
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("overlay");
+    const ctx = canvas.getContext("2d");
+    const cursorDot = document.getElementById("cursor-dot");
+    const statusEl = document.getElementById("status");
+    const logEl = document.getElementById("log");
+
+    function log(text) {
+      const line = document.createElement("div");
+      line.textContent = `${new Date().toLocaleTimeString()}　${text}`;
+      logEl.insertBefore(line, logEl.children[1] || null);
+      // 只留最近 20 筆，不要讓畫面越滾越長
+      while (logEl.children.length > 21) logEl.removeChild(logEl.lastChild);
+    }
+
+    const tracker = new GestureTracker((name, extra) => {
+      cursorDot.classList.remove("flash");
+      void cursorDot.offsetWidth;
+      cursorDot.classList.add("flash");
+      playSound("pop");
+      log(`👉 ${name === "push" ? "往前揮" : `揮${{ up: "上", down: "下", left: "左", right: "右" }[extra.dir]}`}`);
+    });
+
+    async function main() {
+      // ===== 1. 開鏡頭 =====
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        statusEl.textContent = "❌ 這個瀏覽器不支援鏡頭存取（getUserMedia）";
+        return;
+      }
+      if (!window.isSecureContext) {
+        statusEl.textContent = "❌ 不是安全連線（https 或 localhost），瀏覽器會擋鏡頭權限";
+        return;
+      }
+
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: false,
+        });
+      } catch (e) {
+        statusEl.textContent = `❌ 沒有拿到鏡頭權限（${e.name}）`;
+        log(`getUserMedia 失敗：${e.message}`);
+        return;
+      }
+
+      video.srcObject = stream;
+      await video.play();
+
+      // ===== 2. 載入手部偵測模型（WASM，全部在瀏覽器裡跑） =====
+      statusEl.textContent = "正在載入手部偵測模型…";
+      let landmarker;
+      try {
+        const fileset = await FilesetResolver.forVisionTasks(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+        );
+        landmarker = await HandLandmarker.createFromOptions(fileset, {
+          baseOptions: {
+            modelAssetPath:
+              "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+          },
+          runningMode: "VIDEO",
+          numHands: 1,   // 只拿一隻手當游標，跟伺服器端「拿第一隻手」一致
+        });
+      } catch (e) {
+        statusEl.textContent = "❌ 模型載入失敗（可能是網路問題）";
+        log(`模型載入失敗：${e.message}`);
+        return;
+      }
+
+      statusEl.textContent = "✅ 準備好了！把手伸到鏡頭前試試看";
+      log("模型載入完成，開始偵測");
+
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+
+      // ===== 3. 逐幀偵測 =====
+      let lastVideoTime = -1;
+      function frame() {
+        if (video.currentTime !== lastVideoTime) {
+          lastVideoTime = video.currentTime;
+          const result = landmarker.detectForVideo(video, performance.now());
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          if (result.landmarks.length > 0) {
+            const lm = result.landmarks[0];
+            const handedness = result.handednesses[0]?.[0]?.categoryName || "Right";
+
+            const fingers = countFingers(lm, handedness);
+            const scale = palmScale(lm);
+            const pos = cursorPosition(lm);
+
+            cursorDot.hidden = false;
+            cursorDot.style.left = `${pos.x * 100}%`;
+            cursorDot.style.top = `${pos.y * 100}%`;
+            statusEl.textContent = `🖐️ 看到手：${fingers} 根手指`;
+
+            tracker.update(pos.x, pos.y, scale);
+          } else {
+            cursorDot.hidden = true;
+            statusEl.textContent = "沒看到手，把手伸到鏡頭前";
+            tracker.markLost();
+          }
+        }
+        requestAnimationFrame(frame);
+      }
+      frame();
+    }
+
+    main();
+  </script>
+</body>
+</html>
