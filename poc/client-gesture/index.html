@@ -35,11 +35,15 @@
 
     /* 影像＋疊圖疊在一起：video 用 CSS 鏡射（看起來像真的鏡子），
        canvas 不鏡射——鏡射過的座標（跟伺服器端 hand.x 是同一套算法）
-       畫在不鏡射的 canvas 上，效果剛好對得起來，不用算兩次。 */
+       畫在不鏡射的 canvas 上，效果剛好對得起來，不用算兩次。
+
+       第一版用 aspect-ratio:4/3 的小框，實測回饋「畫面只有一半左右」——
+       比起現有伺服器版「站遠一點對著電視玩」的體驗，這個小預覽框顯得
+       侷限。改成直接吃掉大部分螢幕高度，感覺更接近正式遊戲畫面。 */
     #stage {
       position: relative;
-      width: min(94vw, 640px);
-      aspect-ratio: 4 / 3;
+      width: min(96vw, 480px);
+      height: min(64vh, 640px);
       background: #000;
       border-radius: 18px;
       overflow: hidden;
@@ -83,6 +87,24 @@
       min-height: 1.6em;
     }
 
+    /* 效能讀數：上一輪回饋「電量掉很快、辨識勉強」都只是印象，這次
+       把偵測頻率／單次耗時直接顯示出來，下次回饋才有實際數字可以比對，
+       不用再靠猜的調參數。 */
+    #perf {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.6);
+      font-family: ui-monospace, monospace;
+    }
+
+    details#intro-details { width: min(94vw, 640px); }
+    details#intro-details summary {
+      cursor: pointer;
+      color: var(--star);
+      font-size: 14px;
+      font-weight: bold;
+      padding: 4px 2px;
+    }
+
     #log {
       width: min(94vw, 640px);
       max-height: 22vh;
@@ -106,15 +128,24 @@
 </head>
 <body>
   <div id="title">🧪 手勢 POC（純瀏覽器端）</div>
-  <div id="intro">
-    這頁在測一件事：<b>手勢辨識能不能完全在手機/筆電瀏覽器裡跑，不需要另外開一台筆電伺服器。</b>
-    跟現有的夜市／機器人遊戲用的是<b>同一套判定邏輯</b>（往前揮、上下左右揮），差別是這裡改用瀏覽器內建的
-    MediaPipe（WASM）直接處理鏡頭畫面，不透過 WebSocket。<br><br>
-    <b>已知限制：</b>iPhone 上的 Safari 沒有語音辨識 API、也沒有 Web Bluetooth，
-    跟讀小鸚鵡和 SwitchBot 這兩個功能沒辦法用這個方法搬過來，還是要靠有伺服器的筆電。<br><br>
-    需要允許鏡頭權限，而且<b>網址必須是 https 或 localhost</b>（手機瀏覽器的規定），
-    用 <code>http://筆電IP:8000</code> 這種區網網址是打不開鏡頭的。
-  </div>
+
+  <!-- 說明文字第一版佔太多空間，改成預設收合，需要的時候再點開看 -->
+  <details id="intro-details">
+    <summary>▸ 這頁在測什麼？（點開看說明）</summary>
+    <div id="intro">
+      這頁在測一件事：<b>手勢辨識能不能完全在手機/筆電瀏覽器裡跑，不需要另外開一台筆電伺服器。</b>
+      跟現有的夜市／機器人遊戲用的是<b>同一套判定邏輯</b>（往前揮、上下左右揮），差別是這裡改用瀏覽器內建的
+      MediaPipe（WASM）直接處理鏡頭畫面，不透過 WebSocket。<br><br>
+      <b>已知限制：</b>iPhone 上的 Safari 沒有語音辨識 API、也沒有 Web Bluetooth，
+      跟讀小鸚鵡和 SwitchBot 這兩個功能沒辦法用這個方法搬過來，還是要靠有伺服器的筆電。<br><br>
+      需要允許鏡頭權限，而且<b>網址必須是 https 或 localhost</b>（手機瀏覽器的規定），
+      用 <code>http://筆電IP:8000</code> 這種區網網址是打不開鏡頭的。<br><br>
+      <b>這輪調校：</b>畫面下面會顯示「實際偵測頻率」和「單次推論耗時」的實際數字，
+      不用再靠印象猜。預設用 CPU 模式（比較省電、行為可預期），有一顆「⚡ 試試 GPU 加速」
+      的按鈕可以切換比較——如果你的 iPhone 支援，GPU 應該要更快更省電，但也可能相反，
+      實際測了才知道，把兩種模式的數字都回報給我。
+    </div>
+  </details>
 
   <div id="stage">
     <video id="video" autoplay playsinline muted></video>
@@ -123,6 +154,10 @@
   </div>
 
   <div id="status">正在載入模型…</div>
+  <div id="perf"></div>
+  <button id="delegate-toggle" class="big-btn blue" style="font-size:14px; padding:8px 16px;" hidden>
+    ⚡ 試試 GPU 加速
+  </button>
   <div id="log"><div>手勢紀錄：</div></div>
 
   <a class="home-link" href="../../">⬅ 回遊戲樂園</a>
@@ -138,7 +173,22 @@
     const ctx = canvas.getContext("2d");
     const cursorDot = document.getElementById("cursor-dot");
     const statusEl = document.getElementById("status");
+    const perfEl = document.getElementById("perf");
     const logEl = document.getElementById("log");
+    const delegateBtn = document.getElementById("delegate-toggle");
+
+    let landmarker = null;
+    let usingGpu = false;
+    let fileset = null;
+
+    const MODEL_URL =
+      "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
+
+    // 上一輪實測「電量掉很快」——原本是相機每出一張新影格（iPhone 前鏡頭
+    // 大約 30fps）就跑一次 WASM 推論，等於每秒推論 30 次。手勢的判斷窗口
+    // 有 0.35～0.4 秒，10~12 次/秒的取樣密度就綽綽有餘，用不著跟著鏡頭
+    // 全速跑，節流下來能省下大半推論次數。
+    const DETECT_INTERVAL_MS = 1000 / 12;
 
     function log(text) {
       const line = document.createElement("div");
@@ -155,6 +205,33 @@
       playSound("pop");
       log(`👉 ${name === "push" ? "往前揮" : `揮${{ up: "上", down: "下", left: "左", right: "右" }[extra.dir]}`}`);
     });
+
+    async function createLandmarker(delegate) {
+      return HandLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: MODEL_URL, delegate },
+        runningMode: "VIDEO",
+        numHands: 1,   // 只拿一隻手當游標，跟伺服器端「拿第一隻手」一致
+      });
+    }
+
+    delegateBtn.onclick = async () => {
+      const target = usingGpu ? "CPU" : "GPU";
+      delegateBtn.disabled = true;
+      delegateBtn.textContent = `切換到 ${target} 中…`;
+
+      try {
+        const next = await createLandmarker(target);
+        landmarker.close();
+        landmarker = next;
+        usingGpu = target === "GPU";
+        log(`✅ 切換成 ${target} 模式`);
+      } catch (e) {
+        log(`❌ 切換到 ${target} 失敗（${e.message}），維持原本的模式`);
+      }
+
+      delegateBtn.disabled = false;
+      delegateBtn.textContent = usingGpu ? "⚡ 切回 CPU" : "⚡ 試試 GPU 加速";
+    };
 
     async function main() {
       // ===== 1. 開鏡頭 =====
@@ -184,62 +261,82 @@
 
       // ===== 2. 載入手部偵測模型（WASM，全部在瀏覽器裡跑） =====
       statusEl.textContent = "正在載入手部偵測模型…";
-      let landmarker;
       try {
-        const fileset = await FilesetResolver.forVisionTasks(
+        fileset = await FilesetResolver.forVisionTasks(
           "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
         );
-        landmarker = await HandLandmarker.createFromOptions(fileset, {
-          baseOptions: {
-            modelAssetPath:
-              "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-          },
-          runningMode: "VIDEO",
-          numHands: 1,   // 只拿一隻手當游標，跟伺服器端「拿第一隻手」一致
-        });
       } catch (e) {
         statusEl.textContent = "❌ 模型載入失敗（可能是網路問題）";
         log(`模型載入失敗：${e.message}`);
         return;
       }
 
-      statusEl.textContent = "✅ 準備好了！把手伸到鏡頭前試試看";
-      log("模型載入完成，開始偵測");
+      // 預設用 CPU：官方文件說 GPU（WebGL）理論上比較省電，但實測不一定
+      // ——上一輪筆電/手機實測時用的其實就是預設值，那次就已經很耗電了，
+      // 換句話說「預設值」本來就可能已經在用 GPU，不能假設 GPU＝比較好。
+      // 這裡先固定用一個明確、可預期的基準（CPU），GPU 留一顆按鈕讓你
+      // 手動切換比較，兩種模式跑起來的實際數字都會顯示在下面，不用猜。
+      try {
+        landmarker = await createLandmarker("CPU");
+      } catch (e) {
+        statusEl.textContent = "❌ 模型載入失敗（可能是網路問題）";
+        log(`模型載入失敗：${e.message}`);
+        return;
+      }
+
+      delegateBtn.hidden = false;
+      statusEl.textContent = "✅ 準備好了！把手伸到鏡頭前試試看（CPU 模式）";
+      log("模型載入完成，開始偵測（CPU 模式）");
 
       canvas.width = video.videoWidth || 640;
       canvas.height = video.videoHeight || 480;
 
-      // ===== 3. 逐幀偵測 =====
+      // ===== 3. 逐幀偵測（節流過，見上面 DETECT_INTERVAL_MS 的說明） =====
       let lastVideoTime = -1;
-      function frame() {
-        if (video.currentTime !== lastVideoTime) {
-          lastVideoTime = video.currentTime;
-          const result = landmarker.detectForVideo(video, performance.now());
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let lastDetectAt = 0;      // 上一次真的跑推論是什麼時候（節流用）
+      let lastReportAt = 0;      // 上一次跑推論、且跟這次隔多久（算實際頻率用）
 
-          if (result.landmarks.length > 0) {
-            const lm = result.landmarks[0];
-            const handedness = result.handednesses[0]?.[0]?.categoryName || "Right";
-
-            const fingers = countFingers(lm, handedness);
-            const scale = palmScale(lm);
-            const pos = cursorPosition(lm);
-
-            cursorDot.hidden = false;
-            cursorDot.style.left = `${pos.x * 100}%`;
-            cursorDot.style.top = `${pos.y * 100}%`;
-            statusEl.textContent = `🖐️ 看到手：${fingers} 根手指`;
-
-            tracker.update(pos.x, pos.y, scale);
-          } else {
-            cursorDot.hidden = true;
-            statusEl.textContent = "沒看到手，把手伸到鏡頭前";
-            tracker.markLost();
-          }
-        }
+      function frame(ts) {
         requestAnimationFrame(frame);
+
+        // 節流：時間還沒到就先不推論，省電的重點在這裡
+        if (ts - lastDetectAt < DETECT_INTERVAL_MS) return;
+        // 影格沒換也不用重跑（鏡頭 fps 可能比節流頻率還低）
+        if (video.currentTime === lastVideoTime) return;
+        lastVideoTime = video.currentTime;
+
+        const actualHz = lastReportAt ? (1000 / (ts - lastReportAt)).toFixed(1) : "-";
+        lastReportAt = ts;
+        lastDetectAt = ts;
+
+        const t0 = performance.now();
+        const result = landmarker.detectForVideo(video, performance.now());
+        const inferenceMs = (performance.now() - t0).toFixed(0);
+        perfEl.textContent = `${usingGpu ? "GPU" : "CPU"} 模式　實際頻率：約 ${actualHz} Hz　單次推論：${inferenceMs}ms`;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (result.landmarks.length > 0) {
+          const lm = result.landmarks[0];
+          const handedness = result.handednesses[0]?.[0]?.categoryName || "Right";
+
+          const fingers = countFingers(lm, handedness);
+          const scale = palmScale(lm);
+          const pos = cursorPosition(lm);
+
+          cursorDot.hidden = false;
+          cursorDot.style.left = `${pos.x * 100}%`;
+          cursorDot.style.top = `${pos.y * 100}%`;
+          statusEl.textContent = `🖐️ 看到手：${fingers} 根手指`;
+
+          tracker.update(pos.x, pos.y, scale);
+        } else {
+          cursorDot.hidden = true;
+          statusEl.textContent = "沒看到手，把手伸到鏡頭前";
+          tracker.markLost();
+        }
       }
-      frame();
+      requestAnimationFrame(frame);
     }
 
     main();
