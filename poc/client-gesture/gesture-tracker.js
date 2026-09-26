@@ -105,17 +105,32 @@ export class GestureTracker {
    landmarks 是一隻手的 21 個關鍵點（0~1 正規化座標），跟 Python 那邊
    legacy mediapipe.solutions.hands 給的點位編號完全一樣。 */
 
-// 比了幾根手指。food/中指/無名指/小指：指尖比第二關節高就算伸出來；
-// 拇指橫著長，用 x 判斷，且左右手方向相反。
-export function countFingers(landmarks, handednessLabel) {
+// 實測發現：伺服器版原本那套「指尖 y 比第二關節高就算伸出來」（外加
+// 拇指用 x 座標＋左右手判斷方向）是假設手一定直挺挺朝上——這在「筆電
+// 鏡頭固定角度、小孩站在電視前」的場景大致成立，但手機隨手拿著測、
+// 手常常是斜的甚至橫的，畫面上的「上」不等於手的「上」，比出手刀（4
+// 指併攏）這類判斷就很容易錯亂。
+//
+// 改用「指尖離手腕的距離，比中間關節離手腕的距離遠」——伸直的手指本來
+// 就會把指尖推離手腕，跟整隻手在畫面上轉到哪個角度無關（旋轉不改變
+// 兩點間的距離），連拇指都能用同一套規則，不用再另外判斷左右手。
+const DIGITS = [
+  { tip: 4, mid: 3 },    // 拇指：指尖、指間關節
+  { tip: 8, mid: 6 },    // 食指：指尖、第二關節
+  { tip: 12, mid: 10 },  // 中指
+  { tip: 16, mid: 14 },  // 無名指
+  { tip: 20, mid: 18 },  // 小指
+];
+
+function dist(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+export function countFingers(landmarks) {
+  const wrist = landmarks[0];
   let count = 0;
-  for (const tip of [8, 12, 16, 20]) {
-    if (landmarks[tip].y < landmarks[tip - 2].y) count++;
-  }
-  if (handednessLabel === "Right") {
-    if (landmarks[4].x < landmarks[3].x) count++;
-  } else {
-    if (landmarks[4].x > landmarks[3].x) count++;
+  for (const { tip, mid } of DIGITS) {
+    if (dist(wrist, landmarks[tip]) > dist(wrist, landmarks[mid])) count++;
   }
   return count;
 }

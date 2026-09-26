@@ -143,7 +143,10 @@
       <b>這輪調校：</b>畫面下面會顯示「實際偵測頻率」和「單次推論耗時」的實際數字，
       不用再靠印象猜。預設用 CPU 模式（比較省電、行為可預期），有一顆「⚡ 試試 GPU 加速」
       的按鈕可以切換比較——如果你的 iPhone 支援，GPU 應該要更快更省電，但也可能相反，
-      實際測了才知道，把兩種模式的數字都回報給我。
+      實際測了才知道，把兩種模式的數字都回報給我。<br><br>
+      <b>手指計數也修過一版：</b>原本假設手一定直挺挺朝上，手機隨手拿著測、手是斜的
+      就容易算錯（例如手刀這種併攏的手勢）。改成看「指尖離手腕多遠」而不是「畫面上比較高」，
+      手轉到什麼角度理論上都該算出同一個數字。
     </div>
   </details>
 
@@ -318,9 +321,8 @@
 
         if (result.landmarks.length > 0) {
           const lm = result.landmarks[0];
-          const handedness = result.handednesses[0]?.[0]?.categoryName || "Right";
 
-          const fingers = countFingers(lm, handedness);
+          const fingers = countFingers(lm);
           const scale = palmScale(lm);
           const pos = cursorPosition(lm);
 
