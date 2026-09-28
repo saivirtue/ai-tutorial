@@ -413,23 +413,33 @@ def frames_from_webcam():
 
 # ====================== 數手指 ======================
 
-def count_fingers(hand, handedness_label):
+FINGER_JOINTS = (
+    (4, 3),     # 拇指：指尖、指間關節
+    (8, 6),     # 食指：指尖、第二關節
+    (12, 10),   # 中指
+    (16, 14),   # 無名指
+    (20, 18),   # 小指
+)
+
+
+def count_fingers(hand):
     """一隻手比了幾根手指。
 
-    lm[i] 是 MediaPipe 的手部關鍵點（0～20），座標是 0~1 的比例：
-    食指到小指：指尖(tip)比第二關節(pip)「高」（y 比較小）就算伸出來。
-    拇指：橫著長，用 x 判斷，而且左右手方向相反。
+    lm[i] 是 MediaPipe 的手部關鍵點（0～20），座標是 0~1 的比例。
+    指尖離手腕(0)的距離，比中間關節離手腕還遠，就算伸出來。
+
+    舊寫法是比「指尖 y 座標是不是比第二關節高」，隱含假設手一定直挺挺
+    朝上——手斜著比、或手刀這種併攏的手勢就容易算錯（手機版 POC 實測
+    抓到的）。看「離手腕多遠」跟手在畫面上轉幾度無關，拇指也能用同一套
+    規則，不用再分左右手。
     """
     lm = hand.landmark
+    wrist = lm[0]
     count = 0
-    for tip in (8, 12, 16, 20):          # 食指、中指、無名指、小指的指尖
-        if lm[tip].y < lm[tip - 2].y:
-            count += 1
-    if handedness_label == "Right":
-        if lm[4].x < lm[3].x:
-            count += 1
-    else:
-        if lm[4].x > lm[3].x:
+    for tip, mid in FINGER_JOINTS:
+        tip_dist = math.hypot(lm[tip].x - wrist.x, lm[tip].y - wrist.y)
+        mid_dist = math.hypot(lm[mid].x - wrist.x, lm[mid].y - wrist.y)
+        if tip_dist > mid_dist:
             count += 1
     return count
 
@@ -475,8 +485,8 @@ def vision_loop(source):
         if result.multi_hand_landmarks:
             hand_lost_since = None
             total = 0
-            for hand, handedness in zip(result.multi_hand_landmarks, result.multi_handedness):
-                total += count_fingers(hand, handedness.classification[0].label)
+            for hand in result.multi_hand_landmarks:
+                total += count_fingers(hand)
             latest["count"] = total
 
             # 拿第一隻手當「游標」。手腕(0) 到中指根部(9) 的距離代表手掌
