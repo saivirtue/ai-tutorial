@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-10-09T17:08:50Z",
+  "fetchedAt": "2026-10-12T19:57:58Z",
   "sources": {
     "daily": {
       "label": "個股日成交資訊",
@@ -19,7 +19,7 @@
       "label": "每月營業收入",
       "path": "opendata/t187ap05_L",
       "status": "ok",
-      "count": 1086,
+      "count": 868,
       "http": "200"
     },
     "etfRank": {
