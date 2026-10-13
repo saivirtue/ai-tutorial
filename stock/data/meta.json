@@ -1,25 +1,25 @@
 {
-  "fetchedAt": "2026-10-12T19:57:58Z",
+  "fetchedAt": "2026-10-13T17:45:17Z",
   "sources": {
     "daily": {
       "label": "個股日成交資訊",
       "path": "exchangeReport/STOCK_DAY_ALL",
       "status": "ok",
-      "count": 1380,
+      "count": 1381,
       "http": "200"
     },
     "valuation": {
       "label": "本益比、殖利率、股價淨值比",
       "path": "exchangeReport/BWIBBU_ALL",
       "status": "ok",
-      "count": 1082,
+      "count": 1083,
       "http": "200"
     },
     "revenue": {
       "label": "每月營業收入",
       "path": "opendata/t187ap05_L",
       "status": "ok",
-      "count": 868,
+      "count": 869,
       "http": "200"
     },
     "etfRank": {
@@ -32,7 +32,7 @@
     "yearRange": {
       "label": "個股年成交資訊（今年至今）",
       "path": "exchangeReport/FMNPTK_ALL",
-      "status": "ok",
+      "status": "stale",
       "count": 72048,
       "http": "200"
     },
