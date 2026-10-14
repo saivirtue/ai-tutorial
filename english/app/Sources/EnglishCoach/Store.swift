@@ -5,34 +5,54 @@ enum Store {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("EnglishCoach", isDirectory: true)
     }
+    private static var jsonURL: URL { directory.appendingPathComponent("entries.json") }
+    private static var exportDir: URL { directory.appendingPathComponent("export", isDirectory: true) }
 
-    /// 附加到 ~/EnglishCoach/yyyy-MM.md，回傳檔案位置
-    static func append(topic: String, items: [(Question, String)]) throws -> URL {
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    static func load() -> [Entry] {
+        guard let data = try? Data(contentsOf: jsonURL) else { return [] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        if let entries = try? decoder.decode([Entry].self, from: data) {
+            return entries
+        }
+        // 讀不懂時先備份，避免下次存檔把原檔蓋掉
+        let backup = directory.appendingPathComponent("entries.broken-\(Int(Date().timeIntervalSince1970)).json")
+        try? FileManager.default.copyItem(at: jsonURL, to: backup)
+        return []
+    }
+
+    /// entries.json 是主要資料；同時輸出 export/yyyy-MM.md 方便閱讀與週回顧
+    static func save(_ entries: [Entry]) throws {
+        try FileManager.default.createDirectory(at: exportDir, withIntermediateDirectories: true)
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(entries).write(to: jsonURL, options: .atomic)
 
         let monthFmt = DateFormatter()
         monthFmt.dateFormat = "yyyy-MM"
         let stampFmt = DateFormatter()
         stampFmt.dateFormat = "yyyy-MM-dd HH:mm"
-        let now = Date()
 
-        let file = directory.appendingPathComponent("\(monthFmt.string(from: now)).md")
-
-        var text = "## \(stampFmt.string(from: now)) — \(topic)\n\n"
-        for (q, a) in items {
-            let quoted = a.replacingOccurrences(of: "\n", with: "\n> ")
-            text += "**\(q.label)** \(q.text)\n\n> \(quoted)\n\n"
+        let byMonth = Dictionary(grouping: entries) { monthFmt.string(from: $0.date) }
+        for (month, list) in byMonth {
+            var text = ""
+            for e in list.sorted(by: { $0.date < $1.date }) {
+                text += "## \(stampFmt.string(from: e.date)) — \(e.topic)\n\n"
+                for item in e.items {
+                    text += "**\(item.label)** \(item.question)\n\n\(quote(item.answer))\n\n"
+                }
+                if !e.feedback.isEmpty {
+                    text += "**Claude 回饋**\n\n\(quote(e.feedback))\n\n"
+                }
+            }
+            try text.write(to: exportDir.appendingPathComponent("\(month).md"),
+                           atomically: true, encoding: .utf8)
         }
-        let data = Data(text.utf8)
+    }
 
-        if FileManager.default.fileExists(atPath: file.path) {
-            let handle = try FileHandle(forWritingTo: file)
-            defer { try? handle.close() }
-            _ = try handle.seekToEnd()
-            try handle.write(contentsOf: data)
-        } else {
-            try data.write(to: file)
-        }
-        return file
+    private static func quote(_ s: String) -> String {
+        "> " + s.replacingOccurrences(of: "\n", with: "\n> ")
     }
 }
