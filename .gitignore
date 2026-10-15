@@ -2,3 +2,6 @@ server/.venv/
 __pycache__/
 .DS_Store
 server/sticker-book.json
+
+# 本機的 AI 對話脈絡（WIP 等），不進版控
+.chat-context/
