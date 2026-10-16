@@ -1,8 +1,9 @@
 import SwiftUI
 import AppKit
+import ServiceManagement
 
 final class SessionModel: ObservableObject {
-    enum Tab { case practice, history }
+    enum Tab { case practice, history, settings }
 
     @Published var tab: Tab = .practice { didSet { notice = "" } }
     @Published var entries: [Entry] = Store.load()
@@ -13,6 +14,20 @@ final class SessionModel: ObservableObject {
     @Published var index = 0
     @Published var answers = ["", "", ""]
     @Published var notice = ""
+    @Published var topicLink: String?
+    @Published var episode: Episode?
+
+    // 提醒設定（存在 UserDefaults，改了就重新排程）
+    @Published var reminderEnabled = UserDefaults.standard.object(forKey: "reminderEnabled") as? Bool ?? true {
+        didSet { applyReminder() }
+    }
+    @Published var reminderMinutes = UserDefaults.standard.object(forKey: "reminderMinutes") as? Int ?? 12 * 60 + 15 {
+        didSet { applyReminder() }
+    }
+    @Published var reminderWeekends = UserDefaults.standard.object(forKey: "reminderWeekends") as? Bool ?? false {
+        didSet { applyReminder() }
+    }
+    @Published var reminderStatus = ""
 
     var question: Question { Content.questions[index] }
     var hasNext: Bool { index < Content.questions.count - 1 }
@@ -23,6 +38,48 @@ final class SessionModel: ObservableObject {
             let t = a.trimmingCharacters(in: .whitespacesAndNewlines)
             return t.isEmpty ? nil : Item(label: q.label, question: q.text, answer: t)
         }
+    }
+
+    // MARK: 提醒與建議的那一集
+
+    func applyReminder() {
+        let d = UserDefaults.standard
+        d.set(reminderEnabled, forKey: "reminderEnabled")
+        d.set(reminderMinutes, forKey: "reminderMinutes")
+        d.set(reminderWeekends, forKey: "reminderWeekends")
+        Reminder.schedule(enabled: reminderEnabled, minutes: reminderMinutes, weekends: reminderWeekends) { text in
+            DispatchQueue.main.async { self.reminderStatus = text }
+        }
+    }
+
+    func sendTestNotification() {
+        Reminder.sendTest { text in
+            DispatchQueue.main.async { self.reminderStatus = text }
+        }
+    }
+
+    var launchAtLogin: Bool { SMAppService.mainApp.status == .enabled }
+
+    func setLaunchAtLogin(_ on: Bool) {
+        do {
+            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+            notice = ""
+        } catch {
+            notice = "設定開機啟動失敗：\(error.localizedDescription)（可以試著把 App 放進「應用程式」資料夾）"
+        }
+        objectWillChange.send()
+    }
+
+    func refreshEpisode() {
+        Episode.fetchLatest { ep in
+            DispatchQueue.main.async { if let ep = ep { self.episode = ep } }
+        }
+    }
+
+    func useEpisodeAsTopic() {
+        guard let ep = episode else { return }
+        topic = "BBC 6 Minute English：\(ep.title)"
+        topicLink = ep.pageURL.absoluteString
     }
 
     // MARK: 練習
@@ -48,6 +105,7 @@ final class SessionModel: ObservableObject {
 
     func resetSession() {
         topic = ""
+        topicLink = nil
         started = false
         index = 0
         answers = ["", "", ""]
@@ -65,7 +123,8 @@ final class SessionModel: ObservableObject {
             date: Date(),
             topic: topic.trimmingCharacters(in: .whitespaces),
             items: items,
-            feedback: ""
+            feedback: "",
+            link: topicLink
         )
         entries.insert(entry, at: 0)
         persist()
@@ -95,6 +154,7 @@ final class SessionModel: ObservableObject {
     /// 複製成可以直接貼給 Claude 的格式，並開啟 claude.ai
     func copyForClaude(_ entry: Entry) {
         var s = "今天聽的是：\(entry.topic)\n"
+        if let link = entry.link { s += "集數頁面（有逐字稿）：\(link)\n" }
         for item in entry.items {
             s += "\n題目（\(item.label)）：\(item.question)\n我的回答：\(item.answer)\n"
         }

@@ -9,6 +9,7 @@ struct CoachView: View {
             Picker("", selection: $model.tab) {
                 Text("練習").tag(SessionModel.Tab.practice)
                 Text("紀錄（\(model.entries.count)）").tag(SessionModel.Tab.history)
+                Text("設定").tag(SessionModel.Tab.settings)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -18,6 +19,8 @@ struct CoachView: View {
                 if model.started { questionView } else { startView }
             case .history:
                 HistoryView(model: model)
+            case .settings:
+                SettingsView(model: model)
             }
 
             if !model.notice.isEmpty {
@@ -38,9 +41,12 @@ struct CoachView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("今天聽／讀了什麼？")
                 .font(.title3.bold())
-            Text("一句話就好，中文英文都可以。想不起來就隨便寫個主題。")
+            Text("先去聽，聽完回來說一句就好，中文英文都可以。想不起來就隨便寫個主題。")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+
+            if let ep = model.episode { episodeCard(ep) }
+
             TextField("例如：BBC 6 Minute English，戒酒一個月", text: $model.topic)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit { model.start() }
@@ -52,6 +58,28 @@ struct CoachView: View {
             }
             Spacer()
         }
+    }
+
+    private func episodeCard(_ ep: Episode) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("最新一集 · BBC 6 Minute English · 約 \(ep.minutes) 分鐘")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(ep.title).font(.headline)
+            Text(ep.summary)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(4)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button("▶ 打開這集（影片／逐字稿）") { NSWorkspace.shared.open(ep.pageURL) }
+                Button("聽完了，用這集當主題") { model.useEpisodeAsTopic() }
+            }
+            .controlSize(.small)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.1)))
     }
 
     // MARK: 第二步：一次一題
@@ -161,6 +189,9 @@ struct HistoryView: View {
                     .foregroundStyle(.secondary)
             }
             Text(entry.topic).font(.headline)
+            if let link = entry.link, let url = URL(string: link) {
+                Link("打開這集的頁面", destination: url).font(.caption)
+            }
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
@@ -193,6 +224,60 @@ struct HistoryView: View {
                 Spacer()
                 Button("複製並開 Claude") { model.copyForClaude(entry) }
             }
+        }
+    }
+}
+
+
+// MARK: 設定
+
+struct SettingsView: View {
+    @ObservedObject var model: SessionModel
+
+    private var timeBinding: Binding<Date> {
+        Binding(
+            get: {
+                Calendar.current.date(bySettingHour: model.reminderMinutes / 60,
+                                      minute: model.reminderMinutes % 60,
+                                      second: 0, of: Date()) ?? Date()
+            },
+            set: { date in
+                let c = Calendar.current.dateComponents([.hour, .minute], from: date)
+                model.reminderMinutes = (c.hour ?? 12) * 60 + (c.minute ?? 0)
+            }
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("每日提醒").font(.title3.bold())
+
+            Toggle("跳系統通知提醒我", isOn: $model.reminderEnabled)
+            DatePicker("提醒時間", selection: timeBinding, displayedComponents: .hourAndMinute)
+                .disabled(!model.reminderEnabled)
+            Toggle("週末也提醒", isOn: $model.reminderWeekends)
+                .disabled(!model.reminderEnabled)
+
+            if !model.reminderStatus.isEmpty {
+                Text(model.reminderStatus)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Button("傳一則測試通知") { model.sendTestNotification() }
+                .controlSize(.small)
+
+            Divider()
+
+            Toggle("登入 Mac 時自動啟動", isOn: Binding(
+                get: { model.launchAtLogin },
+                set: { model.setLaunchAtLogin($0) }
+            ))
+            Text("提醒由系統負責，App 沒開著也會跳；點通知會打開練習視窗。自動啟動是為了 ⌃⌥E 隨時能用。")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer()
         }
     }
 }

@@ -85,6 +85,7 @@ enum Store {
             var text = ""
             for e in list.sorted(by: { $0.date < $1.date }) {
                 text += "## \(stampFmt.string(from: e.date)) — \(e.topic)\n\n"
+                if let link = e.link { text += "連結：\(link)\n\n" }
                 for item in e.items {
                     text += "**\(item.label)** \(item.question)\n\n\(quote(item.answer))\n\n"
                 }

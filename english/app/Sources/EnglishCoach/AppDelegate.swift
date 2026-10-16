@@ -1,8 +1,9 @@
 import AppKit
 import SwiftUI
 import Carbon.HIToolbox
+import UserNotifications
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     private var statusItem: NSStatusItem!
     private var panel: NSPanel!
     private var hotKeyRef: EventHotKeyRef?
@@ -12,6 +13,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setUpStatusItem()
         setUpPanel()
         registerHotKey()
+        UNUserNotificationCenter.current().delegate = self
+        model.applyReminder()
+        model.refreshEpisode()
+    }
+
+    // MARK: 通知
+
+    /// App 開著的時候通知也要顯示
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner])
+    }
+
+    /// 點通知 → 打開練習視窗
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        DispatchQueue.main.async { self.showPanel() }
+        completionHandler()
     }
 
     // MARK: 選單列圖示
@@ -57,6 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func showPanel() {
+        model.refreshEpisode()
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
     }
