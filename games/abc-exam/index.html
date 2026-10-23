@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, target-densitydpi=device-dpi">
+  <title>英語日小考</title>
+  <link rel="stylesheet" href="../../shared/style.css">
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 16px;
+      overflow: auto;
+      gap: 12px;
+    }
+
+    .hidden { display: none !important; }
+
+    #title {
+      font-size: clamp(24px, 4vw, 40px);
+      font-weight: bold;
+      text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+    }
+
+    /* 英文字母用「a、g 是單層」的字體，跟學校單字表上的寫法一樣。
+       這些字體有哪個就用哪個，都沒有就退回一般字體。 */
+    .abc {
+      font-family: "Century Gothic", "Andika", "Chalkboard SE", "Comic Sans MS", "Comic Neue", sans-serif;
+    }
+
+    /* ===== 選單 ===== */
+    #menu {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      justify-content: center;
+      max-width: 760px;
+    }
+
+    .mode-btn {
+      width: clamp(150px, 42vw, 220px);
+      font-size: clamp(20px, 3.4vw, 28px);
+      line-height: 1.3;
+    }
+
+    .mode-btn small {
+      display: block;
+      font-size: 0.6em;
+      opacity: 0.85;
+    }
+
+    /* ===== 題目 ===== */
+    #quiz {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+    }
+
+    #card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 28px;
+      padding: 16px 36px;
+      min-width: min(90vw, 360px);
+    }
+
+    #prompt {
+      font-size: clamp(56px, 13vh, 120px);
+      line-height: 1.15;
+      text-align: center;
+    }
+
+    #prompt.small { font-size: clamp(30px, 6vh, 52px); }
+
+    #sub {
+      font-size: clamp(18px, 3vh, 26px);
+      min-height: 1.3em;
+    }
+
+    #replay-btn {
+      font-size: 22px;
+      padding: 10px 20px;
+    }
+
+    #message {
+      font-size: 22px;
+      min-height: 1.4em;
+      font-weight: bold;
+      color: var(--star);
+      text-align: center;
+    }
+
+    #choices {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    #choices .big-btn {
+      font-size: clamp(34px, 6.5vh, 52px);
+      min-width: clamp(80px, 20vw, 120px);
+      padding: 12px 18px;
+    }
+
+    #choices.text .big-btn { font-size: clamp(22px, 4vh, 32px); }
+
+    /* ===== 拼字 ===== */
+    #slots, #tiles {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .slot {
+      width: clamp(44px, 12vw, 70px);
+      height: clamp(56px, 9vh, 80px);
+      border-bottom: 5px solid rgba(255, 255, 255, 0.7);
+      font-size: clamp(36px, 7vh, 60px);
+      text-align: center;
+      color: var(--star);
+    }
+
+    .tile {
+      font-size: clamp(34px, 6.5vh, 52px);
+      width: clamp(60px, 16vw, 90px);
+      padding: 12px 0;
+    }
+
+    .tile.used { visibility: hidden; }
+
+    .link-btn {
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 18px;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+
+    .home-link {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 18px;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="title">📝 英語日小考</div>
+
+  <!-- 選一種練習 -->
+  <div id="menu"></div>
+
+  <!-- 練習中 -->
+  <div id="quiz" class="hidden">
+    <div id="stars"></div>
+    <div id="card">
+      <div id="prompt" class="abc"></div>
+      <div id="sub"></div>
+      <button id="replay-btn" class="big-btn blue" onclick="replay()">🔁 再聽一次</button>
+    </div>
+    <div id="message"></div>
+    <div id="choices"></div>
+    <div id="slots" class="hidden"></div>
+    <div id="tiles" class="hidden"></div>
+    <button class="link-btn" onclick="backToMenu()">⬅ 選別的練習</button>
+  </div>
+
+  <a class="home-link" href="../../">⬅ 回遊戲樂園</a>
+
+  <script src="../../shared/game-utils.js"></script>
+  <script src="../../shared/speech.js"></script>
+  <script src="../../shared/stickers.js"></script>
+  <script src="../../shared/vision-client.js"></script>
+  <script src="../../shared/english-exam.js"></script>
+  <script>
+    /* 最外層變數用 var，不要用 let/const——某些電視盒的 WebView 對
+       「最外層 let/const」有相容性 bug（函式讀不到），var 沒有這個
+       問題。函式內部的 let/const 不受影響，不用改。 */
+
+    var ROUND_SIZE = 8;      // 答對幾題算過一關
+    var CHOICE_COUNT = 4;    // 一次給幾個選項
+
+    var currentKey = null;   // 現在在練哪一種
+    var current = null;      // 現在這一題
+    var correctCount = 0;
+    var locked = false;
+    var decks = {};          // 每種練習各自的題目牌堆（洗牌後一張一張抽，不會一直重複）
+
+    var menuEl = document.getElementById("menu");
+    var quizEl = document.getElementById("quiz");
+    var promptEl = document.getElementById("prompt");
+    var subEl = document.getElementById("sub");
+    var messageEl = document.getElementById("message");
+    var choicesEl = document.getElementById("choices");
+    var slotsEl = document.getElementById("slots");
+    var tilesEl = document.getElementById("tiles");
+    var setStars = createStarBar(document.getElementById("stars"), ROUND_SIZE);
+
+    /* ===== 小工具 ===== */
+
+    // 從牌堆抽一張；抽完了就重新洗牌
+    function drawFrom(key, items) {
+      if (!decks[key] || decks[key].length === 0) decks[key] = shuffle(items);
+      return decks[key].pop();
+    }
+
+    // 從 list 裡挑 n 個不是 target 的（拿來當錯誤選項）
+    function others(list, target, n, sameKey) {
+      return shuffle(list.filter(function (x) { return sameKey(x) !== sameKey(target); })).slice(0, n);
+    }
+
+    // 選項：text 是按鈕上的字，correct 是不是正確答案
+    function option(text, correct) {
+      return { text: text, correct: correct };
+    }
+
+    /* ===== 五種練習：每種都會產生「一題」 =====
+       題目長這樣：
+         prompt：大大的題目　sub：小提示　say：要唸什麼（函式）
+         options：選項　textMode：選項是長句子時要用小字 */
+
+    // Part 1：字母名稱（大小寫配對、聽字母名稱）
+    function makeLetter() {
+      var target = drawFrom("letters", EXAM_LETTERS);
+      var kind = randomFrom(["hear-upper", "hear-lower", "upper-lower", "lower-upper"]);
+      var hear = kind.indexOf("hear") === 0;
+      var answerCase = (kind === "hear-upper" || kind === "lower-upper") ? "upper" : "lower";
+      var promptCase = kind === "upper-lower" ? "upper" : "lower";
+
+      // 錯誤選項：長得像的字母排第一個，不夠的再隨機補
+      var wrongs = others(EXAM_LETTERS, target, EXAM_LETTERS.length, function (x) { return x.upper; });
+      var twin = wrongs.filter(function (x) { return x.lower === CONFUSABLE[target.lower]; });
+      var rest = wrongs.filter(function (x) { return twin.indexOf(x) < 0; });
+      wrongs = twin.concat(rest).slice(0, CHOICE_COUNT - 1);
+
+      var options = [option(target[answerCase], true)].concat(
+        wrongs.map(function (x) { return option(x[answerCase], false); })
+      );
+
+      return {
+        prompt: hear ? "🔊" : target[promptCase],
+        sub: hear
+          ? (answerCase === "upper" ? "聽聽看，是哪個大寫字母？" : "聽聽看，是哪個小寫字母？")
+          : (answerCase === "upper" ? "找出它的大寫" : "找出它的小寫"),
+        say: function () { sayEnglish(target.upper); },
+        options: options,
+        letters: true,
+        speakOnStart: hear,
+        answerText: target.upper + " " + target.lower,
+      };
+    }
+
+    // Part 2：數字單字 1～10
+    function makeNumber() {
+      var target = drawFrom("numbers", EXAM_NUMBERS);
+      var kind = randomFrom(["digit-word", "word-digit", "hear-digit"]);
+      var toWord = kind === "digit-word";
+      var wrongs = others(EXAM_NUMBERS, target, CHOICE_COUNT - 1, function (x) { return x.digit; });
+      var options = [option(toWord ? target.word : target.digit, true)].concat(
+        wrongs.map(function (x) { return option(toWord ? x.word : x.digit, false); })
+      );
+      return {
+        prompt: kind === "digit-word" ? target.digit : (kind === "word-digit" ? target.word : "🔊"),
+        sub: toWord ? "它的英文怎麼寫？" : "是哪個數字？",
+        say: function () { sayEnglish(target.word); },
+        options: options,
+        letters: !toWord,
+        textMode: toWord,
+        speakOnStart: true,
+        answerText: target.digit + " " + target.word,
+      };
+    }
+
+    // Part 3：生活對話（聽英文選中文／看中文選英文）
+    function makePhrase() {
+      var target = drawFrom("phrases", EXAM_PHRASES);
+      var toZh = randomFrom([true, false]);
+      // 錯誤選項不能跟答案「中文一樣」（Goodbye／Bye／See you 都是再見）
+      var pool = EXAM_PHRASES.filter(function (x) { return x.zh !== target.zh; });
+      var wrongs = shuffle(pool).slice(0, CHOICE_COUNT - 1);
+      var options = [option(toZh ? target.zh : target.en, true)].concat(
+        wrongs.map(function (x) { return option(toZh ? x.zh : x.en, false); })
+      );
+      return {
+        prompt: toZh ? target.en : target.zh,
+        promptSmall: true,
+        sub: toZh ? "這句話是什麼意思？" : "這個意思，英文怎麼說？",
+        say: function () { toZh ? sayEnglish(target.en) : say(target.zh); },
+        options: options,
+        textMode: true,
+        speakOnStart: true,
+        answerText: target.en + " " + target.zh,
+      };
+    }
+
+    // Part 4：單字（看圖選單字／聽單字選圖／選開頭字母）
+    function makeWord() {
+      var target = drawFrom("words", EXAM_LETTERS);
+      var kind = randomFrom(["pic-word", "hear-pic", "word-letter"]);
+      var wrongs = others(EXAM_LETTERS, target, CHOICE_COUNT - 1, function (x) { return x.upper; });
+
+      if (kind === "pic-word") {
+        return {
+          prompt: target.emoji,
+          sub: target.zh + "，英文怎麼寫？",
+          say: function () { sayEnglish(target.word); },
+          options: [option(target.word, true)].concat(wrongs.map(function (x) { return option(x.word, false); })),
+          textMode: true,
+          letters: true,
+          speakOnStart: true,
+          answerText: target.word,
+        };
+      }
+      if (kind === "hear-pic") {
+        return {
+          prompt: "🔊",
+          sub: "聽聽看，是哪一個？",
+          say: function () { sayEnglish(target.word); },
+          options: [option(target.emoji, true)].concat(wrongs.map(function (x) { return option(x.emoji, false); })),
+          speakOnStart: true,
+          answerText: target.word + " " + target.emoji,
+        };
+      }
+      return {
+        prompt: target.word,
+        sub: "它的開頭是哪個字母？",
+        say: function () { sayEnglish(target.word); },
+        options: [option(target.upper + " " + target.lower, true)].concat(
+          wrongs.map(function (x) { return option(x.upper + " " + x.lower, false); })
+        ),
+        letters: true,
+        speakOnStart: true,
+        answerText: target.upper + " " + target.lower,
+      };
+    }
+
+    // 拼字不是選擇題，另外處理（見下面 nextSpelling）
+    var MODES = {
+      letters: { label: "🔤 字母 Aa", note: "Part 1　大小寫、字母名稱", make: makeLetter, trophy: "exam-letters" },
+      numbers: { label: "🔢 數字單字", note: "Part 2　one ～ ten", make: makeNumber, trophy: "exam-numbers" },
+      phrases: { label: "💬 生活對話", note: "Part 3　Hello、Goodbye…", make: makePhrase, trophy: "exam-phrases" },
+      words:   { label: "🐱 單字", note: "Part 4　ant ～ monkey", make: makeWord, trophy: "exam-words" },
+      spelling: { label: "✏️ 拼拼看", note: "Part 4　把字母排成單字", spelling: true, trophy: "exam-spelling" },
+    };
+
+    /* ===== 選單 ===== */
+
+    function drawMenu() {
+      menuEl.innerHTML = "";
+      Object.keys(MODES).forEach(function (key) {
+        var btn = document.createElement("button");
+        btn.className = "big-btn mode-btn " + (key === "spelling" ? "orange" : "blue");
+        btn.innerHTML = MODES[key].label + "<small>" + MODES[key].note + "</small>";
+        btn.onclick = function () { startMode(key); };
+        menuEl.appendChild(btn);
+      });
+    }
+
+    function backToMenu() {
+      if (window.speechSynthesis) speechSynthesis.cancel();
+      quizEl.classList.add("hidden");
+      menuEl.classList.remove("hidden");
+      current = null;
+    }
+
+    function startMode(key) {
+      currentKey = key;
+      correctCount = 0;
+      locked = false;
+      setStars(0);
+      menuEl.classList.add("hidden");
+      quizEl.classList.remove("hidden");
+      nextQuestion();
+    }
+
+    /* ===== 出題 ===== */
+
+    function replay() {
+      if (!current) return;
+      if (current.word) sayEnglish(current.word);   // 拼字
+      else if (current.say) current.say();
+    }
+
+    function nextQuestion() {
+      messageEl.textContent = "";
+      if (MODES[currentKey].spelling) {
+        nextSpelling();
+        return;
+      }
+
+      choicesEl.classList.remove("hidden");
+      slotsEl.classList.add("hidden");
+      tilesEl.classList.add("hidden");
+
+      current = MODES[currentKey].make();
+      promptEl.textContent = current.prompt;
+      promptEl.className = "abc" + (current.promptSmall ? " small" : "");
+      subEl.textContent = current.sub;
+      document.getElementById("card").dataset.answer = current.answerText;   // 測試用：正解放這裡
+
+      choicesEl.innerHTML = "";
+      choicesEl.className = current.textMode ? "text" : "";
+      shuffle(current.options).forEach(function (opt) {
+        var btn = document.createElement("button");
+        btn.className = "big-btn" + (current.letters ? " abc" : "");
+        btn.textContent = opt.text;
+        btn.dataset.correct = opt.correct ? "1" : "0";   // 測試用
+        btn.onclick = function () { pick(opt, btn); };
+        choicesEl.appendChild(btn);
+      });
+
+      if (current.speakOnStart) current.say();
+    }
+
+    /* ===== 作答 ===== */
+
+    function pick(opt, btn) {
+      if (locked) return;
+      if (opt.correct) {
+        locked = true;
+        playSound("pop");
+        cheer();
+        btn.style.background = "var(--good)";
+        messageEl.textContent = current.answerText;
+        oneRight();
+      } else {
+        playSound("wrong");
+        encourage();
+        btn.classList.add("shake");
+        setTimeout(function () { btn.classList.remove("shake"); }, 450);
+        setTimeout(function () { if (current) current.say(); }, 900);   // 再唸一次給他聽
+      }
+    }
+
+    function oneRight() {
+      correctCount++;
+      setStars(correctCount);
+      setTimeout(function () {
+        locked = false;
+        if (correctCount >= ROUND_SIZE) roundDone();
+        else nextQuestion();
+      }, 900);
+    }
+
+    function roundDone() {
+      var sticker = awardSticker();
+      var trophy = awardTrophy(MODES[currentKey].trophy);
+      var msg = "🎉 過關！得到貼紙 " + sticker + (trophy ? "\n" + trophy : "");
+      say("過關囉！你得到一張新貼紙！");
+      notifyMilestone();   // 通知伺服器：讓 SwitchBot 按一下實體按鈕！
+      celebrate(msg, "再玩一輪", function () { startMode(currentKey); });
+    }
+
+    /* ===== 拼拼看（Part 4 單字） =====
+       上面一排是空格，下面是打亂的字母。按「下一個該放的字母」就會
+       放進去；按錯會抖一下。不用打字，一年級小孩用手指就能玩。 */
+
+    var spellFilled = 0;
+
+    function nextSpelling() {
+      var target = drawFrom("spelling", EXAM_LETTERS);
+      current = { word: target.word, say: function () { sayEnglish(target.word); } };
+      spellFilled = 0;
+
+      choicesEl.classList.add("hidden");
+      slotsEl.classList.remove("hidden");
+      tilesEl.classList.remove("hidden");
+
+      promptEl.textContent = target.emoji;
+      promptEl.className = "abc";
+      subEl.textContent = target.zh + "，英文怎麼拼？";
+      document.getElementById("card").dataset.answer = target.word;   // 測試用
+
+      slotsEl.innerHTML = "";
+      tilesEl.innerHTML = "";
+      target.word.split("").forEach(function () {
+        var slot = document.createElement("div");
+        slot.className = "slot abc";
+        slotsEl.appendChild(slot);
+      });
+      shuffle(target.word.split("")).forEach(function (letter) {
+        var tile = document.createElement("button");
+        tile.className = "big-btn tile abc";
+        tile.textContent = letter;
+        tile.onclick = function () { pickTile(tile, letter); };
+        tilesEl.appendChild(tile);
+      });
+
+      sayEnglish(target.word);
+    }
+
+    function pickTile(tile, letter) {
+      if (locked || tile.classList.contains("used")) return;
+      if (letter === current.word.charAt(spellFilled)) {
+        playSound("click");
+        slotsEl.children[spellFilled].textContent = letter;
+        tile.classList.add("used");
+        spellFilled++;
+        if (spellFilled === current.word.length) {
+          locked = true;
+          playSound("pop");
+          messageEl.textContent = current.word;
+          sayEnglish(current.word);
+          oneRight();
+        }
+      } else {
+        playSound("wrong");
+        tile.classList.add("shake");
+        setTimeout(function () { tile.classList.remove("shake"); }, 450);
+      }
+    }
+
+    refreshStickers();   // 開場先跟伺服器對一下貼紙，免得用到過期的本機資料
+    createSpeechToggle();
+    drawMenu();
+  </script>
+</body>
+</html>
