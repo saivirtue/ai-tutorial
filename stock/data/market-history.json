@@ -190,5 +190,83 @@
     "peMedian": 16.810000000000002,
     "yieldMedian": 3.53,
     "sampleSize": 792
+  },
+  {
+    "date": "2026-10-02",
+    "peMedian": 16.84,
+    "yieldMedian": 3.54,
+    "sampleSize": 792
+  },
+  {
+    "date": "2026-10-05",
+    "peMedian": 16.77,
+    "yieldMedian": 3.565,
+    "sampleSize": 792
+  },
+  {
+    "date": "2026-10-06",
+    "peMedian": 16.675,
+    "yieldMedian": 3.55,
+    "sampleSize": 792
+  },
+  {
+    "date": "2026-10-07",
+    "peMedian": 16.84,
+    "yieldMedian": 3.52,
+    "sampleSize": 791
+  },
+  {
+    "date": "2026-10-08",
+    "peMedian": 16.90,
+    "yieldMedian": 3.53,
+    "sampleSize": 791
+  },
+  {
+    "date": "2026-10-12",
+    "peMedian": 16.97,
+    "yieldMedian": 3.4850000000000003,
+    "sampleSize": 792
+  },
+  {
+    "date": "2026-10-13",
+    "peMedian": 16.905,
+    "yieldMedian": 3.505,
+    "sampleSize": 792
+  },
+  {
+    "date": "2026-10-14",
+    "peMedian": 16.955,
+    "yieldMedian": 3.465,
+    "sampleSize": 792
+  },
+  {
+    "date": "2026-10-15",
+    "peMedian": 16.765,
+    "yieldMedian": 3.47,
+    "sampleSize": 792
+  },
+  {
+    "date": "2026-10-16",
+    "peMedian": 16.83,
+    "yieldMedian": 3.43,
+    "sampleSize": 793
+  },
+  {
+    "date": "2026-10-19",
+    "peMedian": 16.605,
+    "yieldMedian": 3.49,
+    "sampleSize": 794
+  },
+  {
+    "date": "2026-10-20",
+    "peMedian": 16.465,
+    "yieldMedian": 3.53,
+    "sampleSize": 794
+  },
+  {
+    "date": "2026-10-21",
+    "peMedian": 16.66,
+    "yieldMedian": 3.49,
+    "sampleSize": 794
   }
 ]
