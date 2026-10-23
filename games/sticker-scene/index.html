@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, target-densitydpi=device-dpi">
+  <title>貼紙場景</title>
+  <link rel="stylesheet" href="../../shared/style.css">
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 12px;
+      overflow: auto;
+      gap: 10px;
+    }
+
+    #title {
+      font-size: clamp(24px, 4vw, 40px);
+      font-weight: bold;
+      text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+      margin-top: 6px;
+    }
+
+    /* ===== 背景選擇 ===== */
+    #bgs { display: flex; gap: 10px; }
+    #bgs .big-btn { font-size: 30px; padding: 6px 18px; }
+    #bgs .big-btn.on { outline: 4px solid var(--star); }
+
+    /* ===== 舞台：貼紙貼在這上面 ===== */
+    #stage-wrap {
+      position: relative;
+      width: min(94vw, 640px);
+    }
+
+    #stage {
+      position: relative;
+      width: 100%;
+      height: min(44vh, 340px);
+      border-radius: 22px;
+      overflow: hidden;
+      box-shadow: 0 6px 0 rgba(0, 0, 0, 0.3);
+      touch-action: none;
+    }
+
+    .deco {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      font-size: 40px;
+      pointer-events: none;
+      opacity: 0.9;
+    }
+
+    .placed {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      font-size: clamp(40px, 9vw, 58px);
+      line-height: 1;
+      cursor: grab;
+      touch-action: none;
+      filter: drop-shadow(0 3px 2px rgba(0, 0, 0, 0.3));
+      animation: stamp 0.3s ease;
+    }
+
+    .placed.dragging { cursor: grabbing; z-index: 5; filter: drop-shadow(0 8px 6px rgba(0, 0, 0, 0.4)); }
+    .placed.hop { animation: hop 0.5s ease; }
+
+    @keyframes stamp { from { transform: translate(-50%, -50%) scale(1.8); opacity: 0; } }
+    @keyframes hop {
+      40% { transform: translate(-50%, -80%) scale(1.15); }
+    }
+
+    #trash {
+      position: absolute;
+      right: 8px;
+      bottom: 8px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.35);
+      font-size: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 4;
+    }
+
+    #trash.hot { background: var(--bad); transform: scale(1.25); }
+
+    /* ===== 句子 ===== */
+    #sentence-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: min(94vw, 640px);
+      background: rgba(255, 255, 255, 0.14);
+      border-radius: 20px;
+      padding: 8px 14px;
+      min-height: 76px;
+    }
+
+    #sentence {
+      flex: 1;
+      font-size: clamp(24px, 4.6vw, 34px);
+      font-weight: bold;
+      line-height: 1.4;
+      font-family: "Century Gothic", "Andika", "Chalkboard SE", "Comic Sans MS", "Comic Neue", sans-serif;
+    }
+
+    #sentence.hint { font-size: clamp(20px, 3.6vw, 26px); opacity: 0.85; font-weight: normal; line-height: 1.9; }
+
+    #read-btn { font-size: 30px; padding: 8px 18px; flex: none; }
+
+    /* ===== 貼紙盤 ===== */
+    #palette {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      width: min(94vw, 640px);
+    }
+
+    .pal {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 70px;
+      padding: 6px 2px;
+      border: none;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.15);
+      color: #fff;
+      font-family: "Century Gothic", "Andika", "Chalkboard SE", "Comic Sans MS", "Comic Neue", sans-serif;
+      cursor: pointer;
+    }
+
+    .pal .e { font-size: 38px; line-height: 1.1; }
+    .pal .n { font-size: 14px; }
+    .pal.sel { background: var(--star); color: #2b2b2b; transform: scale(1.08); }
+    .pal.bonus .n::after { content: " ✨"; }
+
+    #tools { display: flex; gap: 10px; }
+    #tools .big-btn { font-size: 20px; line-height: 1.9; padding: 8px 20px; }
+
+    .home-link {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 18px;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="title"></div>
+
+  <div id="bgs"></div>
+
+  <div id="stage-wrap">
+    <div id="stage"></div>
+    <div id="trash">🗑️</div>
+  </div>
+
+  <div id="sentence-row">
+    <div id="sentence" class="hint zy"></div>
+    <button id="read-btn" class="big-btn blue" onclick="readSentence()">🔊</button>
+  </div>
+
+  <div id="palette"></div>
+
+  <div id="tools">
+    <button id="clear-btn" class="big-btn gray zy" onclick="clearAll()"></button>
+  </div>
+
+  <a class="home-link" href="../../">⬅ 回遊戲樂園</a>
+
+  <script src="../../shared/game-utils.js"></script>
+  <script src="../../shared/speech.js"></script>
+  <script src="../../shared/stickers.js"></script>
+  <script src="../../shared/vision-client.js"></script>
+  <script src="../../shared/zhuyin.js"></script>
+  <script src="../../shared/progress.js"></script>
+  <script src="../../shared/english-exam.js"></script>
+  <script>
+    /* 貼紙場景
+       ────────────────────────────────────────────────
+       點一個貼紙，再點舞台，就貼上去了；貼好的可以拖來拖去，拖到
+       右下角的 🗑️ 就收掉。貼了什麼，畫面下面就自動寫出英文句子，
+       可以按 🔊 念出來：
+           I see a cat, two dogs and a hat.
+       沒有對錯、沒有分數、沒有獎勵——這是用英文「說出一句話」的遊戲，
+       讓他放鬆玩。不是每件事都需要獎勵。
+
+       貼紙盤裡有兩種：
+         學校單字表的字（ant、bird、cat……）
+         ✨ 他在貼紙簿裡收集到的動物——順便學到學校還沒教的單字
+       （花掉的貼紙就不在了，所以盤裡有哪些會隨他手上的貼紙變）
+
+       最外層變數用 var，不要用 let/const——某些電視盒的 WebView 對
+       「最外層 let/const」有相容性 bug（函式讀不到）。 */
+
+    var SAVE_KEY = "stickerScenes";
+
+    /* 背景：天空／地面的顏色，加幾個裝飾 */
+    var BACKGROUNDS = [
+      { id: "park", icon: "🌳", bg: "linear-gradient(#8fd8ff, #d6f1ff 58%, #7ed957 58%)",
+        deco: [["☀️", 10, 14], ["☁️", 55, 16], ["☁️", 82, 28], ["🌳", 92, 56]] },
+      { id: "sea", icon: "🏖️", bg: "linear-gradient(#8fd8ff, #d6f1ff 36%, #3aa7e6 36%, #1d6fb8)",
+        deco: [["☀️", 88, 12], ["⛵", 30, 36], ["🌊", 70, 50]] },
+      { id: "night", icon: "🌙", bg: "linear-gradient(#10163d, #2b2f6b 60%, #35507a 60%)",
+        deco: [["🌙", 85, 14], ["⭐", 15, 12], ["⭐", 45, 20], ["✨", 65, 10], ["🏠", 12, 56]] },
+    ];
+
+    /* 學校單字表以外的動物：貼紙簿裡的貼紙 → 英文名字 */
+    var STICKER_NAMES = {
+      "🦁": "lion", "🐯": "tiger", "🐼": "panda", "🐨": "koala", "🦊": "fox", "🦄": "unicorn",
+      "🐬": "dolphin", "🦖": "dinosaur", "🦉": "owl", "🐢": "turtle", "🦋": "butterfly",
+      "🐙": "octopus", "🦩": "flamingo", "🐧": "penguin", "🦒": "giraffe", "🐘": "elephant",
+    };
+
+    // 不照 +s 規則的複數
+    var PLURALS = { fish: "fish", fox: "foxes", butterfly: "butterflies", octopus: "octopuses" };
+    // 母音開頭但讀起來是子音（a unicorn）
+    var A_NOT_AN = { unicorn: true };
+
+    var stageEl = document.getElementById("stage");
+    var trashEl = document.getElementById("trash");
+    var sentenceEl = document.getElementById("sentence");
+    var paletteEl = document.getElementById("palette");
+
+    var bgIndex = 0;
+    var placed = [];        // { id, key, x, y }（x、y 是舞台的百分比）
+    var selectedKey = null;
+    var nextId = 1;
+    var catalog = {};       // key（英文單字）→ { key, emoji, name, plural, article, exam }
+
+    /* ===== 貼紙目錄 ===== */
+
+    function addEntry(name, emoji, exam, hidden) {
+      var vowel = /^[aeiou]/.test(name) && !A_NOT_AN[name];
+      catalog[name] = {
+        key: name, emoji: emoji, name: name, exam: exam || null,
+        hidden: !!hidden,   // 貼紙盤不顯示（貼紙已經花掉了），但已經貼在舞台上的作品要保留
+        plural: PLURALS[name] || (name + "s"),
+        article: vowel ? "an" : "a",
+      };
+    }
+
+    function buildCatalog() {
+      catalog = {};
+      EXAM_LETTERS.forEach(function (item) { addEntry(item.word, item.emoji, item); });
+      var have = getCollection().stickers || {};
+      var examEmojis = EXAM_LETTERS.map(function (i) { return i.emoji; });
+      STICKER_POOL.forEach(function (emoji) {
+        var name = STICKER_NAMES[emoji];
+        if (name && have[emoji] > 0 && examEmojis.indexOf(emoji) < 0) addEntry(name, emoji, null);
+      });
+      // 作品是他自己的創作：貼過的動物就算貼紙後來花掉了，也不能讓作品壞掉或不見
+      placed.forEach(function (p) {
+        if (catalog[p.key]) return;
+        STICKER_POOL.forEach(function (emoji) {
+          if (STICKER_NAMES[emoji] === p.key) addEntry(p.key, emoji, null, true);
+        });
+      });
+    }
+
+    /* ===== 句子 ===== */
+
+    function numberWord(n) {
+      for (var i = 0; i < EXAM_NUMBERS.length; i++) if (+EXAM_NUMBERS[i].digit === n) return EXAM_NUMBERS[i].word;
+      return String(n);
+    }
+
+    // 貼了什麼 → "I see a cat, two dogs and a hat."（照第一次貼的順序）
+    function buildSentence(items) {
+      var order = [];
+      var counts = {};
+      items.forEach(function (p) {
+        if (!catalog[p.key]) return;   // 目錄裡沒有的（不該發生）就略過，不要讓整句壞掉
+        if (!counts[p.key]) { counts[p.key] = 0; order.push(p.key); }
+        counts[p.key]++;
+      });
+      if (order.length === 0) return "";
+
+      var parts = order.map(function (key) {
+        var e = catalog[key];
+        var n = counts[key];
+        if (n === 1) return e.article + " " + e.name;
+        if (n <= 10) return numberWord(n) + " " + e.plural;
+        return "many " + e.plural;
+      });
+
+      var joined;
+      if (parts.length === 1) joined = parts[0];
+      else joined = parts.slice(0, -1).join(", ") + " and " + parts[parts.length - 1];
+      return "I see " + joined + ".";
+    }
+
+    function refreshSentence() {
+      var text = buildSentence(placed);
+      if (text) {
+        sentenceEl.classList.remove("hint", "zy");
+        sentenceEl.textContent = text;
+      } else {
+        sentenceEl.classList.add("hint", "zy");
+        sentenceEl.innerHTML = zy("點[ㄉㄧㄢˇ]一[ㄧ]個[˙ㄍㄜ]貼[ㄊㄧㄝ]紙[ㄓˇ]，再[ㄗㄞˋ]點[ㄉㄧㄢˇ]畫[ㄏㄨㄚˋ]面[ㄇㄧㄢˋ]！");
+      }
+    }
+
+    function readSentence() {
+      var text = buildSentence(placed);
+      if (text) sayEnglish(text);
+      else say("先貼幾個貼紙吧！");
+    }
+
+    function sayName(key) {
+      var e = catalog[key];
+      if (!e) return;
+      if (e.exam) sayWord(e.exam);   // 學校單字：有錄音檔就用錄音檔
+      else sayEnglish(e.article + " " + e.name);
+    }
+
+    /* ===== 貼紙盤 ===== */
+
+    function drawPalette() {
+      paletteEl.innerHTML = "";
+      Object.keys(catalog).forEach(function (key) {
+        var e = catalog[key];
+        if (e.hidden) return;
+        var btn = document.createElement("button");
+        btn.className = "pal" + (e.exam ? "" : " bonus") + (key === selectedKey ? " sel" : "");
+        btn.dataset.key = key;
+        btn.innerHTML = '<span class="e">' + e.emoji + '</span><span class="n">' + e.name + "</span>";
+        btn.onclick = function () {
+          selectedKey = key === selectedKey ? null : key;
+          playSound("click");
+          if (selectedKey) sayName(key);
+          drawPalette();
+        };
+        paletteEl.appendChild(btn);
+      });
+    }
+
+    /* ===== 舞台 ===== */
+
+    function drawBgs() {
+      var holder = document.getElementById("bgs");
+      holder.innerHTML = "";
+      BACKGROUNDS.forEach(function (b, i) {
+        var btn = document.createElement("button");
+        btn.className = "big-btn blue" + (i === bgIndex ? " on" : "");
+        btn.textContent = b.icon;
+        btn.onclick = function () { bgIndex = i; save(); drawStage(); drawBgs(); };
+        holder.appendChild(btn);
+      });
+    }
+
+    function drawStage() {
+      var b = BACKGROUNDS[bgIndex];
+      stageEl.style.background = b.bg;
+      stageEl.innerHTML = "";
+      b.deco.forEach(function (d) {
+        var el = document.createElement("div");
+        el.className = "deco";
+        el.textContent = d[0];
+        el.style.left = d[1] + "%";
+        el.style.top = d[2] + "%";
+        stageEl.appendChild(el);
+      });
+      placed.forEach(addPlacedEl);
+      refreshSentence();
+    }
+
+    function addPlacedEl(p) {
+      var e = catalog[p.key];
+      if (!e) return;   // 存檔裡有、但現在沒有這個貼紙（例如花掉了）：先不顯示
+      var el = document.createElement("div");
+      el.className = "placed";
+      el.textContent = e.emoji;
+      el.dataset.id = p.id;
+      el.dataset.key = p.key;
+      el.style.left = p.x + "%";
+      el.style.top = p.y + "%";
+      makeDraggable(el, p);
+      stageEl.appendChild(el);
+    }
+
+    function place(key, xPercent, yPercent) {
+      var p = { id: nextId++, key: key, x: xPercent, y: yPercent };
+      placed.push(p);
+      addPlacedEl(p);
+      playSound("pop");
+      sayName(key);
+      refreshSentence();
+      save();
+    }
+
+    // 點舞台空白處：貼上目前選的貼紙
+    stageEl.addEventListener("pointerdown", function (event) {
+      if (event.target !== stageEl && !event.target.classList.contains("deco")) return;
+      if (!selectedKey) {
+        say("先選一個貼紙！");
+        return;
+      }
+      var rect = stageEl.getBoundingClientRect();
+      place(
+        selectedKey,
+        Math.max(4, Math.min(96, (event.clientX - rect.left) / rect.width * 100)),
+        Math.max(6, Math.min(94, (event.clientY - rect.top) / rect.height * 100))
+      );
+    });
+
+    // 貼好的貼紙：拖來拖去；拖到 🗑️ 放開就收掉；只是點一下就跳一下、念名字
+    function makeDraggable(el, p) {
+      var moved = false;
+      el.addEventListener("pointerdown", function (event) {
+        event.stopPropagation();
+        el.setPointerCapture(event.pointerId);
+        el.classList.add("dragging");
+        moved = false;
+        var startX = event.clientX, startY = event.clientY;
+
+        function move(ev) {
+          if (Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) > 6) moved = true;
+          var rect = stageEl.getBoundingClientRect();
+          p.x = Math.max(2, Math.min(98, (ev.clientX - rect.left) / rect.width * 100));
+          p.y = Math.max(2, Math.min(98, (ev.clientY - rect.top) / rect.height * 100));
+          el.style.left = p.x + "%";
+          el.style.top = p.y + "%";
+          trashEl.classList.toggle("hot", overTrash(ev.clientX, ev.clientY));
+        }
+
+        function up(ev) {
+          el.removeEventListener("pointermove", move);
+          el.removeEventListener("pointerup", up);
+          el.removeEventListener("pointercancel", up);
+          el.classList.remove("dragging");
+          trashEl.classList.remove("hot");
+          if (moved && overTrash(ev.clientX, ev.clientY)) {
+            placed = placed.filter(function (q) { return q !== p; });
+            el.remove();
+            playSound("click");
+          } else if (!moved) {
+            el.classList.remove("hop");
+            void el.offsetWidth;
+            el.classList.add("hop");
+            sayName(p.key);
+          }
+          refreshSentence();
+          save();
+        }
+
+        el.addEventListener("pointermove", move);
+        el.addEventListener("pointerup", up);
+        el.addEventListener("pointercancel", up);
+      });
+    }
+
+    function overTrash(x, y) {
+      var r = trashEl.getBoundingClientRect();
+      return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+    }
+
+    function clearAll() {
+      if (placed.length === 0) return;
+      placed = [];
+      playSound("wrong");
+      drawStage();
+      save();
+    }
+
+    /* ===== 存檔：這個瀏覽器自己記住，下次來還在 ===== */
+
+    function save() {
+      try {
+        localStorage.setItem(SAVE_KEY, JSON.stringify({ bgIndex: bgIndex, placed: placed, nextId: nextId }));
+      } catch (e) {}
+    }
+
+    function load() {
+      try {
+        var data = JSON.parse(localStorage.getItem(SAVE_KEY));
+        if (data && Array.isArray(data.placed)) {
+          bgIndex = data.bgIndex || 0;
+          placed = data.placed;
+          nextId = data.nextId || (placed.length + 1);
+        }
+      } catch (e) {}
+    }
+
+    function start() {
+      buildCatalog();
+      setZy(document.getElementById("title"), "🎨 貼[ㄊㄧㄝ]紙[ㄓˇ]場[ㄔㄤˇ]景[ㄐㄧㄥˇ]");
+      setZy(document.getElementById("clear-btn"), "🧹 全[ㄑㄩㄢˊ]部[ㄅㄨˋ]清[ㄑㄧㄥ]掉[ㄉㄧㄠˋ]");
+      drawBgs();
+      drawPalette();
+      drawStage();
+    }
+
+    load();
+    refreshStickers(start);   // 貼紙盤要看他現在有哪些貼紙，先跟伺服器對一下
+    createSpeechToggle();
+    start();
+  </script>
+</body>
+</html>

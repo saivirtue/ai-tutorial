@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, target-densitydpi=device-dpi">
+  <title>教 Pip 英文</title>
+  <link rel="stylesheet" href="../../shared/style.css">
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 14px;
+      overflow: auto;
+      gap: 10px;
+    }
+
+    .hidden { display: none !important; }
+
+    #title {
+      font-size: clamp(24px, 4vw, 40px);
+      font-weight: bold;
+      text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+      margin-top: 6px;
+    }
+
+    #stars {
+      display: flex;
+      gap: 6px;
+      font-size: clamp(22px, 4vw, 30px);
+    }
+
+    #stars .on { opacity: 1; }
+    #stars .half { filter: grayscale(1); opacity: 0.85; }
+    #stars .off { opacity: 0.25; }
+
+    /* ===== Pip 和它的對話框 ===== */
+    #pip-area {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: min(94vw, 560px);
+    }
+
+    #pip {
+      font-size: clamp(64px, 14vw, 96px);
+      line-height: 1;
+      flex: none;
+      filter: drop-shadow(0 4px 3px rgba(0, 0, 0, 0.4));
+      animation: bob 2.4s ease-in-out infinite;
+    }
+
+    #pip.hop { animation: hop 0.6s ease; }
+
+    @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+    @keyframes hop {
+      0% { transform: translateY(0); }
+      35% { transform: translateY(-26px) rotate(-8deg); }
+      70% { transform: translateY(0) rotate(6deg); }
+      100% { transform: translateY(0); }
+    }
+
+    #bubble {
+      position: relative;
+      flex: 1;
+      background: #fff;
+      color: var(--text);
+      border-radius: 22px;
+      padding: 12px 18px;
+      font-size: clamp(26px, 5vw, 38px);
+      font-weight: bold;
+      text-align: center;
+      line-height: 1.8;
+      min-height: 3em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    #bubble::before {
+      content: "";
+      position: absolute;
+      left: -14px;
+      top: 50%;
+      margin-top: -10px;
+      border: 10px solid transparent;
+      border-right-color: #fff;
+      border-left: 0;
+    }
+
+    #bubble .zy rt { color: #666; }
+    #bubble.zy rt { color: #666; }
+
+    /* ===== 題目卡：Pip 在說的那個東西 ===== */
+    #card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 26px;
+      padding: 12px 34px;
+      min-width: min(90vw, 340px);
+    }
+
+    #thing {
+      font-size: clamp(60px, 13vh, 110px);
+      line-height: 1.2;
+      text-align: center;
+    }
+
+    #thing.small { font-size: clamp(32px, 6vh, 54px); line-height: 1.8; }
+
+    #thing-sub {
+      font-size: clamp(20px, 3.4vh, 28px);
+      line-height: 1.9;
+      min-height: 1.3em;
+      text-align: center;
+    }
+
+    #judge-row {
+      display: flex;
+      gap: 16px;
+    }
+
+    #judge-row .big-btn {
+      font-size: clamp(24px, 4.5vw, 34px);
+      line-height: 1.8;
+      padding: 10px 28px;
+    }
+
+    #msg {
+      font-size: 24px;
+      font-weight: bold;
+      color: var(--star);
+      min-height: 1.5em;
+      text-align: center;
+      line-height: 1.8;
+    }
+
+    #intro {
+      max-width: 520px;
+      font-size: clamp(22px, 4vw, 28px);
+      line-height: 2.1;
+      text-align: center;
+    }
+
+    #start-btn { font-size: 28px; line-height: 1.8; padding: 12px 36px; }
+
+    .link-btn {
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.85);
+      font-size: 20px;
+      line-height: 1.9;
+      cursor: pointer;
+    }
+
+    .home-link {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 18px;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="title"></div>
+
+  <!-- 開場：Pip 是誰 -->
+  <div id="intro-view" style="display:contents">
+    <div id="pip-intro" style="font-size:clamp(90px,22vw,150px);line-height:1.1;animation:bob 2.4s ease-in-out infinite">👽</div>
+    <div id="intro" class="zy"></div>
+    <button id="start-btn" class="big-btn green zy" onclick="startRound()"></button>
+    <a class="home-link" href="../../">⬅ 回遊戲樂園</a>
+  </div>
+
+  <!-- 上課 -->
+  <div id="class-view" style="display:none;flex-direction:column;align-items:center;gap:10px;width:100%">
+    <div id="stars"></div>
+    <div id="pip-area">
+      <div id="pip">👽</div>
+      <div id="bubble" class="abc zy" onclick="pipRepeat()"></div>
+    </div>
+    <div id="card">
+      <div id="thing" class="abc"></div>
+      <div id="thing-sub" class="zy"></div>
+    </div>
+    <div id="judge-row">
+      <button id="yes-btn" class="big-btn green zy" onclick="judge(true)"></button>
+      <button id="no-btn" class="big-btn orange zy" onclick="judge(false)"></button>
+    </div>
+    <div id="msg" class="zy"></div>
+    <div id="choices"></div>
+    <button id="quit-btn" class="link-btn zy" onclick="backToIntro()"></button>
+  </div>
+
+  <script src="../../shared/game-utils.js"></script>
+  <script src="../../shared/speech.js"></script>
+  <script src="../../shared/stickers.js"></script>
+  <script src="../../shared/vision-client.js"></script>
+  <script src="../../shared/zhuyin.js"></script>
+  <script src="../../shared/progress.js"></script>
+  <script src="../../shared/english-exam.js"></script>
+  <script src="../../shared/quiz-kit.js"></script>
+  <script>
+    /* 教 Pip 英文
+       ────────────────────────────────────────────────
+       小孩不是被考的人，是老師。Pip 是個正在學英文的小外星人，
+       牠會說：「這是 dog！」——有時候對、有時候故意說錯。
+       小孩要判斷 Pip 說得對不對；說錯了還要教牠正確的是什麼。
+
+       為什麼這樣設計：
+       - 「教別人」是最有效的學習方式之一，而且當專家比被考更有信心
+       - 四選一可以亂猜，「對／不對」加上「那正確的是？」就不行
+       - Pip 說錯的字，優先挑小孩常錯的（shared/progress.js），
+         但他以為是在抓 Pip 的錯，不是在複習自己的弱項
+
+       四種課：單字（看圖）、字母（大小寫是不是一對）、數字、生活對話。
+       全部都用學校單字表（shared/english-exam.js）。
+
+       最外層變數用 var，不要用 let/const——某些電視盒的 WebView 對
+       「最外層 let/const」有相容性 bug（函式讀不到）。 */
+
+    var ROUND_SIZE = 8;          // 一堂課幾題
+    var PASS_OK = 5;             // 其中至少幾題「判斷＋教」都第一次就對，Pip 才算畢業
+    var PIP_WRONG_RATE = 0.55;   // Pip 說錯的機率（不能太高，不然小孩只要一直按「不對」就好）
+    var PIP_PITCH = 1.5;         // Pip 的聲音比老師尖
+
+    var introView = document.getElementById("intro-view");
+    var classView = document.getElementById("class-view");
+    var pipEl = document.getElementById("pip");
+    var bubbleEl = document.getElementById("bubble");
+    var thingEl = document.getElementById("thing");
+    var thingSubEl = document.getElementById("thing-sub");
+    var judgeRow = document.getElementById("judge-row");
+    var msgEl = document.getElementById("msg");
+    var choicesEl = document.getElementById("choices");
+    var starsEl = document.getElementById("stars");
+
+    var results = [];     // 每題有沒有「全部第一次就對」
+    var recent = [];      // 最近出過的題目編號
+    var lesson = null;    // 現在這一題
+    var judged = false;   // 這題已經按過「對／不對」了
+
+    /* ===== Pip 說話：用尖尖的聲音 ===== */
+
+    function pipSay(fn) { withPitch(PIP_PITCH, fn); }
+
+    function pipRepeat() {
+      if (lesson && lesson.pipSays) pipSay(lesson.pipSays);
+    }
+
+    function hop() {
+      pipEl.classList.remove("hop");
+      void pipEl.offsetWidth;
+      pipEl.classList.add("hop");
+    }
+
+    /* ===== 出一題：四種課 ===== */
+
+    function pick(items, idOf) {
+      var item = pickWeighted(items, idOf, recent);
+      recent.push(idOf(item));
+      if (recent.length > 3) recent.shift();
+      return item;
+    }
+
+    function randomOther(list, item) {
+      return randomFrom(list.filter(function (x) { return x !== item; }));
+    }
+
+    // 單字：看圖，Pip 說這個字
+    function wordLesson(right) {
+      var item = pick(EXAM_LETTERS, wordId);
+      var claim = right ? item : randomOther(EXAM_LETTERS, item);
+      var wrongs = EXAM_LETTERS.filter(function (x) { return x !== item; });
+      return {
+        id: wordId(item), isRight: right,
+        thing: item.emoji, thingSub: item.zh,
+        bubble: claim.word,
+        pipSays: function () { sayWord(claim); },
+        answerText: item.word,
+        teach: {
+          instr: "教[ㄐㄧㄠ]教[ㄐㄧㄠ] Pip，它[ㄊㄚ]的[˙ㄉㄜ]英[ㄧㄥ]文[ㄨㄣˊ]是[ㄕˋ]？",
+          options: [{ text: item.word, correct: true }].concat(
+            shuffle(wrongs).slice(0, 3).map(function (x) { return { text: x.word, correct: false }; })
+          ),
+          letters: true, textMode: true,
+          say: function () { sayWord(item); },
+        },
+      };
+    }
+
+    // 字母：Pip 說「大寫 B 和小寫 d 是一對」，對不對？
+    function letterLesson(right) {
+      var item = pick(EXAM_LETTERS, letterId);
+      var claim = item;
+      if (!right) {
+        var twin = EXAM_LETTERS.filter(function (x) { return x.lower === CONFUSABLE[item.lower]; })[0];
+        claim = (twin && Math.random() < 0.5) ? twin : randomOther(EXAM_LETTERS, item);
+      }
+      var wrongs = EXAM_LETTERS.filter(function (x) { return x !== item; });
+      var twinItem = EXAM_LETTERS.filter(function (x) { return x.lower === CONFUSABLE[item.lower]; })[0];
+      var distractors = (twinItem ? [twinItem] : []).concat(shuffle(wrongs.filter(function (x) { return x !== twinItem; }))).slice(0, 3);
+      return {
+        id: letterId(item), isRight: right,
+        thing: item.upper + " = " + claim.lower, thingSub: "",
+        bubble: "🔊",
+        pipSays: function () { sayLetter(item, function () { sayLetter(claim); }); },
+        answerText: item.upper + " = " + item.lower,
+        teach: {
+          instr: "教[ㄐㄧㄠ]教[ㄐㄧㄠ] Pip，" + item.upper + " 的[˙ㄉㄜ]小[ㄒㄧㄠˇ]寫[ㄒㄧㄝˇ]是[ㄕˋ]？",
+          options: [{ text: item.lower, correct: true }].concat(
+            distractors.map(function (x) { return { text: x.lower, correct: false }; })
+          ),
+          letters: true,
+          say: function () { sayLetter(item); },
+        },
+      };
+    }
+
+    // 數字：看數字，Pip 說英文
+    function numberLesson(right) {
+      var item = pick(EXAM_NUMBERS, numberId);
+      var claim = item;
+      if (!right) {
+        var near = EXAM_NUMBERS.filter(function (x) { return Math.abs(+x.digit - +item.digit) === 1; });
+        claim = (near.length && Math.random() < 0.6) ? randomFrom(near) : randomOther(EXAM_NUMBERS, item);
+      }
+      var wrongs = EXAM_NUMBERS.filter(function (x) { return x !== item; });
+      return {
+        id: numberId(item), isRight: right,
+        thing: item.digit, thingSub: "",
+        bubble: claim.word,
+        pipSays: function () { sayNumber(claim); },
+        answerText: item.digit + " = " + item.word,
+        teach: {
+          instr: "教[ㄐㄧㄠ]教[ㄐㄧㄠ] Pip，" + item.digit + " 的[˙ㄉㄜ]英[ㄧㄥ]文[ㄨㄣˊ]是[ㄕˋ]？",
+          options: [{ text: item.word, correct: true }].concat(
+            shuffle(wrongs).slice(0, 3).map(function (x) { return { text: x.word, correct: false }; })
+          ),
+          textMode: true, letters: true,
+          say: function () { sayNumber(item); },
+        },
+      };
+    }
+
+    // 生活對話：Pip 說英文，旁邊寫它以為的意思
+    function phraseLesson(right) {
+      var item = pick(EXAM_PHRASES, phraseId);
+      var claim = item;
+      if (!right) {
+        claim = randomFrom(EXAM_PHRASES.filter(function (x) { return zyPlain(x.zh) !== zyPlain(item.zh); }));
+      }
+      var wrongs = EXAM_PHRASES.filter(function (x) { return zyPlain(x.zh) !== zyPlain(item.zh); });
+      return {
+        id: phraseId(item), isRight: right,
+        thing: item.en, thingSub: "", small: true,
+        bubble: claim.zh,   // Pip 以為這句話的意思
+        pipSays: function () { sayPhrase(item); },
+        answerText: item.en + " = " + zyPlain(item.zh),
+        teach: {
+          instr: "教[ㄐㄧㄠ]教[ㄐㄧㄠ] Pip，這[ㄓㄜˋ]句[ㄐㄩˋ]話[ㄏㄨㄚˋ]是[ㄕˋ]什[ㄕㄣˊ]麼[˙ㄇㄜ]意[ㄧˋ]思[˙ㄙ]？",
+          options: [{ text: item.zh, correct: true }].concat(
+            shuffle(wrongs).slice(0, 3).map(function (x) { return { text: x.zh, correct: false }; })
+          ),
+          textMode: true,
+          say: function () { sayPhrase(item); },
+        },
+      };
+    }
+
+    function makeLesson() {
+      var right = Math.random() >= PIP_WRONG_RATE;
+      var kind = randomFrom(["word", "word", "letter", "letter", "number", "phrase"]);
+      return { word: wordLesson, letter: letterLesson, number: numberLesson, phrase: phraseLesson }[kind](right);
+    }
+
+    /* ===== 畫面 ===== */
+
+    function renderStars() {
+      starsEl.innerHTML = "";
+      for (var i = 0; i < ROUND_SIZE; i++) {
+        var star = document.createElement("span");
+        star.textContent = "⭐";
+        star.className = i >= results.length ? "off" : (results[i] ? "on" : "half");
+        starsEl.appendChild(star);
+      }
+    }
+
+    function showIntro() {
+      setZy(document.getElementById("title"), "👽 教[ㄐㄧㄠ] Pip 英[ㄧㄥ]文[ㄨㄣˊ]");
+      setZy(
+        document.getElementById("intro"),
+        "Pip 是[ㄕˋ]外[ㄨㄞˋ]星[ㄒㄧㄥ]人[ㄖㄣˊ]，正[ㄓㄥˋ]在[ㄗㄞˋ]學[ㄒㄩㄝˊ]英[ㄧㄥ]文[ㄨㄣˊ]。你[ㄋㄧˇ]來[ㄌㄞˊ]當[ㄉㄤ]老[ㄌㄠˇ]師[ㄕ]！Pip 說[ㄕㄨㄛ]錯[ㄘㄨㄛˋ]了[˙ㄌㄜ]，要[ㄧㄠˋ]教[ㄐㄧㄠ]牠[ㄊㄚ]喔[ㄛ]！"
+      );
+      setZy(document.getElementById("start-btn"), "開[ㄎㄞ]始[ㄕˇ]上[ㄕㄤˋ]課[ㄎㄜˋ]");
+      setZy(document.getElementById("yes-btn"), "✅ 對[ㄉㄨㄟˋ]");
+      setZy(document.getElementById("no-btn"), "❌ 不[ㄅㄨˋ]對[ㄉㄨㄟˋ]");
+      setZy(document.getElementById("quit-btn"), "⬅ 下[ㄒㄧㄚˋ]課[ㄎㄜˋ]");
+    }
+
+    function backToIntro() {
+      if (window.speechSynthesis) speechSynthesis.cancel();
+      classView.style.display = "none";
+      introView.style.display = "contents";
+      lesson = null;
+    }
+
+    function startRound() {
+      results = [];
+      introView.style.display = "none";
+      classView.style.display = "flex";
+      renderStars();
+      lesson = null;
+      msgEl.textContent = "";
+      choicesEl.innerHTML = "";
+      judgeRow.classList.add("hidden");
+      thingEl.textContent = "👋";
+      thingEl.className = "abc";
+      thingSubEl.textContent = "";
+      bubbleEl.textContent = "Hello! Teach me!";
+      hop();
+      // Pip 先打招呼，說完再出第一題
+      pipSay(function () {
+        sayEnglish("Hello! Teach me!", function () { setTimeout(nextLesson, 500); });
+      });
+    }
+
+    function nextLesson() {
+      msgEl.textContent = "";
+      choicesEl.innerHTML = "";
+      judged = false;
+      lesson = makeLesson();
+      lesson.ok = true;   // 判斷、教都第一次就對才算
+
+      thingEl.textContent = lesson.thing;
+      thingEl.className = "abc" + (lesson.small ? " small" : "");
+      setZy(thingSubEl, lesson.thingSub || "");
+      bubbleEl.innerHTML = zy(lesson.bubble);
+      judgeRow.classList.remove("hidden");
+      document.getElementById("card").dataset.right = lesson.isRight ? "1" : "0";   // 測試用
+      hop();
+      pipSay(lesson.pipSays);
+    }
+
+    /* ===== 小孩判斷：Pip 說得對不對？ ===== */
+
+    function judge(saidRight) {
+      if (judged || !lesson) return;
+      judged = true;
+      judgeRow.classList.add("hidden");
+
+      if (lesson.isRight && saidRight) {
+        // Pip 說對了，小孩也說對了
+        playSound("pop");
+        cheer();
+        hop();
+        setZy(msgEl, "⭐ 對[ㄉㄨㄟˋ]！Pip 好[ㄏㄠˇ]棒[ㄅㄤˋ]");
+        finishLesson(1500);
+      } else if (lesson.isRight && !saidRight) {
+        // Pip 其實是對的：不是罵他，輕輕告訴他
+        lesson.ok = false;
+        playSound("wrong");
+        setZy(msgEl, "Pip 說[ㄕㄨㄛ]對[ㄉㄨㄟˋ]了[˙ㄌㄜ]喔[ㄛ]！");
+        var cur1 = lesson;
+        say("Pip 說對了喔！", function () { if (cur1 === lesson) cur1.teach.say(); });
+        finishLesson(2600);
+      } else if (!lesson.isRight && saidRight) {
+        // Pip 說錯了，小孩沒抓到：直接把正確的唸給他聽
+        lesson.ok = false;
+        playSound("wrong");
+        thingEl.textContent = lesson.answerText;
+        setZy(msgEl, "Pip 說[ㄕㄨㄛ]錯[ㄘㄨㄛˋ]了[˙ㄌㄜ]，是[ㄕˋ]這[ㄓㄜˋ]個[˙ㄍㄜ]");
+        var cur2 = lesson;
+        say("Pip 說錯了，是這個。", function () { if (cur2 === lesson) cur2.teach.say(); });
+        finishLesson(3000);
+      } else {
+        // 抓到了！Pip 說錯了，換小孩教牠
+        playSound("pop");
+        cheer();
+        teach();
+      }
+    }
+
+    function teach() {
+      setZy(msgEl, lesson.teach.instr);
+      say(zyPlain(lesson.teach.instr));
+      var cur = lesson;
+      qkChoices(choicesEl, lesson.teach, function (firstTry) {
+        if (cur !== lesson) return;
+        if (!firstTry) lesson.ok = false;
+        choicesEl.innerHTML = "";
+        hop();
+        setZy(msgEl, "🎉 謝[ㄒㄧㄝˋ]謝[ㄒㄧㄝˋ]老[ㄌㄠˇ]師[ㄕ]！");
+        pipSay(function () { sayEnglish("Thank you, teacher!"); });
+        finishLesson(2000);
+      });
+    }
+
+    function finishLesson(delay) {
+      var cur = lesson;
+      recordAnswer(cur.id, cur.ok);
+      results.push(cur.ok);
+      renderStars();
+      setTimeout(function () {
+        if (cur !== lesson) return;
+        if (results.length >= ROUND_SIZE) roundDone();
+        else nextLesson();
+      }, delay);
+    }
+
+    function roundDone() {
+      var good = results.filter(Boolean).length;
+      if (good >= PASS_OK) {
+        var sticker = awardSticker();
+        var trophy = awardTrophy("pip-teacher");
+        say("Pip 畢業了！你是好老師！你得到一張貼紙！");
+        notifyMilestone();
+        celebrate("🎓 Pip 畢業了！\n得到貼紙 " + sticker + (trophy ? "\n" + trophy : ""), "再教一堂", startRound);
+      } else {
+        say("差一點點！我們再上一堂課！");
+        var overlay = document.createElement("div");
+        overlay.id = "celebrate-overlay";
+        overlay.innerHTML = '<div class="msg">💪 差一點點！<br>再上一堂課，貼紙就是你的！</div>';
+        var btn = document.createElement("button");
+        btn.className = "big-btn blue";
+        btn.textContent = "再上一堂";
+        btn.onclick = function () { overlay.remove(); startRound(); };
+        overlay.appendChild(btn);
+        document.body.appendChild(overlay);
+      }
+    }
+
+    refreshStickers();
+    createSpeechToggle();
+    showIntro();
+    refreshProgress();
+  </script>
+</body>
+</html>

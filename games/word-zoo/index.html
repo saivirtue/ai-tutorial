@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, target-densitydpi=device-dpi">
+  <title>單字樂園</title>
+  <link rel="stylesheet" href="../../shared/style.css">
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 14px;
+      overflow: auto;
+      gap: 12px;
+    }
+
+    .hidden { display: none !important; }
+
+    #title {
+      font-size: clamp(24px, 4vw, 40px);
+      font-weight: bold;
+      text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+      margin-top: 6px;
+    }
+
+    #summary {
+      font-size: clamp(20px, 3.4vw, 26px);
+      line-height: 1.9;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 999px;
+      padding: 4px 22px;
+    }
+
+    /* ===== 島：天空、草地、水裡三個區 ===== */
+    #island {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: min(94vw, 640px);
+    }
+
+    .band {
+      border-radius: 22px;
+      padding: 10px 12px;
+      min-height: 96px;
+      box-shadow: 0 5px 0 rgba(0, 0, 0, 0.25);
+    }
+
+    .band.sky   { background: linear-gradient(#6ec6ff, #bfe6ff); }
+    .band.land  { background: linear-gradient(#7bd36b, #4fae4a); }
+    .band.water { background: linear-gradient(#3f8fd8, #1f5fa8); }
+
+    .friends {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 10px;
+      justify-content: center;
+      align-items: flex-end;
+    }
+
+    /* ===== 一位朋友 ===== */
+    .friend {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: none;
+      border: none;
+      color: #fff;
+      font-family: inherit;
+      cursor: pointer;
+      padding: 4px 6px;
+      min-width: 72px;
+    }
+
+    .friend .pic {
+      line-height: 1.1;
+      filter: drop-shadow(0 3px 2px rgba(0, 0, 0, 0.35));
+      animation: bob 2.6s ease-in-out infinite;
+    }
+
+    .friend .name {
+      font-size: 18px;
+      font-weight: bold;
+      text-shadow: 0 2px 0 rgba(0, 0, 0, 0.45);
+    }
+
+    .friend .badge {
+      position: absolute;
+      top: -4px;
+      right: 2px;
+      font-size: 22px;
+    }
+
+    /* 還不認識：只有黑黑的剪影 */
+    .friend.s0 .pic { font-size: 46px; filter: brightness(0); opacity: 0.5; animation: none; }
+    .friend.s1 .pic { font-size: 54px; }
+    .friend.s2 .pic { font-size: 66px; }
+    .friend.s3 .pic { font-size: 78px; }
+
+    /* 打瞌睡：灰灰的、不動，頭上冒 💤 */
+    .friend.sleepy .pic { filter: grayscale(0.7) drop-shadow(0 3px 2px rgba(0, 0, 0, 0.35)); opacity: 0.75; animation: none; }
+    .friend.sleepy .badge { animation: bob 1.6s ease-in-out infinite; }
+
+    /* 剛剛長大了！ */
+    .friend.grew .pic { animation: grew 1.1s ease; }
+
+    @keyframes bob {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-7px); }
+    }
+
+    @keyframes grew {
+      0% { transform: scale(0.6); }
+      40% { transform: scale(1.5) rotate(-8deg); }
+      70% { transform: scale(0.95) rotate(6deg); }
+      100% { transform: scale(1); }
+    }
+
+    #gate {
+      font-size: 20px;
+      line-height: 1.9;
+      opacity: 0.85;
+      text-align: center;
+    }
+
+    #adventure-btn {
+      font-size: clamp(24px, 4vw, 32px);
+      line-height: 1.8;
+      padding: 12px 34px;
+    }
+
+    .home-link {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 18px;
+      text-decoration: none;
+    }
+
+    /* ===== 跟一位朋友玩（一小段） ===== */
+    #play {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+    }
+
+    #run-dots {
+      display: flex;
+      gap: 8px;
+      font-size: 26px;
+      min-height: 1.2em;
+    }
+
+    #play-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 28px;
+      padding: 14px 36px;
+      min-width: min(90vw, 340px);
+    }
+
+    #play-pic {
+      font-size: clamp(64px, 14vh, 120px);
+      line-height: 1.15;
+    }
+
+    #play-word {
+      font-size: clamp(34px, 6vh, 54px);
+      font-weight: bold;
+      min-height: 1.2em;
+    }
+
+    #play-sub {
+      font-size: clamp(20px, 3.4vh, 28px);
+      line-height: 1.9;
+      text-align: center;
+      min-height: 1.3em;
+    }
+
+    #play-card .big-btn { font-size: 20px; padding: 8px 18px; }
+
+    #play-msg {
+      font-size: 24px;
+      font-weight: bold;
+      color: var(--star);
+      min-height: 1.5em;
+      text-align: center;
+      line-height: 1.8;
+    }
+
+    #next-btn { font-size: 26px; line-height: 1.8; }
+
+    .link-btn {
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.85);
+      font-size: 20px;
+      line-height: 1.9;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="title"></div>
+
+  <!-- 島 -->
+  <div id="island-view" style="display:contents">
+    <div id="summary" class="zy"></div>
+    <div id="island">
+      <div class="band sky"><div class="friends" id="friends-sky"></div></div>
+      <div class="band land"><div class="friends" id="friends-land"></div></div>
+      <div class="band water"><div class="friends" id="friends-water"></div></div>
+    </div>
+    <div id="gate" class="zy"></div>
+    <button id="adventure-btn" class="big-btn orange zy" onclick="startAdventure()"></button>
+    <a class="home-link" href="../../">⬅ 回遊戲樂園</a>
+  </div>
+
+  <!-- 跟朋友玩 -->
+  <div id="play" class="hidden">
+    <div id="run-dots"></div>
+    <div id="play-card">
+      <div id="play-pic" class="abc"></div>
+      <div id="play-word" class="abc"></div>
+      <div id="play-sub" class="zy"></div>
+      <button id="play-say" class="big-btn blue" onclick="replay()">🔊</button>
+    </div>
+    <div id="play-msg" class="zy"></div>
+    <button id="next-btn" class="big-btn green zy hidden" onclick="afterIntro()"></button>
+    <div id="play-choices"></div>
+    <div id="play-slots" class="hidden"></div>
+    <div id="play-tiles" class="hidden"></div>
+    <button id="quit-btn" class="link-btn zy" onclick="quitRun()"></button>
+  </div>
+
+  <script src="../../shared/game-utils.js"></script>
+  <script src="../../shared/speech.js"></script>
+  <script src="../../shared/stickers.js"></script>
+  <script src="../../shared/vision-client.js"></script>
+  <script src="../../shared/zhuyin.js"></script>
+  <script src="../../shared/progress.js"></script>
+  <script src="../../shared/english-exam.js"></script>
+  <script src="../../shared/quiz-kit.js"></script>
+  <script>
+    /* 單字樂園
+       ────────────────────────────────────────────────
+       學校單字表上的每個單字，是島上的一位朋友：
+         黑黑的剪影 → 還不認識
+         認識了     → 小小的
+         長大了     → 越練越大
+         戴皇冠 👑  → 很熟了
+         打瞌睡 💤  → 好久沒練，想你了（要再玩一下叫醒牠）
+       這是間隔複習——但他看到的是「照顧朋友」，不是「複習」。
+       朋友不會生氣也不會消失，最多是睡著，回來牠就很開心。
+
+       學校教到 N～Z，在 shared/english-exam.js 加字，島上就多一批
+       新朋友（剪影）。每個字要有 home：sky／land／water。
+
+       最外層變數用 var，不要用 let/const——某些電視盒的 WebView 對
+       「最外層 let/const」有相容性 bug（函式讀不到）。 */
+
+    var ADVENTURE_SIZE = 5;   // 一次冒險去叫幾位朋友
+    var MAX_NEW = 3;          // 其中最多幾位是新朋友
+
+    var islandView = document.getElementById("island-view");
+    var playEl = document.getElementById("play");
+    var picEl = document.getElementById("play-pic");
+    var wordEl = document.getElementById("play-word");
+    var subEl = document.getElementById("play-sub");
+    var msgEl = document.getElementById("play-msg");
+    var choicesEl = document.getElementById("play-choices");
+    var slotsEl = document.getElementById("play-slots");
+    var tilesEl = document.getElementById("play-tiles");
+    var nextBtn = document.getElementById("next-btn");
+    var dotsEl = document.getElementById("run-dots");
+
+    var run = null;       // 現在這趟：{ queue, index, adventure, changed }
+    var friend = null;    // 現在在玩的這一位：{ item, steps, step, allFirst, stageBefore }
+
+    /* ===== 島 ===== */
+
+    function stageOfWord(item) { return stageOf(wordId(item)); }
+
+    function renderIsland(grewIds) {
+      setZy(document.getElementById("title"), "🏝️ 單[ㄉㄢ]字[ㄗˋ]樂[ㄌㄜˋ]園[ㄩㄢˊ]");
+      ["sky", "land", "water"].forEach(function (home) {
+        document.getElementById("friends-" + home).innerHTML = "";
+      });
+
+      var sleepyCount = 0;
+      var met = 0;
+      EXAM_LETTERS.forEach(function (item, i) {
+        var id = wordId(item);
+        var stage = stageOf(id);
+        var sleepy = isSleepy(id);
+        if (stage >= 1) met++;
+        if (sleepy) sleepyCount++;
+
+        var btn = document.createElement("button");
+        btn.className = "friend s" + stage + (sleepy ? " sleepy" : "") + (grewIds && grewIds.indexOf(id) >= 0 ? " grew" : "");
+        btn.dataset.word = item.word;
+        btn.dataset.stage = stage;
+        btn.innerHTML =
+          '<span class="pic" style="animation-delay:-' + ((i * 0.37) % 2.6).toFixed(2) + 's">' + item.emoji + "</span>" +
+          '<span class="name abc">' + (stage === 0 ? "?" : item.word) + "</span>" +
+          (sleepy ? '<span class="badge">💤</span>' : (stage === 3 ? '<span class="badge">👑</span>' : ""));
+        btn.onclick = function () { startRun([item], false); };
+        document.getElementById("friends-" + (item.home || "land")).appendChild(btn);
+      });
+
+      document.getElementById("summary").innerHTML =
+        zy("認[ㄖㄣˋ]識[ㄕˋ]了[˙ㄌㄜ] ") + met + " / " + EXAM_LETTERS.length + zy(" 位[ㄨㄟˋ]朋[ㄆㄥˊ]友[ㄧㄡˇ]");
+      setZy(document.getElementById("gate"), "🚧 還[ㄏㄞˊ]有[ㄧㄡˇ]新[ㄒㄧㄣ]朋[ㄆㄥˊ]友[ㄧㄡˇ]在[ㄗㄞˋ]路[ㄌㄨˋ]上[ㄕㄤˋ]");
+      setZy(
+        document.getElementById("adventure-btn"),
+        sleepyCount > 0
+          ? "💤 叫[ㄐㄧㄠˋ]醒[ㄒㄧㄥˇ]朋[ㄆㄥˊ]友[ㄧㄡˇ]"
+          : "🎒 今[ㄐㄧㄣ]天[ㄊㄧㄢ]的[˙ㄉㄜ]冒[ㄇㄠˋ]險[ㄒㄧㄢˇ]"
+      );
+      setZy(document.getElementById("quit-btn"), "⬅ 回[ㄏㄨㄟˊ]樂[ㄌㄜˋ]園[ㄩㄢˊ]");
+    }
+
+    /* ===== 今天的冒險：先叫醒睡著的，再練容易錯的，最後認識新朋友 ===== */
+
+    function planAdventure() {
+      var items = EXAM_LETTERS.slice();
+      var plan = [];
+      function add(list, limit) {
+        shuffle(list).slice(0, limit).forEach(function (item) {
+          if (plan.length < ADVENTURE_SIZE && plan.indexOf(item) < 0) plan.push(item);
+        });
+      }
+      add(items.filter(function (i) { return isSleepy(wordId(i)); }), 3);
+      add(items.filter(function (i) { return isWeak(wordId(i)); }), 2);
+      add(items.filter(function (i) { return boxOf(wordId(i)) === 0; }), MAX_NEW);
+      // 還不夠就補還不熟的（盒子低的先）
+      var rest = items
+        .filter(function (i) { return plan.indexOf(i) < 0; })
+        .sort(function (a, b) { return boxOf(wordId(a)) - boxOf(wordId(b)) || Math.random() - 0.5; });
+      rest.forEach(function (item) { if (plan.length < ADVENTURE_SIZE) plan.push(item); });
+      return plan;
+    }
+
+    function startAdventure() {
+      say("冒險開始囉！");
+      startRun(planAdventure(), true);
+    }
+
+    /* ===== 一趟（一位或好幾位朋友） ===== */
+
+    function startRun(queue, adventure) {
+      run = { queue: queue, index: 0, adventure: adventure, changed: [] };
+      islandView.style.display = "none";
+      playEl.classList.remove("hidden");
+      nextFriend();
+    }
+
+    function quitRun() {
+      if (window.speechSynthesis) speechSynthesis.cancel();
+      run = null;
+      friend = null;
+      playEl.classList.add("hidden");
+      islandView.style.display = "contents";
+      renderIsland();
+    }
+
+    function drawDots() {
+      dotsEl.innerHTML = "";
+      if (!run.adventure) return;
+      run.queue.forEach(function (item, i) {
+        var dot = document.createElement("span");
+        dot.textContent = i < run.index ? "⭐" : (i === run.index ? "🔸" : "▫️");
+        dotsEl.appendChild(dot);
+      });
+    }
+
+    function nextFriend() {
+      if (run.index >= run.queue.length) {
+        runDone();
+        return;
+      }
+      var item = run.queue[run.index];
+      var id = wordId(item);
+      // 新朋友先「認識」一下；老朋友直接考（聽得到英文就考聽力，不然看圖認字）
+      var steps = [];
+      if (boxOf(id) === 0) steps.push("intro");
+      steps.push(canHearEnglish() ? randomFrom(["hear-pic", "pic-word"]) : "pic-word");
+      steps.push("spell");
+      friend = { item: item, steps: steps, step: 0, allFirst: true, stageBefore: stageOf(id) };
+      drawDots();
+      nextStep();
+    }
+
+    function nextStep() {
+      msgEl.textContent = "";
+      nextBtn.classList.add("hidden");
+      choicesEl.innerHTML = "";
+      slotsEl.classList.add("hidden");
+      tilesEl.classList.add("hidden");
+      slotsEl.innerHTML = "";
+      tilesEl.innerHTML = "";
+
+      if (friend.step >= friend.steps.length) {
+        endFriend();
+        return;
+      }
+      var kind = friend.steps[friend.step];
+      var item = friend.item;
+      var others = shuffle(EXAM_LETTERS.filter(function (x) { return x !== item; })).slice(0, 3);
+      wordEl.textContent = "";
+
+      if (kind === "intro") {
+        picEl.textContent = item.emoji;
+        wordEl.textContent = item.word;
+        setZy(subEl, "新[ㄒㄧㄣ]朋[ㄆㄥˊ]友[ㄧㄡˇ]！" + item.zh);
+        setZy(nextBtn, "✅ 認[ㄖㄣˋ]識[ㄕˋ]了[˙ㄌㄜ]！");
+        nextBtn.classList.remove("hidden");
+        // 慢慢唸兩次
+        sayWord(item, function () { setTimeout(function () { sayWord(item); }, 500); });
+      } else if (kind === "hear-pic") {
+        picEl.textContent = "🔊";
+        instruct("聽[ㄊㄧㄥ]一[ㄧ]聽[ㄊㄧㄥ]，是[ㄕˋ]哪[ㄋㄚˇ]一[ㄧˊ]個[˙ㄍㄜ]？", function () { sayWord(item); });
+        qkChoices(choicesEl, {
+          options: [{ text: item.emoji, correct: true }].concat(others.map(function (x) { return { text: x.emoji, correct: false }; })),
+          say: function () { sayWord(item); },
+        }, stepDone);
+      } else if (kind === "pic-word") {
+        picEl.textContent = item.emoji;
+        instruct(item.zh + "，英[ㄧㄥ]文[ㄨㄣˊ]怎[ㄗㄣˇ]麼[˙ㄇㄜ]寫[ㄒㄧㄝˇ]？", null);
+        qkChoices(choicesEl, {
+          options: [{ text: item.word, correct: true }].concat(others.map(function (x) { return { text: x.word, correct: false }; })),
+          say: function () { sayWord(item); },
+          letters: true, textMode: true,
+        }, stepDone);
+      } else {
+        picEl.textContent = item.emoji;
+        slotsEl.classList.remove("hidden");
+        tilesEl.classList.remove("hidden");
+        instruct("把[ㄅㄚˇ]字[ㄗˋ]母[ㄇㄨˇ]排[ㄆㄞˊ]好[ㄏㄠˇ]，拼[ㄆㄧㄣ]出[ㄔㄨ]" + item.zh, function () { sayWord(item); });
+        qkSpell(slotsEl, tilesEl, item.word, function () { sayWord(item); }, stepDone);
+      }
+    }
+
+    // 畫面上顯示指示（含注音），同時用中文語音唸出來（看不懂的字，聽得懂）
+    function instruct(markup, then) {
+      setZy(subEl, markup);
+      say(zyPlain(markup), then);
+    }
+
+    function replay() {
+      if (friend) sayWord(friend.item);
+    }
+
+    function afterIntro() {
+      friend.step++;
+      nextStep();
+    }
+
+    function stepDone(firstTry) {
+      if (!firstTry) friend.allFirst = false;
+      friend.step++;
+      nextStep();
+    }
+
+    function endFriend() {
+      var item = friend.item;
+      var id = wordId(item);
+      recordAnswer(id, friend.allFirst);
+      var after = stageOf(id);
+      var grew = after > friend.stageBefore;
+      if (grew) run.changed.push(id);
+
+      picEl.textContent = item.emoji;
+      wordEl.textContent = item.word;
+      choicesEl.innerHTML = "";
+      slotsEl.classList.add("hidden");
+      tilesEl.classList.add("hidden");
+      if (friend.stageBefore === 0 && after >= 1) {
+        setZy(msgEl, "✨ 認[ㄖㄣˋ]識[ㄕˋ]新[ㄒㄧㄣ]朋[ㄆㄥˊ]友[ㄧㄡˇ]了[˙ㄌㄜ]！");
+        say("認識新朋友了！");
+      } else if (grew) {
+        setZy(msgEl, "🌟 長[ㄓㄤˇ]大[ㄉㄚˋ]了[˙ㄌㄜ]！");
+        say("長大了！");
+      } else {
+        setZy(msgEl, friend.allFirst ? "⭐ 好[ㄏㄠˇ]棒[ㄅㄤˋ]！" : "💪 記[ㄐㄧˋ]住[ㄓㄨˋ]了[˙ㄌㄜ]！");
+        say(friend.allFirst ? "好棒！" : "記住了！");
+      }
+      playSound("win");
+
+      run.index++;
+      setTimeout(function () {
+        if (run.adventure) nextFriend();
+        else finishSingle();
+      }, 1600);
+    }
+
+    function finishSingle() {
+      var changed = run.changed.slice();
+      quitRun();
+      renderIsland(changed);
+      checkTrophies();
+    }
+
+    function runDone() {
+      var changed = run.changed.slice();
+      var sticker = awardSticker();
+      awardTrophy("zoo-adventure");
+      checkTrophies();
+      notifyMilestone();
+      say("冒險完成！你得到一張新貼紙！");
+      celebrate("🎉 冒險完成！得到貼紙 " + sticker, "回樂園", function () {
+        quitRun();
+        renderIsland(changed);
+      });
+    }
+
+    // 所有朋友都認識了／都很熟了，各一座獎盃
+    function checkTrophies() {
+      var all = EXAM_LETTERS.map(wordId);
+      if (all.every(function (id) { return stageOf(id) >= 1; })) awardTrophy("zoo-all-met");
+      if (all.every(function (id) { return stageOf(id) >= 2; })) awardTrophy("zoo-all-grown");
+    }
+
+    refreshStickers();
+    createSpeechToggle();
+    renderIsland();
+    refreshProgress(function () { if (!run) renderIsland(); });
+  </script>
+</body>
+</html>
