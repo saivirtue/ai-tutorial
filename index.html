@@ -35,51 +35,84 @@
   <div class="cards">
     <a class="game-card" href="games/math-balloons/">
       <div class="icon">🎈</div>
-      <h2>數學氣球</h2>
+      <h2 data-zy="數[ㄕㄨˋ]學[ㄒㄩㄝˊ]氣[ㄑㄧˋ]球[ㄑㄧㄡˊ]">數學氣球</h2>
       <p>點破正確答案的氣球！</p>
     </a>
 
     <a class="game-card" href="games/robot-commands/">
       <div class="icon">🤖</div>
-      <h2>指令小機器人</h2>
+      <h2 data-zy="指[ㄓˇ]令[ㄌㄧㄥˋ]小[ㄒㄧㄠˇ]機[ㄐㄧ]器[ㄑㄧˋ]人[ㄖㄣˊ]">指令小機器人</h2>
       <p>排好指令，帶機器人找寶物！</p>
     </a>
 
     <a class="game-card" href="games/zhuyin-train/">
       <div class="icon">🚂</div>
-      <h2>注音小火車</h2>
+      <h2 data-zy="注[ㄓㄨˋ]音[ㄧㄣ]小[ㄒㄧㄠˇ]火[ㄏㄨㄛˇ]車[ㄔㄜ]">注音小火車</h2>
       <p>聽聲音找注音，動物上車囉！</p>
     </a>
 
     <a class="game-card" href="games/abc-train/">
       <div class="icon">🚂</div>
-      <h2>ABC 字母小火車</h2>
+      <h2 data-zy="ABC 字[ㄗˋ]母[ㄇㄨˇ]小[ㄒㄧㄠˇ]火[ㄏㄨㄛˇ]車[ㄔㄜ]">ABC 字母小火車</h2>
       <p>Listen and find the letter!</p>
     </a>
 
     <a class="game-card" href="games/abc-exam/">
       <div class="icon">📝</div>
-      <h2>英語日小考</h2>
+      <h2 data-zy="英[ㄧㄥ]語[ㄩˇ]小[ㄒㄧㄠˇ]考[ㄎㄠˇ]">英語日小考</h2>
       <p>字母、數字、單字、生活對話</p>
+    </a>
+
+    <a class="game-card" href="games/word-zoo/">
+      <div class="icon">🏝️</div>
+      <h2 data-zy="單[ㄉㄢ]字[ㄗˋ]樂[ㄌㄜˋ]園[ㄩㄢˊ]">單字樂園</h2>
+      <p>認識新朋友，叫醒打瞌睡的朋友！</p>
+    </a>
+
+    <a class="game-card" href="games/teach-pip/">
+      <div class="icon">👽</div>
+      <h2 data-zy="教[ㄐㄧㄠ] Pip 英[ㄧㄥ]文[ㄨㄣˊ]">教 Pip 英文</h2>
+      <p>你當老師，抓出 Pip 說錯的地方！</p>
+    </a>
+
+    <a class="game-card" href="games/scene-theater/">
+      <div class="icon">🎭</div>
+      <h2 data-zy="英[ㄧㄥ]語[ㄩˇ]小[ㄒㄧㄠˇ]劇[ㄐㄩˋ]場[ㄔㄤˇ]">英語小劇場</h2>
+      <p>用英文演故事：到學校、放風箏、放學</p>
+    </a>
+
+    <a class="game-card" href="games/sticker-scene/">
+      <div class="icon">🎨</div>
+      <h2 data-zy="貼[ㄊㄧㄝ]紙[ㄓˇ]場[ㄔㄤˇ]景[ㄐㄧㄥˇ]">貼紙場景</h2>
+      <p>貼貼紙，說出一句英文！</p>
     </a>
 
     <a class="game-card" href="games/zhuyin-speak/">
       <div class="icon">🦜</div>
-      <h2>跟讀小鸚鵡</h2>
+      <h2 data-zy="跟[ㄍㄣ]讀[ㄉㄨˊ]小[ㄒㄧㄠˇ]鸚[ㄧㄥ]鵡[ㄨˇ]">跟讀小鸚鵡</h2>
       <p>聽聲音，換你說說看！</p>
     </a>
 
     <a class="game-card" href="games/night-market/">
       <div class="icon">🎪</div>
-      <h2>小夜市</h2>
+      <h2 data-zy="小[ㄒㄧㄠˇ]夜[ㄧㄝˋ]市[ㄕˋ]">小夜市</h2>
       <p>用貼紙玩打地鼠、套圈圈，贏獎品！</p>
     </a>
 
     <a class="game-card" href="stickers/">
       <div class="icon">🏆</div>
-      <h2>我的貼紙簿</h2>
+      <h2 data-zy="我[ㄨㄛˇ]的[˙ㄉㄜ]貼[ㄊㄧㄝ]紙[ㄓˇ]簿[ㄅㄨˋ]">我的貼紙簿</h2>
       <p>看看收集了什麼，集滿換 10 元！</p>
     </a>
   </div>
+
+  <script src="shared/zhuyin.js"></script>
+  <script>
+    // 一年級小孩還在學注音：遊戲名字加上注音，他才看得懂、自己找得到。
+    // （注音寫在每個 <h2> 的 data-zy 裡；這段失效的話，還是看得到原本的國字）
+    document.querySelectorAll("h2[data-zy]").forEach(function (h) {
+      setZy(h, h.dataset.zy);
+    });
+  </script>
 </body>
 </html>

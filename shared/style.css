@@ -215,3 +215,6 @@ body {
 }
 
 .qk-tile.used { visibility: hidden; }
+
+/* 首頁卡片是白底：注音用深灰色才看得見 */
+.game-card .zy rt { color: #666; }
