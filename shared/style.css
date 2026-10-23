@@ -149,3 +149,19 @@ body {
   25% { transform: translateX(-10px); }
   75% { transform: translateX(10px); }
 }
+
+/* ===== 注音標示（shared/zhuyin.js 產生的 <ruby>） =====
+   注音在國字上面，跟課本一樣；字級跟著國字走，不用每個遊戲各調。 */
+.zy ruby {
+  ruby-align: center;
+  margin: 0 2px;
+}
+
+.zy rt {
+  font-size: 0.42em;
+  font-weight: normal;
+  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: 0;
+}
+
+/* 按鈕是橘色／藍色底，注音用白色看得清楚；淺色底的地方自己改 .zy rt 的顏色 */

@@ -42,6 +42,8 @@ SwitchBot 實體回饋（--switchbot 參數）：
 貼紙收集簿存檔：
   GET  /stickers        拿目前的收集簿
   POST /stickers/apply  送一筆變更（得到貼紙／花掉／贏獎品／換錢／獎盃）
+  GET  /progress        拿英文精熟度（每個字母／單字／句子練到哪）
+  POST /progress/apply  送一個項目的最新進度；存成 server/english-progress.json
 存成 server/sticker-book.json。這樣換 Wi-Fi、換筆電 IP、關掉電視盒
 瀏覽器，小孩收集的貼紙都不會不見。
 """
@@ -95,6 +97,41 @@ def save_sticker_book(book):
             json.dump(book, f, ensure_ascii=False, indent=2)
     except OSError as e:
         print(f"⚠️  貼紙存檔失敗：{e}")
+
+
+PROGRESS_FILE = Path(__file__).resolve().parent / "english-progress.json"
+
+
+def load_progress():
+    """英文精熟度存檔（每個字母／單字／句子練到哪）。壞掉就當作全新的。"""
+    try:
+        with open(PROGRESS_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_progress(data):
+    try:
+        with open(PROGRESS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except OSError as e:
+        print(f"⚠️  英文進度存檔失敗：{e}")
+
+
+def apply_progress(data, item_id, entry):
+    """每個項目各自比「最後練習時間」，比較新的那份留下——兩台裝置
+    同時在玩也不會互相蓋掉對方比較新的進度。"""
+    old = data.get(item_id)
+    if not old or entry.get("last", 0) >= old.get("last", 0):
+        data[item_id] = {
+            "box": int(entry.get("box", 0)),
+            "right": int(entry.get("right", 0)),
+            "wrong": int(entry.get("wrong", 0)),
+            "last": int(entry.get("last", 0)),
+        }
+    return data
 
 
 def apply_sticker_action(book, action):
@@ -603,6 +640,25 @@ async def stickers_apply_handler(request):
     return web.json_response(book)
 
 
+async def progress_get_handler(request):
+    """GET /progress：拿目前的英文精熟度"""
+    return web.json_response(load_progress())
+
+
+async def progress_apply_handler(request):
+    """POST /progress/apply：送一個項目的最新進度 {id, entry}"""
+    try:
+        body = await request.json()
+        item_id, entry = body["id"], body["entry"]
+        if not isinstance(item_id, str) or not isinstance(entry, dict):
+            raise ValueError("格式不對")
+    except Exception:
+        return web.json_response({"ok": False}, status=400)
+    data = apply_progress(load_progress(), item_id, entry)
+    save_progress(data)
+    return web.json_response({"ok": True})
+
+
 async def mock_speech_handler(request):
     """測試用：GET /mock_speech?text=波 設定下一次 listen 事件「假裝聽到的話」；
     不帶 text 表示假裝什麼都沒聽到。"""
@@ -743,6 +799,8 @@ def main():
     app.router.add_get("/mock_speech", mock_speech_handler)
     app.router.add_get("/stickers", stickers_get_handler)
     app.router.add_post("/stickers/apply", stickers_apply_handler)
+    app.router.add_get("/progress", progress_get_handler)
+    app.router.add_post("/progress/apply", progress_apply_handler)
     app.router.add_get("/{tail:.*}", static_handler)
     app.on_startup.append(start_background)
 
