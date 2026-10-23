@@ -216,6 +216,89 @@
       text-decoration: none;
     }
 
+
+    /* ===== 學英文模式（learn.js） ===== */
+    #learn-toggle {
+      font-size: clamp(18px, 3vw, 24px);
+      padding: 10px 22px;
+    }
+
+    #hud {
+      font-size: clamp(30px, 6vw, 52px);
+      font-weight: bold;
+      background: rgba(0, 0, 0, 0.35);
+      border: 3px solid var(--star);
+      border-radius: 20px;
+      padding: 6px 28px;
+      cursor: pointer;
+      text-align: center;
+      line-height: 1.3;
+    }
+
+    #hud .small { font-size: 0.55em; opacity: 0.85; }
+
+    .abc {
+      font-family: "Century Gothic", "Andika", "Chalkboard SE", "Comic Sans MS", "Comic Neue", sans-serif;
+    }
+
+    .stall .zy rt { color: #666; }
+
+    /* 打地鼠：地鼠變成帶著字母的泡泡 */
+    .hole .mole.letter {
+      background: #ffd93d;
+      color: #2b2b2b;
+      border-radius: 50%;
+      width: 1.5em;
+      height: 1.5em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+    }
+
+    /* 射氣球：氣球上寫單字 */
+    .target.bubble {
+      font-size: min(5.5vw, 24px);
+      font-weight: bold;
+      color: #fff;
+      padding: 14px 18px;
+      border-radius: 50%;
+      box-shadow: inset -6px -6px 0 rgba(0, 0, 0, 0.18);
+    }
+
+    .target.bubble.c0 { background: #ff5a5a; }
+    .target.bubble.c1 { background: #4a7bff; }
+    .target.bubble.c2 { background: #3ecf6b; }
+    .target.bubble.c3 { background: #c77dff; }
+    .target.bubble.c4 { background: #ff8a3d; }
+
+    /* 撈金魚：魚身上帶一個字母 */
+    .target.fish-letter { font-size: min(11vw, 48px); }
+
+    .target.fish-letter b {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 0.55em;
+      color: #fff;
+      text-shadow: 0 0 4px #000, 0 0 4px #000;
+    }
+
+    /* 套圈圈：三個圖片區，要對準叫到的那一個 */
+    .ring-zone {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 24%;
+      background: rgba(255, 255, 255, 0.22);
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 30px;
+    }
+
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -223,34 +306,38 @@
   <div id="title">🎪 小夜市</div>
   <div id="wallet">🎟️ 貼紙：<span id="sticker-count">0</span> 張</div>
   <div id="hand-bar" hidden>🖐️ 鏡頭開著！可以站遠一點，用手玩</div>
+  <button id="learn-toggle" class="big-btn blue" onclick="toggleLearn()"></button>
 
   <!-- 攤位選單 -->
   <div id="stalls">
     <button class="stall" onclick="startGame('mole')">
       <div class="icon">🐹</div>
       <h2>打地鼠</h2>
-      <p>15 秒內打到 8 隻就贏！</p>
+      <p id="desc-mole">15 秒內打到 8 隻就贏！</p>
       <p class="hand-ok">🖐️ 可以用手打</p>
     </button>
     <button class="stall" onclick="startGame('balloon')">
       <div class="icon">🎈</div>
       <h2>射氣球</h2>
-      <p>25 秒內射破 5 顆就贏！</p>
+      <p id="desc-balloon">25 秒內射破 5 顆就贏！</p>
       <p class="hand-ok">🖐️ 可以用手射</p>
     </button>
     <button class="stall" onclick="startGame('fish')">
       <div class="icon">🐠</div>
       <h2>撈金魚</h2>
-      <p>25 秒內撈到 4 條就贏！</p>
+      <p id="desc-fish">25 秒內撈到 4 條就贏！</p>
       <p class="hand-ok">🖐️ 可以用手撈</p>
     </button>
     <button class="stall" onclick="startGame('ring')">
       <div class="icon">🎯</div>
       <h2>套圈圈</h2>
-      <p>抓準時機，3 次套中 2 次就贏！</p>
+      <p id="desc-ring">抓準時機，3 次套中 2 次就贏！</p>
       <p class="hand-ok">🖐️ 可以揮手丟</p>
     </button>
   </div>
+
+  <!-- 學英文模式：現在要找哪一個（點一下可以再聽一次） -->
+  <div id="hud" class="abc" hidden></div>
 
   <!-- 遊戲場地 -->
   <div id="arena" hidden>
@@ -274,6 +361,9 @@
   <script src="../../shared/speech.js"></script>
   <script src="../../shared/stickers.js"></script>
   <script src="../../shared/vision-client.js"></script>
+  <script src="../../shared/zhuyin.js"></script>
+  <script src="../../shared/progress.js"></script>
+  <script src="../../shared/english-exam.js"></script>
   <script>
     /* 夜市：用學習遊戲賺到的貼紙當代幣，玩一場花 1 張，贏了得一個獎品。
        獎品集滿一整組就可以跟爸媽換 10 元（在貼紙簿那一頁換）。
@@ -348,6 +438,7 @@
       fieldEl.hidden = true;
       ringAreaEl.hidden = true;
       fieldEl.innerHTML = "";
+      if (window.learnCleanup) learnCleanup();
       refreshWallet();
     }
 
@@ -371,7 +462,8 @@
       stallsEl.hidden = true;
       arenaEl.hidden = false;
 
-      if (which === "mole") startMole();
+      if (window.learnMode && window.learnStart) learnStart(which);   // 學英文模式（learn.js）
+      else if (which === "mole") startMole();
       else if (which === "balloon") startBalloons();
       else if (which === "fish") startFish();
       else startRing();
@@ -838,5 +930,7 @@
     createSpeechToggle();
     showStalls();
   </script>
+  <!-- 學英文模式：四攤各一個英文版玩法（開關在攤位上方，預設開） -->
+  <script src="learn.js"></script>
 </body>
 </html>
