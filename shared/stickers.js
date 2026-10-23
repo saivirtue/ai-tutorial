@@ -44,6 +44,7 @@ var TROPHIES = {
   "zoo-adventure":              "🏆 單字探險家",
   "zoo-all-met":                "🏆 認識所有朋友",
   "zoo-all-grown":              "🏆 單字大朋友",
+  "pip-teacher":                "🏆 Pip 的好老師",
   "zhuyin-speak-full":          "🏆 拼讀小達人",
   "zhuyin-speak-three-full":    "🏆 三拼高手",
   "zhuyin-speak-sentence-full": "🏆 短句朗讀高手",

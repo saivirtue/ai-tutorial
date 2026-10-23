@@ -49,6 +49,15 @@ if (window.speechSynthesis) {
   speechSynthesis.onvoiceschanged = pickVoice;
 }
 
+var voicePitch = 1;      // 音高（1 是平常）；角色要尖尖的聲音就用 withPitch() 暫時調高
+
+// withPitch(1.5, function () { sayEnglish("dog"); })：這一句用尖尖的聲音唸
+// （音高是「呼叫當下」讀的，所以唸完馬上改回來，不會影響後面的語音）
+function withPitch(pitch, fn) {
+  voicePitch = pitch;
+  try { fn(); } finally { voicePitch = 1; }
+}
+
 var NORMAL_RATE = 0.9;   // 平常說話的速度（稍微慢一點，小孩聽得清楚）
 var SLOW_RATE = 0.6;     // 「跟我唸」示範用的慢速
 
@@ -74,6 +83,7 @@ function speak(text, voice, lang, onDone, rate) {
     if (voice) utterance.voice = voice;
     utterance.lang = lang;
     utterance.rate = speed;
+    utterance.pitch = voicePitch;
     utterance.onend = done;
     utterance.onerror = done;
     speechSynthesis.speak(utterance);
@@ -154,6 +164,9 @@ function sayEnglishClip(text, onDone, clipName) {
     if (window.speechSynthesis) speechSynthesis.cancel();
     clip.onended = done;
     clip.currentTime = 0;
+    // 錄音檔也能變尖：關掉「保持音高」再加快一點，聽起來就像小外星人
+    clip.preservesPitch = voicePitch === 1;
+    clip.playbackRate = 1 + (voicePitch - 1) * 0.6;
     clip.play().catch(function () { sayEnglish(text, done); });
   } catch (e) {
     sayEnglish(text, done);
