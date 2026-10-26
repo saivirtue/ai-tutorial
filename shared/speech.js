@@ -6,6 +6,16 @@
    有這個問題。函式內部的 let/const 不受影響，不用改。 */
 var SPEECH_KEY = "speech-enabled";   // 記住 🔊/🔇 的選擇
 
+// 這個檔案所在的網站根目錄（例如本機是 "/"，GitHub Pages 是 "/ai-tutorial/"）。
+// 錄音檔路徑要靠它組出來，寫死 "/audio/" 在 Pages 上會找不到。
+var SITE_ROOT = (function () {
+  try {
+    var src = document.currentScript && document.currentScript.src;
+    if (src) return src.replace(/shared\/speech\.js(\?.*)?$/, "");
+  } catch (e) {}
+  return "/";
+})();
+
 var speechEnabled = localStorage.getItem(SPEECH_KEY) !== "off";
 var chineseVoice = null;
 var englishVoice = null;
@@ -39,6 +49,15 @@ if (window.speechSynthesis) {
   speechSynthesis.onvoiceschanged = pickVoice;
 }
 
+var voicePitch = 1;      // 音高（1 是平常）；角色要尖尖的聲音就用 withPitch() 暫時調高
+
+// withPitch(1.5, function () { sayEnglish("dog"); })：這一句用尖尖的聲音唸
+// （音高是「呼叫當下」讀的，所以唸完馬上改回來，不會影響後面的語音）
+function withPitch(pitch, fn) {
+  voicePitch = pitch;
+  try { fn(); } finally { voicePitch = 1; }
+}
+
 var NORMAL_RATE = 0.9;   // 平常說話的速度（稍微慢一點，小孩聽得清楚）
 var SLOW_RATE = 0.6;     // 「跟我唸」示範用的慢速
 
@@ -64,6 +83,7 @@ function speak(text, voice, lang, onDone, rate) {
     if (voice) utterance.voice = voice;
     utterance.lang = lang;
     utterance.rate = speed;
+    utterance.pitch = voicePitch;
     utterance.onend = done;
     utterance.onerror = done;
     speechSynthesis.speak(utterance);
@@ -88,6 +108,69 @@ function saySlow(text, onDone) {
 // 唸英文（ABC 小火車用）
 function sayEnglish(text, onDone) {
   speak(text, englishVoice, "en-US", onDone);
+}
+
+/* ===== 英文錄音檔（audio/en/） =====
+   機器語音唸英文單字有時會怪（尤其是單獨一個字母、insect 這種字）。
+   一年級學英文，聽到的聲音最好跟學校一致——最好的辦法是家人自己錄。
+   把錄好的 mp3 放進 audio/en/，檔名照清單，不用改任何程式碼：
+     audio/en/cat.mp3　audio/en/letter-b.mp3　audio/en/good-morning.mp3
+   遊戲會先找錄音檔，找不到才退回語音合成。清單見 audio/README.md。 */
+
+var englishClipCache = {};
+var englishClipsAvailable = false;   // audio/en/ 有放錄音檔嗎？（開頁面時偵測一次）
+
+try {
+  // 探測一個一定會被需要的檔案；有就代表家人錄過了，聽力題不用擔心沒聲音
+  fetch(SITE_ROOT + "audio/en/cat.mp3", { method: "HEAD" })
+    .then(function (res) { englishClipsAvailable = res.ok; })
+    .catch(function () {});
+} catch (e) {}
+
+// 聽得到英文嗎？沒開聲音、或這台裝置沒有英文語音又沒有錄音檔，就是聽不到。
+// 聽力題用這個決定要不要改成顯示文字，不要讓小孩卡在只有一個喇叭圖示的題目。
+function canHearEnglish() {
+  if (!speechEnabled) return false;
+  return englishClipsAvailable || (!!window.speechSynthesis && englishVoice !== null);
+}
+
+// 唸英文：先找錄音檔，沒有才用語音合成。onDone 一定會被呼叫。
+// clipName：錄音檔檔名（不含 .mp3）；不給就用 text 當檔名。
+function sayEnglishClip(text, onDone, clipName) {
+  var clipKey = clipName || text;
+  var finished = false;
+  function done() {
+    if (finished) return;
+    finished = true;
+    if (onDone) onDone();
+  }
+
+  if (!speechEnabled) {
+    done();
+    return;
+  }
+
+  // 沒有錄音檔的時候不要每次都去試（會一直 404），直接用語音合成
+  if (!englishClipsAvailable) {
+    sayEnglish(text, done);
+    return;
+  }
+
+  try {
+    if (!(clipKey in englishClipCache)) {
+      englishClipCache[clipKey] = new Audio(SITE_ROOT + "audio/en/" + encodeURIComponent(clipKey) + ".mp3");
+    }
+    var clip = englishClipCache[clipKey];
+    if (window.speechSynthesis) speechSynthesis.cancel();
+    clip.onended = done;
+    clip.currentTime = 0;
+    // 錄音檔也能變尖：關掉「保持音高」再加快一點，聽起來就像小外星人
+    clip.preservesPitch = voicePitch === 1;
+    clip.playbackRate = 1 + (voicePitch - 1) * 0.6;
+    clip.play().catch(function () { sayEnglish(text, done); });
+  } catch (e) {
+    sayEnglish(text, done);
+  }
 }
 
 /* ===== 錄音檔覆蓋（跟讀小鸚鵡專用） =====

@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, target-densitydpi=device-dpi">
+  <title>英語小劇場</title>
+  <link rel="stylesheet" href="../../shared/style.css">
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 14px;
+      overflow: auto;
+      gap: 10px;
+    }
+
+    .hidden { display: none !important; }
+
+    #title {
+      font-size: clamp(24px, 4vw, 40px);
+      font-weight: bold;
+      text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+      margin-top: 6px;
+    }
+
+    /* ===== 選故事 ===== */
+    #scenes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: center;
+      max-width: 760px;
+    }
+
+    .scene-card {
+      width: clamp(150px, 40vw, 210px);
+      font-size: clamp(22px, 3.6vw, 28px);
+      line-height: 1.7;
+      padding: 14px 10px;
+    }
+
+    .scene-card .icon { display: block; font-size: 2em; line-height: 1.2; }
+    .scene-card .done { font-size: 0.8em; }
+
+    #speak-toggle { font-size: 22px; line-height: 1.9; padding: 8px 22px; }
+
+    /* ===== 舞台 ===== */
+    #stage {
+      position: relative;
+      width: min(94vw, 600px);
+      height: min(40vh, 300px);
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: 0 6px 0 rgba(0, 0, 0, 0.3);
+    }
+
+    .actor {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      font-size: clamp(40px, 9vw, 64px);
+      line-height: 1;
+      transition: left 0.9s ease, top 0.9s ease;
+      filter: drop-shadow(0 3px 2px rgba(0, 0, 0, 0.3));
+    }
+
+    .actor.hop { animation: actor-hop 0.7s ease; }
+
+    @keyframes actor-hop {
+      0% { transform: translate(-50%, -50%); }
+      40% { transform: translate(-50%, -110%) rotate(-6deg); }
+      70% { transform: translate(-50%, -50%) rotate(5deg); }
+      100% { transform: translate(-50%, -50%); }
+    }
+
+    /* 角色說話的對話框 */
+    .say-bubble {
+      position: absolute;
+      transform: translate(-50%, -100%);
+      background: #fff;
+      color: var(--text);
+      border-radius: 18px;
+      padding: 6px 14px;
+      font-size: clamp(20px, 4.4vw, 28px);
+      font-weight: bold;
+      white-space: nowrap;
+      box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25);
+      z-index: 3;
+      animation: bubble-in 0.25s ease;
+    }
+
+    @keyframes bubble-in { from { transform: translate(-50%, -80%) scale(0.6); opacity: 0; } }
+
+    #dots { display: flex; gap: 8px; font-size: 24px; min-height: 1.2em; }
+
+    #caption {
+      font-size: clamp(22px, 4vw, 30px);
+      line-height: 2;
+      text-align: center;
+      max-width: 94vw;
+      min-height: 2em;
+    }
+
+    #npc-line {
+      font-size: clamp(34px, 6.5vw, 52px);
+      font-weight: bold;
+      text-align: center;
+      cursor: pointer;
+    }
+
+    #choices-host { min-height: 80px; }
+
+    /* 開口跟著說 */
+    #speak-along {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 20, 60, 0.92);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      z-index: 500;
+      text-align: center;
+    }
+
+    #speak-along .line { font-size: clamp(40px, 9vw, 72px); font-weight: bold; }
+    #speak-along .zh { font-size: clamp(22px, 4.5vw, 32px); line-height: 2; }
+    #speak-along .big-btn { font-size: 28px; line-height: 1.8; padding: 12px 36px; }
+
+    .link-btn {
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.85);
+      font-size: 20px;
+      line-height: 1.9;
+      cursor: pointer;
+    }
+
+    .home-link {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 18px;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="title"></div>
+
+  <!-- 選一個故事 -->
+  <div id="menu-view" style="display:contents">
+    <div id="scenes"></div>
+    <button id="speak-toggle" class="big-btn gray zy" onclick="toggleSpeak()"></button>
+    <a class="home-link" href="../../">⬅ 回遊戲樂園</a>
+  </div>
+
+  <!-- 演出 -->
+  <div id="play-view" style="display:none;flex-direction:column;align-items:center;gap:10px;width:100%">
+    <div id="dots"></div>
+    <div id="stage"></div>
+    <div id="caption" class="zy"></div>
+    <div id="npc-line" class="abc" onclick="replayNpc()"></div>
+    <div id="choices-host"><div id="choices"></div></div>
+    <button id="quit-btn" class="link-btn zy" onclick="backToMenu()"></button>
+  </div>
+
+  <script src="../../shared/game-utils.js"></script>
+  <script src="../../shared/speech.js"></script>
+  <script src="../../shared/stickers.js"></script>
+  <script src="../../shared/vision-client.js"></script>
+  <script src="../../shared/zhuyin.js"></script>
+  <script src="../../shared/progress.js"></script>
+  <script src="../../shared/english-exam.js"></script>
+  <script src="../../shared/quiz-kit.js"></script>
+  <script>
+    /* 英語小劇場
+       ────────────────────────────────────────────────
+       學校的「生活對話」（Good morning、Line up, please、Are you ready?、
+       Watch out!、Goodbye……）是情境用語，用選擇題考反而最不自然。
+       這裡把它們放進三個小故事：到學校、放風箏、放學。
+       小孩選對的英文，劇情才會往下演——有人回話、有人走位、有球飛過來。
+
+       每一步有三種：
+         say        故事裡的情況（中文，有注音）→ 選該說的英文
+         reply      角色對你說一句英文 → 選該回答的英文
+         understand 角色說一句英文 → 選它的中文意思
+
+       「開口說」開著的時候，答對之後會要他跟著大聲說一次。電腦不會
+       去聽（辨識幼兒的英文很不準，也容易挫折）——他說了就按「我說了」。
+       跟爸媽一起玩更好：你演老師，他演學生。
+
+       想加新的故事？照 SCENES 的格式加一個就好，句子要在
+       shared/english-exam.js 的 EXAM_PHRASES 裡。
+
+       最外層變數用 var，不要用 let/const——某些電視盒的 WebView 對
+       「最外層 let/const」有相容性 bug（函式讀不到）。 */
+
+    var SPEAK_KEY = "theaterSpeak";
+
+    /* 角色與位置（x、y 是舞台的百分比）。effect 是答對之後發生的事：
+       move 走位、hop 跳一下、say 角色說一句英文、emoji 換圖。 */
+    var SCENES = [
+      {
+        id: "school", icon: "🏫", trophy: "theater-school",
+        title: "到[ㄉㄠˋ]學[ㄒㄩㄝˊ]校[ㄒㄧㄠˋ]",
+        bg: "linear-gradient(#9ad7ff, #d9f2ff 55%, #8fd16a 55%)",
+        actors: {
+          school: { e: "🏫", x: 80, y: 28 }, sun: { e: "☀️", x: 10, y: 14 },
+          teacher: { e: "👩‍🏫", x: 80, y: 66 }, kid: { e: "🧒", x: 12, y: 74 }, friend: { e: "👧", x: 40, y: 80 },
+        },
+        steps: [
+          { kind: "say", situation: "到[ㄉㄠˋ]學[ㄒㄩㄝˊ]校[ㄒㄧㄠˋ]了[˙ㄌㄜ]！跟[ㄍㄣ]老[ㄌㄠˇ]師[ㄕ]打[ㄉㄚˇ]招[ㄓㄠ]呼[ㄏㄨ]",
+            correct: "Good morning.", wrongs: ["Goodbye.", "Watch out!"],
+            effect: [{ move: ["kid", 58, 74] }, { say: ["teacher", "Good morning."] }] },
+          { kind: "reply", npc: ["friend", "Hi!"],
+            correct: "Hello!", wrongs: ["See you.", "Look!"],
+            effect: [{ hop: "friend" }, { hop: "kid" }] },
+          { kind: "understand", npc: ["teacher", "Line up, please."],
+            correct: "Line up, please.", wrongs: ["Goodbye.", "Watch out!"],
+            effect: [{ move: ["kid", 62, 80] }, { move: ["friend", 50, 80] }, { hop: "teacher" }] },
+          { kind: "reply", npc: ["teacher", "Are you ready?"],
+            correct: "Yes.", wrongs: ["Goodbye.", "Hello!"],
+            effect: [{ hop: "kid" }, { hop: "friend" }, { hop: "teacher" }] },
+        ],
+      },
+      {
+        id: "park", icon: "🪁", trophy: "theater-park",
+        title: "放[ㄈㄤˋ]風[ㄈㄥ]箏[ㄓㄥ]",
+        bg: "linear-gradient(#7fd4ff, #cdeeff 60%, #7ed957 60%)",
+        actors: {
+          tree: { e: "🌳", x: 88, y: 55 }, kite: { e: "🪁", x: 55, y: 24 },
+          kid: { e: "🧒", x: 20, y: 76 }, friend: { e: "👧", x: 42, y: 80 }, ball: { e: "⚽", x: 108, y: 82 },
+        },
+        steps: [
+          { kind: "say", situation: "天[ㄊㄧㄢ]上[ㄕㄤˋ]有[ㄧㄡˇ]風[ㄈㄥ]箏[ㄓㄥ]！叫[ㄐㄧㄠˋ]朋[ㄆㄥˊ]友[ㄧㄡˇ]看[ㄎㄢˋ]",
+            correct: "Look!", wrongs: ["Bye.", "Yes."],
+            effect: [{ hop: "friend" }, { hop: "kite" }] },
+          { kind: "understand", npc: ["friend", "Are you ready?"],
+            correct: "Are you ready?", wrongs: ["Good morning.", "Look!"],
+            effect: [{ hop: "friend" }] },
+          { kind: "say", situation: "朋[ㄆㄥˊ]友[ㄧㄡˇ]問[ㄨㄣˋ]你[ㄋㄧˇ]準[ㄓㄨㄣˇ]備[ㄅㄟˋ]好[ㄏㄠˇ]了[˙ㄌㄜ]嗎[˙ㄇㄚ]，你[ㄋㄧˇ]好[ㄏㄠˇ]了[˙ㄌㄜ]",
+            correct: "Yes.", wrongs: ["Goodbye.", "Hello!"],
+            effect: [{ move: ["kite", 60, 10] }, { hop: "kid" }] },
+          { kind: "say", situation: "球[ㄑㄧㄡˊ]飛[ㄈㄟ]過[ㄍㄨㄛˋ]來[ㄌㄞˊ]了[˙ㄌㄜ]！快[ㄎㄨㄞˋ]叫[ㄐㄧㄠˋ]朋[ㄆㄥˊ]友[ㄧㄡˇ]",
+            correct: "Watch out!", wrongs: ["Hi!", "Good morning."],
+            effect: [{ move: ["ball", 30, 82] }, { move: ["friend", 60, 60] }, { hop: "friend" }] },
+        ],
+      },
+      {
+        id: "home", icon: "🌇", trophy: "theater-home",
+        title: "放[ㄈㄤˋ]學[ㄒㄩㄝˊ]了[˙ㄌㄜ]",
+        bg: "linear-gradient(#ffb36b, #ffe1b0 58%, #b9a37a 58%)",
+        actors: {
+          sun: { e: "🌇", x: 14, y: 18 },
+          teacher: { e: "👩‍🏫", x: 80, y: 68 }, kid: { e: "🧒", x: 30, y: 76 }, friend: { e: "👧", x: 55, y: 80 }, mom: { e: "👩", x: 100, y: 80 },
+        },
+        steps: [
+          { kind: "understand", npc: ["teacher", "Goodbye."],
+            correct: "Goodbye.", wrongs: ["Good morning.", "Line up, please."],
+            effect: [{ hop: "teacher" }] },
+          { kind: "reply", npc: ["teacher", "Goodbye."],
+            correct: "Bye.", wrongs: ["Good morning.", "Look!"],
+            effect: [{ hop: "kid" }, { hop: "teacher" }] },
+          { kind: "reply", npc: ["friend", "Bye."],
+            correct: "See you.", wrongs: ["Line up, please.", "Hello!"],
+            effect: [{ move: ["friend", 80, 80] }, { hop: "kid" }] },
+          { kind: "say", situation: "媽[ㄇㄚ]媽[˙ㄇㄚ]來[ㄌㄞˊ]接[ㄐㄧㄝ]你[ㄋㄧˇ]了[˙ㄌㄜ]！跟[ㄍㄣ]老[ㄌㄠˇ]師[ㄕ]說[ㄕㄨㄛ]再[ㄗㄞˋ]見[ㄐㄧㄢˋ]",
+            correct: "Goodbye.", wrongs: ["Hi!", "Yes."],
+            effect: [{ move: ["mom", 60, 80] }, { move: ["kid", 52, 78] }, { say: ["teacher", "Bye."] }] },
+        ],
+      },
+    ];
+
+    var INSTR = {
+      say: "",   // 故事裡的中文情況就是指示
+      reply: "怎[ㄗㄣˇ]麼[˙ㄇㄜ]回[ㄏㄨㄟˊ]答[ㄉㄚˊ]？",
+      understand: "他[ㄊㄚ]說[ㄕㄨㄛ]什[ㄕㄣˊ]麼[˙ㄇㄜ]意[ㄧˋ]思[˙ㄙ]？",
+    };
+
+    var menuView = document.getElementById("menu-view");
+    var playView = document.getElementById("play-view");
+    var stageEl = document.getElementById("stage");
+    var captionEl = document.getElementById("caption");
+    var npcLineEl = document.getElementById("npc-line");
+    var choicesEl = document.getElementById("choices");
+    var dotsEl = document.getElementById("dots");
+
+    var scene = null;
+    var stepIndex = 0;
+    var step = null;
+    var actorEls = {};
+    var speakAlong = false;
+    try { speakAlong = localStorage.getItem(SPEAK_KEY) === "on"; } catch (e) {}
+
+    /* ===== 句子工具 ===== */
+
+    function phrase(en) {
+      for (var i = 0; i < EXAM_PHRASES.length; i++) if (EXAM_PHRASES[i].en === en) return EXAM_PHRASES[i];
+      return null;
+    }
+
+    /* ===== 選故事 ===== */
+
+    function toggleSpeak() {
+      speakAlong = !speakAlong;
+      try { localStorage.setItem(SPEAK_KEY, speakAlong ? "on" : "off"); } catch (e) {}
+      playSound("click");
+      drawMenu();
+    }
+
+    function drawMenu() {
+      setZy(document.getElementById("title"), "🎭 英[ㄧㄥ]語[ㄩˇ]小[ㄒㄧㄠˇ]劇[ㄐㄩˋ]場[ㄔㄤˇ]");
+      var holder = document.getElementById("scenes");
+      holder.innerHTML = "";
+      var trophies = getCollection().trophies || {};
+      SCENES.forEach(function (sc) {
+        var btn = document.createElement("button");
+        btn.className = "big-btn blue scene-card zy";
+        btn.innerHTML = '<span class="icon">' + sc.icon + "</span>" + zy(sc.title) +
+          (trophies[sc.trophy] ? ' <span class="done">⭐</span>' : "");
+        btn.onclick = function () { startScene(sc); };
+        holder.appendChild(btn);
+      });
+      var tog = document.getElementById("speak-toggle");
+      setZy(tog, speakAlong ? "🗣️ 開[ㄎㄞ]口[ㄎㄡˇ]說[ㄕㄨㄛ]：開[ㄎㄞ]" : "🗣️ 開[ㄎㄞ]口[ㄎㄡˇ]說[ㄕㄨㄛ]：關[ㄍㄨㄢ]");
+      tog.className = "big-btn zy " + (speakAlong ? "orange" : "gray");
+      setZy(document.getElementById("quit-btn"), "⬅ 選[ㄒㄩㄢˇ]別[ㄅㄧㄝˊ]的[˙ㄉㄜ]故[ㄍㄨˋ]事[ㄕˋ]");
+    }
+
+    function backToMenu() {
+      if (window.speechSynthesis) speechSynthesis.cancel();
+      var sa = document.getElementById("speak-along");
+      if (sa) sa.remove();
+      scene = null;
+      step = null;
+      playView.style.display = "none";
+      menuView.style.display = "contents";
+      drawMenu();
+    }
+
+    /* ===== 演出 ===== */
+
+    function startScene(sc) {
+      scene = sc;
+      stepIndex = 0;
+      menuView.style.display = "none";
+      playView.style.display = "flex";
+
+      stageEl.style.background = sc.bg;
+      stageEl.innerHTML = "";
+      actorEls = {};
+      Object.keys(sc.actors).forEach(function (name) {
+        var a = sc.actors[name];
+        var el = document.createElement("div");
+        el.className = "actor";
+        el.textContent = a.e;
+        el.style.left = a.x + "%";
+        el.style.top = a.y + "%";
+        stageEl.appendChild(el);
+        actorEls[name] = el;
+      });
+      nextStep();
+    }
+
+    function drawDots() {
+      dotsEl.innerHTML = "";
+      scene.steps.forEach(function (s, i) {
+        var d = document.createElement("span");
+        d.textContent = i < stepIndex ? "⭐" : (i === stepIndex ? "🔸" : "▫️");
+        dotsEl.appendChild(d);
+      });
+    }
+
+    // 角色說一句英文：頭上冒對話框，同時唸出來
+    function actorSay(name, en, onDone) {
+      var el = actorEls[name];
+      var item = phrase(en);
+      if (!el) { if (onDone) onDone(); return; }
+      var bubble = document.createElement("div");
+      bubble.className = "say-bubble abc";
+      bubble.textContent = en;
+      bubble.style.left = el.style.left;
+      bubble.style.top = "calc(" + el.style.top + " - 34px)";
+      stageEl.appendChild(bubble);
+      setTimeout(function () { bubble.remove(); }, 2200);
+      if (item) sayPhrase(item, onDone);
+      else if (onDone) onDone();
+    }
+
+    function hopActor(name) {
+      var el = actorEls[name];
+      if (!el) return;
+      el.classList.remove("hop");
+      void el.offsetWidth;
+      el.classList.add("hop");
+    }
+
+    function runEffects(list) {
+      (list || []).forEach(function (fx) {
+        if (fx.move) {
+          var el = actorEls[fx.move[0]];
+          if (el) { el.style.left = fx.move[1] + "%"; el.style.top = fx.move[2] + "%"; }
+        }
+        if (fx.hop) hopActor(fx.hop);
+        if (fx.say) actorSay(fx.say[0], fx.say[1]);
+      });
+    }
+
+    function nextStep() {
+      if (stepIndex >= scene.steps.length) {
+        sceneDone();
+        return;
+      }
+      step = scene.steps[stepIndex];
+      drawDots();
+      choicesEl.innerHTML = "";
+      npcLineEl.textContent = "";
+
+      var correct = phrase(step.correct);
+      var wrongItems = step.wrongs.map(phrase);
+      var toZh = step.kind === "understand";
+
+      var options = [{ text: toZh ? correct.zh : correct.en, correct: true }].concat(
+        wrongItems.map(function (w) { return { text: toZh ? w.zh : w.en, correct: false }; })
+      );
+
+      var instr;
+      var npcItem = step.npc ? phrase(step.npc[1]) : null;
+      if (step.kind === "say") {
+        instr = step.situation;
+        setZy(captionEl, instr);
+        say(zyPlain(instr));
+      } else {
+        instr = INSTR[step.kind];
+        setZy(captionEl, instr);
+        npcLineEl.textContent = step.npc[1];
+        // 角色先說，說完再用中文提醒小孩要做什麼
+        actorSay(step.npc[0], step.npc[1], function () { say(zyPlain(instr)); });
+        hopActor(step.npc[0]);
+      }
+
+      var cur = step;
+      qkChoices(choicesEl, {
+        options: options,
+        textMode: true,
+        // 答錯或連錯時再唸一次：角色說的那句，或是該說的那句
+        say: function () { if (npcItem) sayPhrase(npcItem); else sayPhrase(correct); },
+      }, function (firstTry) {
+        if (cur !== step) return;
+        recordAnswer(phraseId(correct), firstTry);
+        stepCorrect(correct);
+      });
+    }
+
+    function replayNpc() {
+      if (step && step.npc) sayPhrase(phrase(step.npc[1]));
+    }
+
+    function stepCorrect(correct) {
+      var go = function () {
+        runEffects(step.effect);
+        stepIndex++;
+        drawDots();
+        setTimeout(nextStep, 2300);
+      };
+
+      // 「該說的」答對了：先自己唸一遍（小孩的台詞），再演出效果
+      if (step.kind === "understand") {
+        go();
+      } else if (speakAlong) {
+        speakAlongThen(correct, go);
+      } else {
+        sayPhrase(correct, null);
+        go();
+      }
+    }
+
+    // 開口說：把台詞放大、唸給他聽，叫他自己大聲說一次，說完按「我說了」
+    function speakAlongThen(item, onDone) {
+      var overlay = document.createElement("div");
+      overlay.id = "speak-along";
+      overlay.innerHTML =
+        '<div class="line abc">' + zy(item.en) + "</div>" +
+        '<div class="zh zy">' + zy(item.zh) + "</div>" +
+        '<button class="big-btn blue" id="sa-listen">🔊</button>' +
+        '<button class="big-btn green zy" id="sa-done">' + zy("🎤 我[ㄨㄛˇ]說[ㄕㄨㄛ]了[˙ㄌㄜ]！") + "</button>";
+      document.body.appendChild(overlay);
+      var listen = function () { sayPhrase(item); };
+      document.getElementById("sa-listen").onclick = listen;
+      document.getElementById("sa-done").onclick = function () {
+        overlay.remove();
+        playSound("pop");
+        onDone();
+      };
+      say("跟著說一次！", listen);
+    }
+
+    function sceneDone() {
+      dotsEl.innerHTML = "";
+      var sticker = awardSticker();
+      var first = awardTrophy(scene.trophy);
+      // 三個故事都演過了，再多一座大獎盃
+      var all = SCENES.every(function (sc) { return (getCollection().trophies || {})[sc.trophy]; });
+      var big = all ? awardTrophy("theater-all") : null;
+      notifyMilestone();
+      say("演完了！你得到一張新貼紙！");
+      celebrate(
+        "🎭 演完了！得到貼紙 " + sticker + (first ? "\n" + first : "") + (big ? "\n" + big : ""),
+        "回選單",
+        backToMenu
+      );
+    }
+
+    refreshStickers(drawMenu);
+    createSpeechToggle();
+    drawMenu();
+    refreshProgress();
+  </script>
+</body>
+</html>

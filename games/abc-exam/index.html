@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, target-densitydpi=device-dpi">
+  <title>英語日小考</title>
+  <link rel="stylesheet" href="../../shared/style.css">
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 16px;
+      overflow: auto;
+      gap: 12px;
+    }
+
+    .hidden { display: none !important; }
+
+    #title {
+      font-size: clamp(24px, 4vw, 40px);
+      font-weight: bold;
+      text-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+      margin-top: 8px;
+    }
+
+    /* 英文字母用「a、g 是單層」的字體，跟學校單字表上的寫法一樣。
+       這些字體有哪個就用哪個，都沒有就退回一般字體。 */
+    .abc {
+      font-family: "Century Gothic", "Andika", "Chalkboard SE", "Comic Sans MS", "Comic Neue", sans-serif;
+    }
+
+    /* ===== 選單 ===== */
+    #menu {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: center;
+      max-width: 760px;
+    }
+
+    .mode {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 6px;
+      width: clamp(150px, 42vw, 220px);
+    }
+
+    .mode-btn {
+      font-size: clamp(22px, 3.6vw, 30px);
+      line-height: 1.5;
+      padding: 14px 10px;
+    }
+
+    .mode-btn .icon {
+      display: block;
+      font-size: 1.5em;
+      line-height: 1.2;
+    }
+
+    /* 每種練習下面的小進度條：熟了的字佔幾成 */
+    .mode-bar {
+      height: 10px;
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.2);
+      overflow: hidden;
+    }
+
+    .mode-bar span {
+      display: block;
+      height: 100%;
+      background: var(--star);
+    }
+
+    #menu-note {
+      font-size: 20px;
+      text-align: center;
+      max-width: 600px;
+      line-height: 1.8;
+    }
+
+    /* ===== 題目 ===== */
+    #quiz {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+    }
+
+    #stars {
+      display: flex;
+      gap: 6px;
+      font-size: clamp(24px, 4.5vw, 34px);
+    }
+
+    #stars .on { opacity: 1; }
+    #stars .half { filter: grayscale(1); opacity: 0.85; }   /* 銀星星：有人提示才答對 */
+    #stars .off { opacity: 0.25; }
+
+    #card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 28px;
+      padding: 16px 36px;
+      min-width: min(90vw, 360px);
+    }
+
+    #prompt {
+      font-size: clamp(56px, 13vh, 120px);
+      line-height: 1.3;
+      text-align: center;
+    }
+
+    #prompt.small { font-size: clamp(30px, 6vh, 52px); line-height: 1.8; }
+
+    #sub {
+      font-size: clamp(20px, 3.4vh, 30px);
+      line-height: 1.9;
+      min-height: 1.3em;
+      text-align: center;
+    }
+
+    #card-buttons {
+      display: flex;
+      gap: 10px;
+    }
+
+    #card-buttons .big-btn {
+      font-size: 20px;
+      padding: 10px 18px;
+    }
+
+    #message {
+      font-size: 22px;
+      min-height: 1.4em;
+      font-weight: bold;
+      color: var(--star);
+      text-align: center;
+    }
+
+    #choices {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    #choices .big-btn {
+      font-size: clamp(34px, 6.5vh, 52px);
+      min-width: clamp(80px, 20vw, 120px);
+      padding: 12px 18px;
+    }
+
+    #choices.text .big-btn { font-size: clamp(22px, 4vh, 32px); line-height: 1.8; }
+
+    .big-btn:disabled { opacity: 0.3; }
+
+    /* 連錯兩次之後，正確答案會一閃一閃，直接告訴他 */
+    .reveal {
+      animation: reveal-pulse 0.7s ease-in-out infinite;
+      outline: 5px solid var(--star);
+    }
+
+    @keyframes reveal-pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.12); }
+    }
+
+    /* ===== 拼字 ===== */
+    #slots, #tiles {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .slot {
+      width: clamp(44px, 12vw, 70px);
+      height: clamp(56px, 9vh, 80px);
+      border-bottom: 5px solid rgba(255, 255, 255, 0.7);
+      font-size: clamp(36px, 7vh, 60px);
+      text-align: center;
+      color: var(--star);
+    }
+
+    .tile {
+      font-size: clamp(34px, 6.5vh, 52px);
+      width: clamp(60px, 16vw, 90px);
+      padding: 12px 0;
+    }
+
+    .tile.used { visibility: hidden; }
+
+    .link-btn {
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.85);
+      font-size: 20px;
+      line-height: 1.9;
+      cursor: pointer;
+    }
+
+    .home-link {
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 18px;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="title"></div>
+
+  <!-- 選一種練習 -->
+  <div id="menu"></div>
+  <div id="menu-note" class="zy"></div>
+
+  <!-- 練習中 -->
+  <div id="quiz" class="hidden">
+    <div id="stars"></div>
+    <div id="card">
+      <div id="prompt" class="abc"></div>
+      <div id="sub" class="zy"></div>
+      <div id="card-buttons">
+        <button id="replay-btn" class="big-btn blue" onclick="replay()">🔁</button>
+        <button id="help-btn" class="big-btn gray" onclick="sayInstruction()">❓</button>
+      </div>
+    </div>
+    <div id="message"></div>
+    <div id="choices"></div>
+    <div id="slots" class="hidden"></div>
+    <div id="tiles" class="hidden"></div>
+    <button id="back-btn" class="link-btn zy" onclick="backToMenu()"></button>
+  </div>
+
+  <a class="home-link" href="../../">⬅ 回遊戲樂園</a>
+
+  <script src="../../shared/game-utils.js"></script>
+  <script src="../../shared/speech.js"></script>
+  <script src="../../shared/stickers.js"></script>
+  <script src="../../shared/vision-client.js"></script>
+  <script src="../../shared/zhuyin.js"></script>
+  <script src="../../shared/progress.js"></script>
+  <script src="../../shared/english-exam.js"></script>
+  <script>
+    /* 最外層變數用 var，不要用 let/const——某些電視盒的 WebView 對
+       「最外層 let/const」有相容性 bug（函式讀不到），var 沒有這個
+       問題。函式內部的 let/const 不受影響，不用改。 */
+
+    var ROUND_SIZE = 8;        // 一關幾題
+    var PASS_FIRST_TRY = 5;    // 其中至少幾題「第一次就按對」才算過關、拿貼紙
+    var CHOICE_COUNT = 4;      // 一次給幾個選項
+    var REVEAL_AFTER = 2;      // 連錯幾次就直接亮出正確答案（教他，不是罰他）
+    var REDO_GAP = 2;          // 答錯（或看了答案才對）的題，隔幾題後再回來問一次
+
+    var currentKey = null;     // 現在在練哪一種
+    var q = null;              // 現在這一題
+    var locked = false;
+    var session = null;        // 這一關的狀態：results 是每題有沒有第一次就對
+
+    var menuEl = document.getElementById("menu");
+    var quizEl = document.getElementById("quiz");
+    var promptEl = document.getElementById("prompt");
+    var subEl = document.getElementById("sub");
+    var messageEl = document.getElementById("message");
+    var choicesEl = document.getElementById("choices");
+    var slotsEl = document.getElementById("slots");
+    var tilesEl = document.getElementById("tiles");
+    var starsEl = document.getElementById("stars");
+
+    /* ===== 小工具 ===== */
+
+    // 選項：text 是按鈕上的字，correct 是不是正確答案
+    function option(text, correct) {
+      return { text: text, correct: correct };
+    }
+
+    // 選這一題考哪個項目：有「要回來問的」就用它，沒有就偏向還不熟的
+    function chooseTarget(items, idOf, forced) {
+      if (forced) {
+        for (var i = 0; i < items.length; i++) if (idOf(items[i]) === forced) return items[i];
+      }
+      return pickWeighted(items, idOf, session.recent);
+    }
+
+    // 挑 n 個不是 target 的項目（拿來當錯誤選項）
+    function others(list, target, n) {
+      return shuffle(list.filter(function (x) { return x !== target; })).slice(0, n);
+    }
+
+    // 聽不到英文時（靜音／沒有英文語音）不出「只有喇叭」的題目
+    function pickKind(kinds) {
+      var ok = canHearEnglish();
+      var usable = kinds.filter(function (k) { return ok || k.indexOf("hear") !== 0; });
+      return randomFrom(usable);
+    }
+
+    /* ===== 五種練習：每種都會產生「一題」 =====
+       題目長這樣：
+         id：這題考哪個項目（記精熟度用）　item：項目本身
+         kind：題型（換題型時才會用語音唸指示）　instr：中文指示（含注音）
+         prompt：大大的題目　say(onDone)：唸英文　options：選項
+         textMode：選項是長句子時用小字　letters：選項要用英文字體 */
+
+    // Part 1：字母名稱（大小寫配對、聽字母名稱）
+    function makeLetter(forced) {
+      var target = chooseTarget(EXAM_LETTERS, letterId, forced);
+      var kind = pickKind(["hear-upper", "hear-lower", "upper-lower", "lower-upper"]);
+      var hear = kind.indexOf("hear") === 0;
+      var answerCase = (kind === "hear-upper" || kind === "lower-upper") ? "upper" : "lower";
+      var promptCase = kind === "upper-lower" ? "upper" : "lower";
+
+      // 錯誤選項：長得像的字母排第一個，不夠的再隨機補
+      var wrongs = others(EXAM_LETTERS, target, EXAM_LETTERS.length);
+      var twin = wrongs.filter(function (x) { return x.lower === CONFUSABLE[target.lower]; });
+      var rest = wrongs.filter(function (x) { return twin.indexOf(x) < 0; });
+      wrongs = twin.concat(rest).slice(0, CHOICE_COUNT - 1);
+
+      var instr = {
+        "hear-upper":  "聽[ㄊㄧㄥ]一[ㄧ]聽[ㄊㄧㄥ]，找[ㄓㄠˇ]大[ㄉㄚˋ]寫[ㄒㄧㄝˇ]",
+        "hear-lower":  "聽[ㄊㄧㄥ]一[ㄧ]聽[ㄊㄧㄥ]，找[ㄓㄠˇ]小[ㄒㄧㄠˇ]寫[ㄒㄧㄝˇ]",
+        "upper-lower": "找[ㄓㄠˇ]出[ㄔㄨ]它[ㄊㄚ]的[˙ㄉㄜ]小[ㄒㄧㄠˇ]寫[ㄒㄧㄝˇ]",
+        "lower-upper": "找[ㄓㄠˇ]出[ㄔㄨ]它[ㄊㄚ]的[˙ㄉㄜ]大[ㄉㄚˋ]寫[ㄒㄧㄝˇ]",
+      }[kind];
+
+      return {
+        id: letterId(target), item: target, kind: kind, instr: instr,
+        prompt: hear ? "🔊" : target[promptCase],
+        say: function (done) { sayLetter(target, done); },
+        options: [option(target[answerCase], true)].concat(
+          wrongs.map(function (x) { return option(x[answerCase], false); })
+        ),
+        letters: true,
+        speakOnStart: hear,
+        answerText: target.upper + " " + target.lower,
+      };
+    }
+
+    // Part 2：數字單字 1～10
+    function makeNumber(forced) {
+      var target = chooseTarget(EXAM_NUMBERS, numberId, forced);
+      var kind = pickKind(["digit-word", "word-digit", "hear-digit"]);
+      var toWord = kind === "digit-word";
+      var wrongs = others(EXAM_NUMBERS, target, CHOICE_COUNT - 1);
+      return {
+        id: numberId(target), item: target, kind: kind,
+        instr: toWord
+          ? "它[ㄊㄚ]的[˙ㄉㄜ]英[ㄧㄥ]文[ㄨㄣˊ]怎[ㄗㄣˇ]麼[˙ㄇㄜ]寫[ㄒㄧㄝˇ]？"
+          : "是[ㄕˋ]哪[ㄋㄚˇ]個[˙ㄍㄜ]數[ㄕㄨˋ]字[ㄗˋ]？",
+        prompt: kind === "digit-word" ? target.digit : (kind === "word-digit" ? target.word : "🔊"),
+        say: function (done) { sayNumber(target, done); },
+        options: [option(toWord ? target.word : target.digit, true)].concat(
+          wrongs.map(function (x) { return option(toWord ? x.word : x.digit, false); })
+        ),
+        letters: !toWord,
+        textMode: toWord,
+        speakOnStart: kind !== "digit-word",
+        answerText: target.digit + " " + target.word,
+      };
+    }
+
+    // Part 3：生活對話（聽英文選中文／看中文選英文）
+    function makePhrase(forced) {
+      var target = chooseTarget(EXAM_PHRASES, phraseId, forced);
+      var toZh = randomFrom([true, false]);
+      // 錯誤選項不能跟答案「中文一樣」（Goodbye／Bye／See you 都是再見）
+      var pool = EXAM_PHRASES.filter(function (x) { return zyPlain(x.zh) !== zyPlain(target.zh); });
+      var wrongs = shuffle(pool).slice(0, CHOICE_COUNT - 1);
+      return {
+        id: phraseId(target), item: target, kind: toZh ? "en-zh" : "zh-en",
+        instr: toZh
+          ? "這[ㄓㄜˋ]是[ㄕˋ]什[ㄕㄣˊ]麼[˙ㄇㄜ]意[ㄧˋ]思[˙ㄙ]？"
+          : "英[ㄧㄥ]文[ㄨㄣˊ]怎[ㄗㄣˇ]麼[˙ㄇㄜ]說[ㄕㄨㄛ]？",
+        prompt: toZh ? target.en : target.zh,
+        promptSmall: true,
+        say: function (done) { sayPhrase(target, done); },
+        options: [option(toZh ? target.zh : target.en, true)].concat(
+          wrongs.map(function (x) { return option(toZh ? x.zh : x.en, false); })
+        ),
+        textMode: true,
+        speakOnStart: toZh,
+        answerText: target.en,
+      };
+    }
+
+    // Part 4：單字（看圖選單字／聽單字選圖／選開頭字母）
+    function makeWord(forced) {
+      var target = chooseTarget(EXAM_LETTERS, wordId, forced);
+      var kind = pickKind(["pic-word", "hear-pic", "word-letter"]);
+      var wrongs = others(EXAM_LETTERS, target, CHOICE_COUNT - 1);
+      var base = {
+        id: wordId(target), item: target, kind: kind,
+        say: function (done) { sayWord(target, done); },
+        answerText: target.word,
+      };
+
+      if (kind === "pic-word") {
+        return Object.assign(base, {
+          instr: target.zh + "，英[ㄧㄥ]文[ㄨㄣˊ]怎[ㄗㄣˇ]麼[˙ㄇㄜ]寫[ㄒㄧㄝˇ]？",
+          prompt: target.emoji,
+          options: [option(target.word, true)].concat(wrongs.map(function (x) { return option(x.word, false); })),
+          textMode: true, letters: true, speakOnStart: false,
+        });
+      }
+      if (kind === "hear-pic") {
+        return Object.assign(base, {
+          instr: "聽[ㄊㄧㄥ]一[ㄧ]聽[ㄊㄧㄥ]，是[ㄕˋ]哪[ㄋㄚˇ]一[ㄧˊ]個[˙ㄍㄜ]？",
+          prompt: "🔊",
+          options: [option(target.emoji, true)].concat(wrongs.map(function (x) { return option(x.emoji, false); })),
+          speakOnStart: true,
+          answerText: target.word + " " + target.emoji,
+        });
+      }
+      return Object.assign(base, {
+        instr: "它[ㄊㄚ]的[˙ㄉㄜ]開[ㄎㄞ]頭[ㄊㄡˊ]是[ㄕˋ]哪[ㄋㄚˇ]個[˙ㄍㄜ]字[ㄗˋ]母[ㄇㄨˇ]？",
+        prompt: target.word,
+        options: [option(target.upper + " " + target.lower, true)].concat(
+          wrongs.map(function (x) { return option(x.upper + " " + x.lower, false); })
+        ),
+        letters: true, speakOnStart: true,
+        answerText: target.upper + " " + target.lower,
+      });
+    }
+
+    // 拼字不是選擇題，另外處理（見下面「拼拼看」）
+    var MODES = {
+      letters:  { label: "字[ㄗˋ]母[ㄇㄨˇ]", icon: "🔤", make: makeLetter, idOf: letterId, items: EXAM_LETTERS, trophy: "exam-letters" },
+      numbers:  { label: "數[ㄕㄨˋ]字[ㄗˋ]", icon: "🔢", make: makeNumber, idOf: numberId, items: EXAM_NUMBERS, trophy: "exam-numbers" },
+      phrases:  { label: "對[ㄉㄨㄟˋ]話[ㄏㄨㄚˋ]", icon: "💬", make: makePhrase, idOf: phraseId, items: EXAM_PHRASES, trophy: "exam-phrases" },
+      words:    { label: "單[ㄉㄢ]字[ㄗˋ]", icon: "🐱", make: makeWord, idOf: wordId, items: EXAM_LETTERS, trophy: "exam-words" },
+      spelling: { label: "拼[ㄆㄧㄣ]拼[ㄆㄧㄣ]看[ㄎㄢˋ]", icon: "✏️", spelling: true, idOf: wordId, items: EXAM_LETTERS, trophy: "exam-spelling" },
+    };
+
+    /* ===== 選單 ===== */
+
+    function masteredShare(mode) {
+      var done = mode.items.filter(function (item) { return boxOf(mode.idOf(item)) >= 3; }).length;
+      return Math.round((done / mode.items.length) * 100);
+    }
+
+    function drawMenu() {
+      setZy(document.getElementById("title"), "📝 英[ㄧㄥ]語[ㄩˇ]小[ㄒㄧㄠˇ]考[ㄎㄠˇ]");
+      menuEl.innerHTML = "";
+      Object.keys(MODES).forEach(function (key) {
+        var mode = MODES[key];
+        var box = document.createElement("div");
+        box.className = "mode";
+
+        var btn = document.createElement("button");
+        btn.className = "big-btn mode-btn zy " + (key === "spelling" ? "orange" : "blue");
+        btn.innerHTML = '<span class="icon">' + mode.icon + "</span>" + zy(mode.label);
+        btn.onclick = function () { startMode(key); };
+        box.appendChild(btn);
+
+        var bar = document.createElement("div");
+        bar.className = "mode-bar";
+        bar.innerHTML = '<span style="width:' + masteredShare(mode) + '%"></span>';
+        box.appendChild(bar);
+
+        menuEl.appendChild(box);
+      });
+
+      // 現在聽不到英文（靜音、或這台裝置沒有英文語音）：先告訴他，不會有「只有喇叭」的題目
+      var note = document.getElementById("menu-note");
+      note.innerHTML = canHearEnglish() ? "" : zy("現[ㄒㄧㄢˋ]在[ㄗㄞˋ]沒[ㄇㄟˊ]有[ㄧㄡˇ]聲[ㄕㄥ]音[ㄧㄣ]，只[ㄓˇ]出[ㄔㄨ]用[ㄩㄥˋ]看[ㄎㄢˋ]的[˙ㄉㄜ]題[ㄊㄧˊ]目[ㄇㄨˋ]") + " 🔇";
+    }
+
+    function backToMenu() {
+      if (window.speechSynthesis) speechSynthesis.cancel();
+      quizEl.classList.add("hidden");
+      menuEl.classList.remove("hidden");
+      document.getElementById("menu-note").classList.remove("hidden");
+      q = null;
+      drawMenu();
+    }
+
+    function startMode(key) {
+      currentKey = key;
+      locked = false;
+      session = { results: [], redo: [], recent: [], asked: 0, lastKind: null };
+      setZy(document.getElementById("back-btn"), "⬅ 選[ㄒㄩㄢˇ]別[ㄅㄧㄝˊ]的[˙ㄉㄜ]練[ㄌㄧㄢˋ]習[ㄒㄧˊ]");
+      menuEl.classList.add("hidden");
+      document.getElementById("menu-note").classList.add("hidden");
+      quizEl.classList.remove("hidden");
+      renderProgress();
+      nextQuestion();
+    }
+
+    // 8 顆星星：金色＝第一次就按對、銀色＝看了提示才對、暗的＝還沒到
+    function renderProgress() {
+      starsEl.innerHTML = "";
+      for (var i = 0; i < ROUND_SIZE; i++) {
+        var star = document.createElement("span");
+        star.textContent = "⭐";
+        star.className = i >= session.results.length ? "off" : (session.results[i] ? "on" : "half");
+        starsEl.appendChild(star);
+      }
+    }
+
+    /* ===== 出題 ===== */
+
+    function replay() {
+      if (q && q.say) q.say();
+    }
+
+    // 用中文語音唸指示（注音小孩還在學，字面上看不懂的時候聽得懂）
+    function sayInstruction(onDone) {
+      if (q && q.instr) say(zyPlain(q.instr), onDone);
+    }
+
+    // 有「答錯要回來問」而且到時間了就取出來
+    function takeRedo() {
+      for (var i = 0; i < session.redo.length; i++) {
+        if (session.redo[i].at <= session.asked) return session.redo.splice(i, 1)[0].id;
+      }
+      return null;
+    }
+
+    function nextQuestion() {
+      messageEl.textContent = "";
+      var mode = MODES[currentKey];
+      if (mode.spelling) {
+        nextSpelling();
+        return;
+      }
+
+      choicesEl.classList.remove("hidden");
+      slotsEl.classList.add("hidden");
+      tilesEl.classList.add("hidden");
+      document.getElementById("replay-btn").classList.remove("hidden");
+
+      q = mode.make(takeRedo());
+      q.tries = 0;
+      session.asked++;
+      showQuestion();
+
+      choicesEl.innerHTML = "";
+      choicesEl.className = q.textMode ? "text" : "";
+      shuffle(q.options).forEach(function (opt) {
+        var btn = document.createElement("button");
+        btn.className = "big-btn zy" + (q.letters ? " abc" : "");
+        btn.innerHTML = zy(opt.text);
+        btn.dataset.correct = opt.correct ? "1" : "0";   // 測試用
+        btn.onclick = function () { pick(opt, btn); };
+        choicesEl.appendChild(btn);
+      });
+
+      speakQuestion();
+    }
+
+    function showQuestion() {
+      promptEl.innerHTML = zy(q.prompt);
+      promptEl.className = "abc zy" + (q.promptSmall ? " small" : "");
+      subEl.innerHTML = zy(q.instr);
+      document.getElementById("card").dataset.answer = q.answerText;   // 測試用：正解放這裡
+    }
+
+    // 題型換了才用中文唸一次指示，同一種題型連續出現就不囉嗦
+    function speakQuestion() {
+      var changed = q.kind !== session.lastKind;
+      session.lastKind = q.kind;
+      var cur = q;
+      if (changed) {
+        sayInstruction(function () { if (cur === q && q.speakOnStart) q.say(); });
+      } else if (q.speakOnStart) {
+        q.say();
+      }
+    }
+
+    /* ===== 作答 ===== */
+
+    function pick(opt, btn) {
+      if (locked) return;
+      if (opt.correct) {
+        locked = true;
+        playSound("pop");
+        cheer();
+        btn.style.background = "var(--good)";
+        btn.classList.remove("reveal");
+        messageEl.textContent = q.answerText;
+        finishQuestion(q.tries === 0);
+      } else {
+        q.tries++;
+        playSound("wrong");
+        btn.disabled = true;
+        btn.classList.add("shake");
+        if (q.tries >= REVEAL_AFTER) {
+          reveal();
+        } else {
+          encourage();
+          setTimeout(function () { if (q) q.say(); }, 900);   // 再唸一次給他聽
+        }
+      }
+    }
+
+    // 連錯兩次：把正確答案閃出來並唸給他聽——這時候該「教」，不是繼續猜
+    function reveal() {
+      var right = choicesEl.querySelector('button[data-correct="1"]');
+      if (right) right.classList.add("reveal");
+      // 其他錯的選項這時候收起來，只剩正確的可以按
+      choicesEl.querySelectorAll('button[data-correct="0"]').forEach(function (b) { b.disabled = true; });
+      say("是這個喔！", function () { if (q) q.say(); });
+    }
+
+    function finishQuestion(firstTry) {
+      var cur = q;
+      recordAnswer(cur.id, firstTry);
+      session.results.push(firstTry);
+      session.recent.push(cur.id);
+      if (session.recent.length > 3) session.recent.shift();
+      // 沒有第一次就對的題，隔幾題後再問一次（換個題型），確認他真的記住了
+      if (!firstTry) session.redo.push({ id: cur.id, at: session.asked + REDO_GAP });
+      renderProgress();
+
+      setTimeout(function () {
+        locked = false;
+        if (session.results.length >= ROUND_SIZE) roundDone();
+        else nextQuestion();
+      }, firstTry ? 900 : 1500);
+    }
+
+    function roundDone() {
+      var good = session.results.filter(Boolean).length;
+      if (good >= PASS_FIRST_TRY) {
+        var sticker = awardSticker();
+        var trophy = awardTrophy(MODES[currentKey].trophy);
+        var msg = "🎉 過關！得到貼紙 " + sticker + (trophy ? "\n" + trophy : "");
+        say("過關囉！你得到一張新貼紙！");
+        notifyMilestone();   // 通知伺服器：讓 SwitchBot 按一下實體按鈕！
+        celebrate(msg, "再玩一輪", function () { startMode(currentKey); });
+      } else {
+        // 差一點：不放彩帶，也不說「失敗」——告訴他再一輪就拿得到
+        say("差一點點！再來一輪，貼紙就是你的！");
+        softOverlay("💪 差一點點！<br>再來一輪，貼紙就是你的！", "再來一輪", function () { startMode(currentKey); });
+      }
+    }
+
+    // 跟 celebrate 一樣的畫面，但沒有彩帶和勝利音效
+    function softOverlay(html, buttonText, onButton) {
+      var overlay = document.createElement("div");
+      overlay.id = "celebrate-overlay";
+      var msg = document.createElement("div");
+      msg.className = "msg";
+      msg.innerHTML = html;
+      overlay.appendChild(msg);
+      var btn = document.createElement("button");
+      btn.className = "big-btn blue";
+      btn.textContent = buttonText;
+      btn.onclick = function () { overlay.remove(); onButton(); };
+      overlay.appendChild(btn);
+      document.body.appendChild(overlay);
+    }
+
+    /* ===== 拼拼看（Part 4 單字） =====
+       上面一排是空格，下面是打亂的字母。按「下一個該放的字母」就會
+       放進去；按錯會抖一下，連錯兩次那個字母會一閃一閃。
+       不用打字，一年級小孩用手指就能玩。 */
+
+    var spellFilled = 0;
+    var spellMisses = 0;      // 這一格已經按錯幾次
+    var spellAnyMiss = false;  // 這個字有沒有按錯過（決定「第一次就對」）
+
+    function nextSpelling() {
+      var target = chooseTarget(EXAM_LETTERS, wordId, takeRedo());
+      q = {
+        id: wordId(target), item: target, kind: "spell", tries: 0,
+        instr: "把[ㄅㄚˇ]字[ㄗˋ]母[ㄇㄨˇ]排[ㄆㄞˊ]好[ㄏㄠˇ]，拼[ㄆㄧㄣ]出[ㄔㄨ]" + target.zh,
+        prompt: target.emoji,
+        say: function (done) { sayWord(target, done); },
+        answerText: target.word,
+        word: target.word,
+      };
+      session.asked++;
+      spellFilled = 0;
+      spellMisses = 0;
+      spellAnyMiss = false;
+
+      choicesEl.classList.add("hidden");
+      slotsEl.classList.remove("hidden");
+      tilesEl.classList.remove("hidden");
+      showQuestion();
+
+      slotsEl.innerHTML = "";
+      tilesEl.innerHTML = "";
+      target.word.split("").forEach(function () {
+        var slot = document.createElement("div");
+        slot.className = "slot abc";
+        slotsEl.appendChild(slot);
+      });
+      shuffle(target.word.split("")).forEach(function (letter) {
+        var tile = document.createElement("button");
+        tile.className = "big-btn tile abc";
+        tile.textContent = letter;
+        tile.onclick = function () { pickTile(tile, letter); };
+        tilesEl.appendChild(tile);
+      });
+
+      // 拼字題換題型的指示只在第一題唸；之後唸單字給他聽
+      var changed = q.kind !== session.lastKind;
+      session.lastKind = q.kind;
+      var cur = q;
+      if (changed) sayInstruction(function () { if (cur === q) q.say(); });
+      else q.say();
+    }
+
+    function pickTile(tile, letter) {
+      if (locked || tile.classList.contains("used")) return;
+      var need = q.word.charAt(spellFilled);
+      if (letter === need) {
+        playSound("click");
+        slotsEl.children[spellFilled].textContent = letter;
+        tile.classList.add("used");
+        tilesEl.querySelectorAll(".reveal").forEach(function (t) { t.classList.remove("reveal"); });
+        spellFilled++;
+        spellMisses = 0;
+        if (spellFilled === q.word.length) {
+          locked = true;
+          playSound("pop");
+          messageEl.textContent = q.word;
+          q.say();
+          finishQuestion(!spellAnyMiss);
+        }
+      } else {
+        playSound("wrong");
+        spellAnyMiss = true;
+        spellMisses++;
+        tile.classList.add("shake");
+        setTimeout(function () { tile.classList.remove("shake"); }, 450);
+        if (spellMisses >= REVEAL_AFTER) {
+          // 連錯兩次：把該放的那個字母閃出來
+          var tiles = tilesEl.querySelectorAll(".tile:not(.used)");
+          for (var i = 0; i < tiles.length; i++) {
+            if (tiles[i].textContent === need) { tiles[i].classList.add("reveal"); break; }
+          }
+        }
+      }
+    }
+
+    refreshStickers();   // 開場先跟伺服器對一下貼紙，免得用到過期的本機資料
+    createSpeechToggle();
+    drawMenu();
+    refreshProgress(drawMenu);   // 跟伺服器對一下進度（小進度條要用到）
+    // 英文語音清單有些瀏覽器是之後才載入；載好之後再更新「現在沒有聲音」的提示
+    setTimeout(function () { if (!q) drawMenu(); }, 1500);
+  </script>
+</body>
+</html>
