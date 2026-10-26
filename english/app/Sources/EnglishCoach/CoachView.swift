@@ -31,7 +31,7 @@ struct CoachView: View {
             }
         }
         .padding(20)
-        .frame(width: 480, height: 500, alignment: .topLeading)
+        .frame(width: 480, height: 560, alignment: .topLeading)
         .onExitCommand { onClose() }
     }
 
@@ -50,6 +50,18 @@ struct CoachView: View {
             TextField("例如：BBC 6 Minute English，戒酒一個月", text: $model.topic)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit { model.start() }
+
+            Text("有逐字稿或記得的重點，可以貼在這裡（選填）。用上面那集不用貼，會自動附上。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            TextEditor(text: $model.topicNotes)
+                .font(.callout)
+                .frame(height: 60)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.secondary.opacity(0.3))
+                )
+
             HStack {
                 Spacer()
                 Button("開始") { model.start() }
@@ -69,11 +81,13 @@ struct CoachView: View {
             Text(ep.summary)
                 .font(.callout)
                 .foregroundStyle(.secondary)
-                .lineLimit(4)
+                .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Button("▶ 打開這集（影片／逐字稿）") { NSWorkspace.shared.open(ep.pageURL) }
-                Button("聽完了，用這集當主題") { model.useEpisodeAsTopic() }
+                Button(ep.transcript == nil ? "聽完了，用這集當主題（沒抓到逐字稿）" : "聽完了，用這集當主題") {
+                    model.useEpisodeAsTopic()
+                }
             }
             .controlSize(.small)
         }

@@ -6,6 +6,7 @@ struct Episode {
     let summary: String     // 說明文字的第一段
     let minutes: Int
     let pageURL: URL        // 集數頁面：影片、逐字稿、worksheet
+    var transcript: String? = nil   // 從集數頁面抽出的逐字稿；抓不到就是 nil
 
     static let seriesURL = URL(string: "https://www.bbc.co.uk/learningenglish/english/features/6-minute-english")!
     private static let feedURL = URL(string: "https://podcasts.files.bbci.co.uk/p02pc9tn.rss")!
@@ -15,9 +16,48 @@ struct Episode {
         var request = URLRequest(url: feedURL)
         request.timeoutInterval = 15
         URLSession.shared.dataTask(with: request) { data, _, _ in
-            guard let data = data else { return done(nil) }
-            done(FeedParser.firstEpisode(in: data))
+            guard let data = data, var episode = FeedParser.firstEpisode(in: data) else { return done(nil) }
+            // 再去集數頁面抽逐字稿；失敗也照樣回傳這一集，只是沒有逐字稿
+            var pageRequest = URLRequest(url: episode.pageURL)
+            pageRequest.timeoutInterval = 15
+            URLSession.shared.dataTask(with: pageRequest) { page, _, _ in
+                if let page = page {
+                    episode.transcript = Transcript.extract(from: String(decoding: page, as: UTF8.self))
+                }
+                done(episode)
+            }.resume()
         }.resume()
+    }
+}
+
+/// 只認 BBC Learning English 集數頁面的格式（「TRANSCRIPT」標題之後，到「Next」之前）。
+/// 格式變了就回傳 nil，由呼叫端照實說「沒有逐字稿」。
+enum Transcript {
+    static func extract(from html: String) -> String? {
+        guard let start = html.range(of: "TRANSCRIPT</strong></p>") else { return nil }
+        var body = String(html[start.upperBound...])
+        // 取最早出現的結束標記
+        let ends = ["<h3>Next</h3>", "What do you think of the new version"]
+            .compactMap { body.range(of: $0)?.lowerBound }
+        if let end = ends.min() { body = String(body[..<end]) }
+        if body.count > 15000 { body = String(body.prefix(15000)) }
+
+        body = body
+            .replacingOccurrences(of: #"<strong>([^<]{1,30})</strong>\s*<br\s*/?>"#, with: "\n$1: ",
+                                  options: .regularExpression)
+            .replacingOccurrences(of: #"<br\s*/?>"#, with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: "</p>", with: "\n\n")
+            .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+            .replacingOccurrences(of: "&#x27;", with: "'")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "[ \t]+\n", with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // 太短代表抓到的不是逐字稿
+        return body.count > 300 ? body : nil
     }
 }
 

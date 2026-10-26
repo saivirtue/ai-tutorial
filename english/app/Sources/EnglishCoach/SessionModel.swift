@@ -15,6 +15,8 @@ final class SessionModel: ObservableObject {
     @Published var answers = ["", "", ""]
     @Published var notice = ""
     @Published var topicLink: String?
+    @Published var topicNotes = ""          // 自己貼的逐字稿或重點（選填）
+    private var episodeTranscript: String?  // 選了建議的那一集時，App 抓到的逐字稿
     @Published var episode: Episode?
 
     // 提醒設定（存在 UserDefaults，改了就重新排程）
@@ -28,6 +30,12 @@ final class SessionModel: ObservableObject {
         didSet { applyReminder() }
     }
     @Published var reminderStatus = ""
+
+    /// 自己貼的內容優先；沒貼就用 App 抓到的逐字稿
+    private var pastedOrEpisodeTranscript: String? {
+        let pasted = topicNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        return pasted.isEmpty ? episodeTranscript : pasted
+    }
 
     var question: Question { Content.questions[index] }
     var hasNext: Bool { index < Content.questions.count - 1 }
@@ -80,6 +88,7 @@ final class SessionModel: ObservableObject {
         guard let ep = episode else { return }
         topic = "BBC 6 Minute English：\(ep.title)"
         topicLink = ep.pageURL.absoluteString
+        episodeTranscript = ep.transcript
     }
 
     // MARK: 練習
@@ -106,6 +115,8 @@ final class SessionModel: ObservableObject {
     func resetSession() {
         topic = ""
         topicLink = nil
+        topicNotes = ""
+        episodeTranscript = nil
         started = false
         index = 0
         answers = ["", "", ""]
@@ -124,7 +135,8 @@ final class SessionModel: ObservableObject {
             topic: topic.trimmingCharacters(in: .whitespaces),
             items: items,
             feedback: "",
-            link: topicLink
+            link: topicLink,
+            transcript: pastedOrEpisodeTranscript
         )
         entries.insert(entry, at: 0)
         persist()
@@ -153,18 +165,25 @@ final class SessionModel: ObservableObject {
 
     /// 複製成可以直接貼給 Claude 的格式，並開啟 claude.ai
     func copyForClaude(_ entry: Entry) {
-        var s = "今天聽的是：\(entry.topic)\n"
-        if let link = entry.link { s += "集數頁面（有逐字稿）：\(link)\n" }
+        var s = Content.coachRules + "\n\n今天聽的是：\(entry.topic)\n"
+        if let link = entry.link { s += "集數頁面：\(link)\n" }
+        if let text = entry.transcript {
+            s += "\n【這集的內容（BBC 說明這份不是逐字一模一樣的逐字稿）】\n\(text)\n"
+        } else {
+            s += "\n（這次沒有附內容。）\n"
+        }
         for item in entry.items {
             s += "\n題目（\(item.label)）：\(item.question)\n我的回答：\(item.answer)\n"
         }
-        s += "\n請依教練規則給回饋。"
+        s += "\n請依上面的規則給回饋。"
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(s, forType: .string)
         if let url = URL(string: "https://claude.ai/new") {
             NSWorkspace.shared.open(url)
         }
-        notice = "已複製，貼到 Claude 就好（Project 裡要有教練提示詞）。"
+        notice = entry.transcript == nil
+            ? "已複製（沒有附內容，Claude 可能會請你貼重點），貼到 Claude 就好。"
+            : "已複製（含規則與內容），貼到 Claude 就好。"
     }
 
     private func persist() {
