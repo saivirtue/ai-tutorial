@@ -1,11 +1,11 @@
 {
-  "fetchedAt": "2026-10-29T17:02:35Z",
+  "fetchedAt": "2026-10-30T16:47:31Z",
   "sources": {
     "daily": {
       "label": "個股日成交資訊",
       "path": "exchangeReport/STOCK_DAY_ALL",
       "status": "ok",
-      "count": 1386,
+      "count": 1388,
       "http": "200"
     },
     "valuation": {
