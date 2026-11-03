@@ -1,5 +1,5 @@
 {
-  "fetchedAt": "2026-11-02T20:28:28Z",
+  "fetchedAt": "2026-11-03T17:59:09Z",
   "sources": {
     "daily": {
       "label": "個股日成交資訊",
@@ -18,7 +18,7 @@
     "revenue": {
       "label": "每月營業收入",
       "path": "opendata/t187ap05_L",
-      "status": "ok",
+      "status": "stale",
       "count": 1088,
       "http": "200"
     },
