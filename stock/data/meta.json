@@ -1,11 +1,11 @@
 {
-  "fetchedAt": "2026-11-03T17:59:09Z",
+  "fetchedAt": "2026-11-04T18:11:25Z",
   "sources": {
     "daily": {
       "label": "個股日成交資訊",
       "path": "exchangeReport/STOCK_DAY_ALL",
       "status": "ok",
-      "count": 1389,
+      "count": 1390,
       "http": "200"
     },
     "valuation": {
@@ -18,7 +18,7 @@
     "revenue": {
       "label": "每月營業收入",
       "path": "opendata/t187ap05_L",
-      "status": "stale",
+      "status": "ok",
       "count": 1088,
       "http": "200"
     },
