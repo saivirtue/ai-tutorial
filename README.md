@@ -144,6 +144,7 @@ games/
   sticker-scene/        # 貼紙場景（貼貼紙，自動寫出並念出英文句子）
   zhuyin-speak/         # 跟讀小鸚鵡（單字／三拼／短句模式）
   night-market/         # 小夜市：打地鼠、射氣球、撈金魚、套圈圈（都可用手玩）；learn.js 是「學英文模式」
+  ember-depths/         # 餘燼地城：俯視角地城動作 RPG（隨機地城、裝備、技能、每 5 層守關者；鍵鼠或觸控）
 stickers/               # 貼紙簿＋獎品櫃＋換 10 元
 audio/                  # 選用：家人自己錄的發音檔（中文見下方說明；英文在 audio/en/，清單見 audio/README.md）
 docs/                   # 給大人的說明（不用螢幕的英文活動）
