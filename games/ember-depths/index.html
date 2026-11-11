@@ -2,22 +2,35 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#05040a">
   <title>餘燼地城</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    :root { --sl: env(safe-area-inset-left, 0px); --sr: env(safe-area-inset-right, 0px);
+      --st: env(safe-area-inset-top, 0px); --sb: env(safe-area-inset-bottom, 0px); }
     html, body { width: 100%; height: 100%; overflow: hidden; background: #05040a; color: #eee;
       font-family: "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", system-ui, sans-serif;
-      user-select: none; -webkit-user-select: none; touch-action: none; }
-    #cv { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+      user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none;
+      overscroll-behavior: none; position: fixed; inset: 0; }
+    #cv, #ov { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+    #cv { cursor: crosshair; }
+    #ov, #vig { pointer-events: none; }
+    #vig { position: fixed; inset: 0; z-index: 1;
+      background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.6) 100%); }
+    #hurt { position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0; transition: opacity .25s;
+      box-shadow: inset 0 0 120px 40px rgba(200, 0, 0, .55); }
     .hud { position: fixed; pointer-events: none; z-index: 2; text-shadow: 0 1px 2px #000; }
     .hud button, .hud a { pointer-events: auto; }
 
-    #info { top: 10px; left: 12px; font-size: 16px; display: flex; gap: 12px; align-items: center; }
+    #info { top: calc(10px + var(--st)); left: calc(12px + var(--sl)); font-size: 16px; display: flex; gap: 12px; align-items: center; }
     #info a { text-decoration: none; font-size: 20px; }
     #info b { color: #ffcf6b; }
 
-    #bars { left: 12px; bottom: 14px; width: min(300px, 44vw); }
+    #bars { left: calc(12px + var(--sl)); bottom: calc(14px + var(--sb)); width: min(300px, 44vw); }
     .bar { position: relative; height: 20px; background: #000a; border: 1px solid #fff3; border-radius: 10px;
       overflow: hidden; margin-top: 5px; }
     .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 10px; }
@@ -26,9 +39,9 @@
     #mpBar i { background: linear-gradient(#6bf, #24b); }
     #xpBar { height: 8px; } #xpBar i { background: #e9c14a; }
 
-    #skills { left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; gap: 8px; }
+    #skills { left: 50%; bottom: calc(12px + var(--sb)); transform: translateX(-50%); display: flex; gap: 8px; }
     .sk { position: relative; width: 58px; height: 58px; border-radius: 12px; border: 2px solid #b98b3e;
-      background: #1c1626; color: #fff; font-size: 26px; overflow: hidden; cursor: pointer; }
+      background: #1c1626e0; color: #fff; font-size: 26px; overflow: hidden; cursor: pointer; touch-action: none; }
     .sk small { position: absolute; left: 3px; top: 1px; font-size: 10px; color: #ffd98a; }
     .sk em { position: absolute; right: 4px; bottom: 1px; font-size: 12px; font-style: normal; color: #fff; }
     .sk u { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: #000b; }
@@ -36,37 +49,49 @@
     .sk:active { transform: scale(.94); }
     #sk-atk { display: none; }
 
-    #side { top: 10px; right: 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+    #side { top: calc(10px + var(--st)); right: calc(12px + var(--sr)); display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
     #mini { border: 1px solid #fff3; border-radius: 6px; background: #0008; image-rendering: pixelated;
       width: 168px; height: 120px; }
-    .rbtn { width: 48px; height: 48px; border-radius: 12px; border: 2px solid #b98b3e; background: #1c1626;
-      color: #fff; font-size: 22px; cursor: pointer; position: relative; }
+    .rbtn { width: 46px; height: 46px; border-radius: 12px; border: 2px solid #b98b3e; background: #1c1626e0;
+      color: #fff; font-size: 21px; cursor: pointer; position: relative; }
     .rbtn.glow { box-shadow: 0 0 12px 3px #ffcf6b; }
+    #rb { display: flex; gap: 6px; }
 
-    #boss { top: 44px; left: 50%; transform: translateX(-50%); width: min(520px, 70vw); display: none;
+    #boss { top: calc(44px + var(--st)); left: 50%; transform: translateX(-50%); width: min(520px, 60vw); display: none;
       text-align: center; font-size: 15px; color: #ffb0a0; }
     #boss .bar i { background: linear-gradient(#f93, #a20); }
 
-    #act { left: 50%; bottom: 96px; transform: translateX(-50%); display: none; padding: 10px 22px;
+    #act { left: 50%; bottom: calc(96px + var(--sb)); transform: translateX(-50%); display: none; padding: 10px 22px;
       font-size: 18px; border-radius: 12px; border: 2px solid #ffcf6b; background: #2a1d10; color: #ffe; cursor: pointer; }
-    #banner { top: 22%; left: 0; right: 0; text-align: center; font-size: clamp(28px, 6vw, 54px); font-weight: 700;
+    #banner { top: 20%; left: 0; right: 0; text-align: center; font-size: clamp(28px, 6vw, 54px); font-weight: 700;
       letter-spacing: 6px; color: #ffcf6b; opacity: 0; transition: opacity .6s; }
     #banner small { display: block; font-size: .4em; letter-spacing: 2px; color: #ddd; font-weight: 400; }
 
-    /* 觸控版配置 */
-    body.touch #bars { bottom: auto; top: 42px; width: min(220px, 40vw); }
-    body.touch #skills { left: auto; right: 12px; transform: none; bottom: 14px; width: 204px; flex-wrap: wrap;
-      justify-content: flex-end; }
-    body.touch .sk { width: 60px; height: 60px; }
-    body.touch #sk-atk { display: block; width: 128px; height: 76px; font-size: 34px; order: 9; }
+    /* 觸控版配置：技能鈕排成右下角的弧形，拇指好按 */
+    body.touch #bars { bottom: auto; top: calc(40px + var(--st)); width: min(200px, 38vw); }
+    body.touch .bar { height: 16px; } body.touch .bar span { font-size: 11px; line-height: 14px; }
+    body.touch #xpBar { height: 6px; }
+    body.touch #skills { left: auto; right: calc(10px + var(--sr)); bottom: calc(10px + var(--sb)); transform: none;
+      width: 232px; height: 200px; display: block; }
+    body.touch .sk { position: absolute; width: 56px; height: 56px; border-radius: 50%; }
     body.touch .sk small { display: none; }
-    body.touch #mini { width: 112px; height: 80px; }
+    body.touch .sk em { right: 50%; transform: translateX(50%); bottom: 3px; font-size: 13px; font-weight: 700; text-shadow: 0 0 3px #000, 0 0 3px #000; }
+    body.touch #sk-atk { display: block; width: 92px; height: 92px; right: 4px; bottom: 4px; font-size: 40px; border-width: 3px; }
+    body.touch #sk-dash { right: 108px; bottom: 2px; }
+    body.touch #sk-fire { right: 102px; bottom: 68px; }
+    body.touch #sk-whirl { right: 52px; bottom: 112px; }
+    body.touch #sk-nova { right: -6px; bottom: 132px; margin-right: 6px; }
+    body.touch #sk-hp { right: 172px; bottom: 2px; width: 50px; height: 50px; font-size: 22px; }
+    body.touch #sk-mpp { right: 166px; bottom: 60px; width: 50px; height: 50px; font-size: 22px; }
+    body.touch #mini { width: 98px; height: 70px; }
+    body.touch #act { bottom: auto; top: 32%; }
+    body.touch #info { font-size: 14px; gap: 9px; }
 
     .overlay { position: fixed; inset: 0; z-index: 5; display: none; align-items: center; justify-content: center;
-      background: #000c; padding: 12px; }
+      background: #000c; padding: calc(10px + var(--st)) calc(10px + var(--sr)) calc(10px + var(--sb)) calc(10px + var(--sl)); }
     .overlay.on { display: flex; }
-    .box { background: #17121f; border: 2px solid #b98b3e; border-radius: 16px; padding: 18px 20px;
-      max-width: 880px; width: 100%; max-height: 100%; overflow: auto; touch-action: pan-y; }
+    .box { background: #17121f; border: 2px solid #b98b3e; border-radius: 16px; padding: 16px 18px;
+      max-width: 880px; width: 100%; max-height: 100%; overflow: auto; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
     .box h1 { color: #ffcf6b; font-size: clamp(30px, 6vw, 52px); letter-spacing: 8px; text-align: center; }
     .box h2 { color: #ffcf6b; font-size: 18px; margin: 12px 0 6px; }
     .box p { color: #cbb; line-height: 1.7; font-size: 15px; }
@@ -93,10 +118,15 @@
     .row span { flex: 1; }
     .keys { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font-size: 14px; color: #cbb; margin-top: 6px; }
     .keys b { color: #ffd98a; font-weight: 600; }
+    #loadBar { height: 10px; margin: 18px auto 6px; max-width: 320px; }
+    #loadBar i { background: #e9c14a; width: 0; }
+    @media (max-height: 460px) { .box { padding: 10px 14px; } .box h1 { font-size: 30px; } .slot { font-size: 18px; } }
   </style>
 </head>
 <body>
   <canvas id="cv"></canvas>
+  <canvas id="ov"></canvas>
+  <div id="vig"></div><div id="hurt"></div>
 
   <div id="info" class="hud">
     <a href="../../" title="回首頁">🏠</a>
@@ -121,8 +151,11 @@
 
   <div id="side" class="hud">
     <canvas id="mini" width="56" height="40"></canvas>
-    <button class="rbtn" id="bagBtn" title="背包 (I)">🎒</button>
-    <button class="rbtn" id="sndBtn" title="音效">🔊</button>
+    <div id="rb">
+      <button class="rbtn" id="camBtn" title="切換視角 (V)">🎥</button>
+      <button class="rbtn" id="sndBtn" title="音效">🔊</button>
+      <button class="rbtn" id="bagBtn" title="背包 (I)">🎒</button>
+    </div>
   </div>
 
   <div id="boss" class="hud"><span id="bossName"></span><div class="bar"><i></i></div></div>
@@ -133,12 +166,17 @@
   <div id="menu" class="overlay on"><div class="box" style="max-width:560px">
     <h1>餘燼地城</h1>
     <p class="center">舉著火把往下走。每五層有一位守關者。</p>
-    <div class="center" style="margin:14px 0">
+    <div id="loading" class="center">
+      <div class="bar" id="loadBar"><i></i></div>
+      <p id="loadTxt" class="dim">載入模型中…</p>
+    </div>
+    <div class="center" id="startBtns" style="margin:14px 0; display:none">
       <button class="btn big" id="contBtn">繼續冒險</button>
       <button class="btn big" id="newBtn">新的冒險</button>
     </div>
     <h2>操作</h2>
     <div class="keys">
+      <b>手機</b><span>左半邊拖曳移動；右下 ⚔️ 按住攻擊（自動瞄準），周圍是技能</span>
       <b>WASD / 方向鍵</b><span>移動</span>
       <b>滑鼠左鍵（按住）</b><span>朝游標揮砍</span>
       <b>Q / 滑鼠右鍵</b><span>火球</span>
@@ -146,9 +184,9 @@
       <b>空白鍵</b><span>閃避（瞬間無敵）</span>
       <b>1、2</b><span>生命藥水、魔力藥水</span>
       <b>I / Tab</b><span>背包、技能、商人</span>
-      <b>F</b><span>下樓梯</span>
-      <b>觸控</b><span>左半邊拖曳移動，右下按鈕攻擊（自動瞄準）</span>
+      <b>F、V</b><span>下樓梯、切換視角</span>
     </div>
+    <p class="dim" style="font-size:12px;margin-top:10px">3D 模型：KayKit（Kay Lousberg，CC0）</p>
   </div></div>
 
   <!-- 背包 / 角色 -->
@@ -169,7 +207,7 @@
         <div id="detail"></div>
         <div style="margin-top:8px">
           <button class="btn" id="sellJunk">賣掉所有普通裝備</button>
-          <button class="btn" id="closeBtn" style="float:right">關閉 (I)</button>
+          <button class="btn" id="closeBtn" style="float:right">關閉</button>
         </div>
       </div>
     </div>
@@ -182,6 +220,6 @@
     <button class="btn big" id="reviveBtn">重新點燃</button>
   </div></div>
 
-  <script src="game.js"></script>
+  <script type="module" src="game.js"></script>
 </body>
 </html>

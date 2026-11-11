@@ -1,0 +1,5 @@
+3D 模型與動畫來自 Kay Lousberg (www.kaylousberg.com) 的 KayKit 系列，皆為 CC0 授權：
+- KayKit : Dungeon Remastered (1.0)
+- KayKit : Adventurers Character Pack (1.0)
+- KayKit Character Pack : Skeletons (1.0)
+為了縮小檔案，這裡的 .glb 只保留遊戲用到的動畫與配件。
