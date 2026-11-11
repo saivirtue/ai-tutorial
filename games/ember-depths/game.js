@@ -17,34 +17,94 @@ const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 
-// ---------- 音效 ----------
-let actx = null, muted = false;
-function sfx(freq, dur = 0.08, type = 'square', vol = 0.05, slide = 0) {
-  if (muted) return;
+// ---------- 音效與音樂（全部用 WebAudio 即時合成，沒有音檔） ----------
+let actx = null, master = null, musicBus = null, muted = false, drone = null;
+let musicT = 0, beat = 0, intensity = 0, musicTarget = 0, musicRoot = 110;
+function audioInit() {
+  if (actx) { if (actx.state === 'suspended') actx.resume(); return; }
   try {
-    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-    if (actx.state === 'suspended') actx.resume();
-    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+    const comp = actx.createDynamicsCompressor(); comp.connect(actx.destination);
+    master = actx.createGain(); master.gain.value = muted ? 0 : 1; master.connect(comp);
+    // 音樂走一條帶回音的支線，聽起來像在石室裡
+    musicBus = actx.createGain(); musicBus.gain.value = 0.6;
+    const dl = actx.createDelay(1), fb = actx.createGain(), lp = actx.createBiquadFilter();
+    dl.delayTime.value = 0.37; fb.gain.value = 0.42; lp.type = 'lowpass'; lp.frequency.value = 1700;
+    musicBus.connect(master); musicBus.connect(dl); dl.connect(lp); lp.connect(fb); fb.connect(dl); lp.connect(master);
+    // 低沉的長音
+    const f = actx.createBiquadFilter(), g = actx.createGain(), lfo = actx.createOscillator(), lg = actx.createGain();
+    f.type = 'lowpass'; f.frequency.value = 170; g.gain.value = 0.11; lfo.frequency.value = 0.07; lg.gain.value = 70;
+    lfo.connect(lg).connect(f.frequency); lfo.start();
+    drone = [0, 1].map(i => { const o = actx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = musicRoot / 2 * (1 + i * 0.007); o.connect(f); o.start(); return o; });
+    f.connect(g).connect(musicBus);
+    musicT = actx.currentTime + 0.1; setInterval(tickMusic, 100);
+  } catch (e) { actx = null; /* 沒有聲音也能玩 */ }
+}
+function sfx(freq, dur = 0.08, type = 'square', vol = 0.05, slide = 0, when = 0, bus) {
+  if (!actx) return;
+  try {
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime + when;
     o.type = type; o.frequency.setValueAtTime(freq, t);
     if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
-    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur);
-  } catch (e) { /* 沒有音效也能玩 */ }
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(bus || master); o.start(t); o.stop(t + dur + 0.02);
+  } catch (e) { /* 忽略 */ }
 }
-function noise(dur = 0.15, vol = 0.08, lp = 1200) {
-  if (muted || !actx) return;
+let noiseBuf = null;
+function noise(dur = 0.15, vol = 0.08, lp = 1200, hp = 0, when = 0) {
+  if (!actx) return;
   try {
-    const n = Math.floor(actx.sampleRate * dur), buf = actx.createBuffer(1, n, actx.sampleRate), d = buf.getChannelData(0);
-    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
-    const s = actx.createBufferSource(), g = actx.createGain(), f = actx.createBiquadFilter();
-    f.type = 'lowpass'; f.frequency.value = lp; g.gain.value = vol; s.buffer = buf; s.connect(f).connect(g).connect(actx.destination); s.start();
-  } catch (e) { /* 同上 */ }
+    if (!noiseBuf) { noiseBuf = actx.createBuffer(1, actx.sampleRate, actx.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+    const s = actx.createBufferSource(), g = actx.createGain(), f = actx.createBiquadFilter(), t = actx.currentTime + when;
+    s.buffer = noiseBuf; s.loop = true; f.type = 'lowpass'; f.frequency.setValueAtTime(lp, t); f.frequency.exponentialRampToValueAtTime(Math.max(80, lp * 0.3), t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    let n = s.connect(f); if (hp) { const h = actx.createBiquadFilter(); h.type = 'highpass'; h.frequency.value = hp; n = n.connect(h); }
+    n.connect(g).connect(master); s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.02);
+  } catch (e) { /* 忽略 */ }
+}
+const SND = {
+  swing: () => { noise(0.13, 0.07, 5200, 1400); sfx(260, 0.09, 'triangle', 0.03, -120); },
+  hit: () => { noise(0.07, 0.13, 2400); sfx(125, 0.1, 'square', 0.06, -70); },
+  boom: (v = 1) => { noise(0.5, 0.2 * v, 1000); sfx(75, 0.4, 'sine', 0.16 * v, -42); },
+  coin: () => { sfx(1320, 0.05, 'square', 0.018); sfx(1760, 0.1, 'square', 0.018, 0, 0.05); },
+  step: () => noise(0.045, 0.028, 480),
+  bones: () => { for (let i = 0; i < 4; i++) sfx(rand(500, 1100), 0.03, 'square', 0.022, 0, i * 0.035); noise(0.16, 0.06, 1500); },
+  level: () => [523, 659, 784, 1047].forEach((f, i) => sfx(f, 0.25, 'triangle', 0.06, 0, i * 0.09)),
+  zap: () => { noise(0.13, 0.08, 7000, 2500); sfx(1500, 0.11, 'sawtooth', 0.03, -1100); },
+  hurt: () => { sfx(150, 0.16, 'sawtooth', 0.09, -80); noise(0.1, 0.08, 800); },
+  spike: () => { noise(0.07, 0.05, 5000, 2000); sfx(880, 0.05, 'square', 0.015, -400); },
+  shrine: () => [392, 523, 659, 784, 1047].forEach((f, i) => sfx(f, 0.6, 'sine', 0.05, 0, i * 0.08)),
+};
+const SCALE = [0, 3, 5, 7, 10, 12, 15];
+const semi = n => Math.pow(2, n / 12);
+function tickMusic() {
+  if (!actx || actx.state !== 'running') return;
+  if (musicT < actx.currentTime) musicT = actx.currentTime + 0.05;
+  const step = 60 / (78 + intensity * 44) / 2; // 八分音符
+  while (musicT < actx.currentTime + 0.25) {
+    const t = musicT - actx.currentTime, b = beat % 16, calm = state !== 'play' ? 1 : 1 - intensity;
+    // 平靜層：稀疏的鐘聲
+    if (b % 2 === 0 && Math.random() < 0.18 + calm * 0.3) { const n = musicRoot * 2 * semi(pick(SCALE)); sfx(n, 1.4, 'sine', 0.035, 0, t, musicBus); sfx(n * 2, 0.5, 'sine', 0.01, 0, t, musicBus); }
+    if (b === 0) { sfx(musicRoot, step * 15, 'triangle', 0.03, 0, t, musicBus); sfx(musicRoot * semi(beat % 32 ? 7 : 3), step * 15, 'triangle', 0.022, 0, t, musicBus); }
+    // 戰鬥層：鼓與低音，依附近敵人多寡淡入
+    if (intensity > 0.06 && state === 'play') {
+      const v = intensity;
+      if (b % 4 === 0) sfx(120, 0.2, 'sine', 0.3 * v, -85, t);
+      if (b % 4 === 2) noise(0.07, 0.045 * v, 8000, 4000, t);
+      if (b % 8 === 4) noise(0.16, 0.1 * v, 3200, 700, t);
+      if (v > 0.7 && b % 2 === 1) noise(0.04, 0.03 * v, 9000, 5000, t);
+      sfx(musicRoot / 2 * semi([0, 0, 3, 0, 5, 0, 3, 7][b % 8]), step * 0.85, 'triangle', 0.1 * v, 0, t, musicBus);
+      if (v > 0.9 && b % 4 === 0) sfx(musicRoot * 2 * semi([0, 3, 7, 10][(beat >> 2) % 4]), step * 1.8, 'sawtooth', 0.025, 0, t, musicBus);
+    }
+    musicT += step; beat++;
+  }
 }
 
 // ---------- 狀態 ----------
 let state = 'menu', paused = false, time = 0;
 let map, explored, flow, rooms, stairs, pal;
 let enemies = [], shots = [], drops = [], props = [], parts = [], texts = [], corpses = [];
+let blk = [], decos = [], fluff = [], traps = [], booms = [], shrine = null, hitBlk = null;
 let p = null, boss = null, shake = 0, miniT = 0, flowT = 0, itemId = 1, fullMsgT = 0, hitStop = 0;
 let W = 0, H = 0, dpr = 1;
 
@@ -62,18 +122,27 @@ const PALS = [
 ];
 const solid = (tx, ty) => tx < 0 || ty < 0 || tx >= MW || ty >= MH || map[ty * MW + tx] === 1;
 function circleHits(x, y, r) {
+  hitBlk = null;
   const x0 = Math.floor((x - r) / T), x1 = Math.floor((x + r) / T), y0 = Math.floor((y - r) / T), y1 = Math.floor((y + r) / T);
   for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
     if (!solid(tx, ty)) continue;
     const cx = clamp(x, tx * T, tx * T + T), cy = clamp(y, ty * T, ty * T + T);
     if ((x - cx) ** 2 + (y - cy) ** 2 < r * r) return true;
   }
+  // 擺設（石柱、木箱…）：每格最多一個圓形障礙
+  const R = r + 14, bx0 = Math.max(0, Math.floor((x - R) / T)), bx1 = Math.min(MW - 1, Math.floor((x + R) / T)), by0 = Math.max(0, Math.floor((y - R) / T)), by1 = Math.min(MH - 1, Math.floor((y + R) / T));
+  for (let ty = by0; ty <= by1; ty++) for (let tx = bx0; tx <= bx1; tx++) {
+    const b = blk[ty * MW + tx];
+    if (b && (x - b.x) ** 2 + (y - b.y) ** 2 < (r + b.r) ** 2) { hitBlk = b; return true; }
+  }
   return false;
 }
 function moveEnt(e, dx, dy) {
   let hit = false;
-  if (!circleHits(e.x + dx, e.y, e.r)) e.x += dx; else hit = true;
-  if (!circleHits(e.x, e.y + dy, e.r)) e.y += dy; else hit = true;
+  if (!circleHits(e.x + dx, e.y, e.r)) e.x += dx;
+  else { hit = true; if (hitBlk) { const m = (Math.sign(e.y - hitBlk.y) || 1) * Math.abs(dx) * 0.8; if (!circleHits(e.x, e.y + m, e.r)) e.y += m; } } // 沿著圓形障礙滑過去
+  if (!circleHits(e.x, e.y + dy, e.r)) e.y += dy;
+  else { hit = true; if (hitBlk) { const m = (Math.sign(e.x - hitBlk.x) || 1) * Math.abs(dy) * 0.8; if (!circleHits(e.x + m, e.y, e.r)) e.x += m; } }
   return hit;
 }
 function los(a, b) {
@@ -141,9 +210,42 @@ function genFloor() {
     }
     return { x: r.cx * T + T / 2, y: r.cy * T + T / 2 + 60 };
   };
+  // 房間擺設（會擋路）、特殊房間、陷阱
+  blk = new Array(MW * MH).fill(null); decos = []; fluff = []; traps = []; shrine = null; booms = []; p.phoenixUsed = false;
+  const inRoom = (x, y) => rooms.some(r => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
+  const addDeco = (tx, ty, model, r, s = 1, rot = 0) => {
+    if (map[ty * MW + tx] !== 0 || blk[ty * MW + tx] || (tx === stairs.tx && ty === stairs.ty)) return null;
+    const d = { x: (tx + 0.5) * T, y: (ty + 0.5) * T, r, model, s, rot }; blk[ty * MW + tx] = d; decos.push(d); return d;
+  };
+  const others = rooms.filter(r => r !== start && r !== far).sort(() => Math.random() - 0.5);
+  const vault = others.length >= 3 && Math.random() < 0.6 ? others[0] : null;
+  const shrineRoom = others.length >= 4 && Math.random() < 0.55 ? others[1] : null;
+  for (const r of rooms) {
+    if (r.w >= 8 && r.h >= 7) for (const [tx, ty] of [[r.x + 2, r.y + 2], [r.x + r.w - 3, r.y + 2], [r.x + 2, r.y + r.h - 3], [r.x + r.w - 3, r.y + r.h - 3]]) addDeco(tx, ty, 'pillar', 9, 0.85);
+    if (r === start) continue;
+    for (let i = irand(0, 3); i > 0; i--) { // 靠牆的雜物
+      const top = Math.random() < 0.5, tx = irand(r.x, r.x + r.w - 1), ty = top ? r.y : r.y + r.h - 1;
+      if (!solid(tx, top ? ty - 1 : ty + 1)) continue;
+      const [m, rr, sc] = pick([['crates_stacked', 13, 0.85], ['keg', 11, 0.8], ['barrel_small_stack', 12, 0.9], ['table_medium', 13, 0.95]]);
+      const d = addDeco(tx, ty, m, rr, sc, m === 'table_medium' ? 0 : irand(0, 3) * Math.PI / 2);
+      if (d && m === 'table_medium') { fluff.push({ model: 'stool', x: d.x + rand(-6, 6), y: d.y + (top ? 21 : -21), s: 1, rot: rand(0, 6) }); fluff.push({ model: 'candle_triple', x: d.x, y: d.y, h: 0.95, s: 1, rot: rand(0, 6) }); }
+    }
+  }
+  if (shrineRoom) { const d = addDeco(shrineRoom.cx + 1, shrineRoom.cy - 1, 'column', 8, 1.5); if (d) shrine = { x: d.x, y: d.y, used: false, kind: pick(['rage', 'haste', 'ward']) }; }
+  // 尖刺陷阱：走道零星幾個，有些房間會有一整片
+  const trapAt = (tx, ty) => { if (map[ty * MW + tx] === 0 && !blk[ty * MW + tx] && !(tx === stairs.tx && ty === stairs.ty) && !traps.some(t => t.tx === tx && t.ty === ty)) traps.push({ tx, ty, ph: ((tx * 3 + ty * 5) % 7) * 0.37, up: false }); };
+  for (let y = 1; y < MH - 1; y++) for (let x = 1; x < MW - 1; x++) if (map[y * MW + x] === 0 && !inRoom(x, y) && Math.random() < 0.045) trapAt(x, y);
+  for (const r of others) if (r !== vault && r !== shrineRoom && Math.random() < 0.3) for (let i = irand(4, 7); i > 0; i--) trapAt(irand(r.x + 1, r.x + r.w - 2), irand(r.y + 1, r.y + r.h - 2));
+
   for (const r of rooms) {
     if (r === start) continue;
     if (r === far && isBossFloor(f)) { spawnEnemy('boss', far.cx * T + T / 2, far.cy * T + T / 2 - 50); continue; }
+    if (r === vault) { // 寶庫：沒有守衛，但開箱會引來伏擊
+      const vx = r.cx * T + T / 2, vy = r.cy * T + T / 2;
+      props.push({ kind: 'chest', x: vx, y: vy, r: 15, open: false, gold: true, vault: true });
+      for (let i = 0; i < 7; i++) { const a = i / 7 * 6.283 + rand(-0.3, 0.3), rr = rand(38, 72); fluff.push({ model: pick(['coin_stack_large', 'coin_stack_medium', 'coin_stack_small']), x: vx + Math.cos(a) * rr, y: vy + Math.sin(a) * rr, s: 1.2, rot: rand(0, 6) }); }
+      continue;
+    }
     const n = Math.round(2 + r.w * r.h / 20 + Math.min(4, f * 0.5));
     for (let i = 0; i < n; i++) {
       const s = freeSpot(r, 18), elite = Math.random() < (f >= 2 ? 0.07 : 0.03);
@@ -154,6 +256,8 @@ function genFloor() {
     for (let i = 0; i < nb; i++) { const s = freeSpot(r, 12); props.push({ kind: 'barrel', x: s.x, y: s.y, r: 11, skin: Math.random() < 0.6 ? 'barrel_large' : 'box_large', rot: rand(0, 6.28) }); }
   }
   buildLevel3D();
+  musicRoot = [110, 98, 123.47, 92.5, 103.83][Math.floor((f - 1) / 5) % 5];
+  if (drone) drone.forEach((o, i) => o.frequency.setTargetAtTime(musicRoot / 2 * (1 + i * 0.007), actx.currentTime, 1.5));
   explore(); miniT = 0; flowT = 0;
   banner(`第 ${f} 層`, isBossFloor(f) ? '⚠️ 守關者就在這一層' : pal.name);
   save();
@@ -177,8 +281,20 @@ const AFF = {
   crit: l => 3 + Math.min(l, 10) * 0.4, aspd: l => 5 + Math.min(l, 10) * 0.6, move: l => 4 + Math.min(l, 8) * 0.4,
   ls: l => 1 + Math.min(l, 8) * 0.25, hpr: l => 0.5 + l * 0.25, mpr: l => 0.5 + l * 0.15,
 };
-const BASES = { weapon: ['短劍', '長劍', '戰斧', '釘錘', '彎刀'], armor: ['皮甲', '鎖甲', '鱗甲', '戰袍'], ring: ['指環', '護符', '徽記'] };
-const LEG = ['餘燼', '霜牙', '暮星', '雷鳴', '深淵', '晨曦'];
+const BASES = { weapon: ['短劍', '長劍', '戰斧', '巨劍', '彎刀'], armor: ['皮甲', '鎖甲', '鱗甲', '戰袍'], ring: ['指環', '護符', '徽記'] };
+// 傳說裝備各帶一個會改變打法的效果
+const LEGFX = {
+  chain: { slot: 'weapon', n: '雷鳴', d: '揮砍命中時，三成機率放出連鎖閃電，跳向附近 3 個敵人' },
+  wave: { slot: 'weapon', n: '餘燼', d: '每第三下揮砍會射出一道穿透敵人的火焰劍氣' },
+  frost: { slot: 'weapon', n: '霜牙', d: '揮砍讓敵人緩速，並有機會直接冰凍' },
+  thorns: { slot: 'armor', n: '荊棘', d: '受到傷害時，反震周圍所有敵人' },
+  phoenix: { slot: 'armor', n: '晨曦', d: '每層一次：受到致命傷時不會倒下，回復一半生命並引發爆炸' },
+  blink: { slot: 'armor', n: '暮星', d: '閃避的冷卻時間減半，落地時引發爆炸' },
+  twin: { slot: 'ring', n: '三焰', d: '火球變成一次射出三顆' },
+  storm: { slot: 'ring', n: '風暴', d: '旋風斬持續更久，並把周圍的敵人吸過來' },
+  boom: { slot: 'ring', n: '深淵', d: '敵人倒下時會爆炸，傷害附近的敵人' },
+};
+const BUFFS = { rage: ['⚔️', '狂怒', '攻擊 +50%', 0xff5030], haste: ['💨', '迅捷', '移動與攻擊速度 +35%', 0x50e0ff], ward: ['🛡️', '守護', '受到的傷害減半', 0xffe060] };
 const fmt = (k, v) => `${STAT[k][0]} ${v > 0 ? '+' : ''}${Number.isInteger(v) ? v : v.toFixed(1)}${STAT[k][1] ? '%' : ''}`;
 
 function rollRarity(min = 0) {
@@ -201,7 +317,9 @@ function makeItem(lvl, rarity, slot) {
     it.aff.push({ k, v });
   }
   const b = pick(BASES[slot]);
-  it.name = rarity === 3 ? `${pick(LEG)}之${b}` : rarity === 0 ? b : `${RAR[rarity].n}的${b}`;
+  it.kind = b;
+  if (rarity === 3) it.fx = pick(Object.keys(LEGFX).filter(k => LEGFX[k].slot === slot));
+  it.name = rarity === 3 ? `${LEGFX[it.fx].n}之${b}` : rarity === 0 ? b : `${RAR[rarity].n}的${b}`;
   it.val = Math.round((5 + lvl * 3) * Math.pow(1 + rarity, 1.5));
   return it;
 }
@@ -210,10 +328,12 @@ function calcStats(eq) {
   const s = { dmg: 10 + 2 * (L - 1), hp: 120 + 12 * (L - 1), mp: 50 + 5 * (L - 1), armor: 0, crit: 5, aspd: 0, move: 0, ls: 0, hpr: 1, mpr: 2 };
   for (const k in eq) { const it = eq[k]; if (!it) continue; for (const b in it.base) s[b] += it.base[b]; for (const a of it.aff) s[a.k] += a.v; }
   s.crit = Math.min(s.crit, 75); s.aspd = Math.min(s.aspd, 100); s.move = Math.min(s.move, 50); s.ls = Math.min(s.ls, 15);
+  if (p.buff && p.buff.k === 'rage') s.dmg = Math.round(s.dmg * 1.5);
+  if (p.buff && p.buff.k === 'haste') { s.move += 35; s.aspd += 35; }
   return s;
 }
 const power = s => s.dmg * (1 + s.crit / 100) * (1 + s.aspd / 100) * 4 + s.hp * (1 + s.armor / 100) * 0.5 + s.mp * 0.2 + s.move + s.ls * 6 + s.hpr * 4 + s.mpr * 4;
-function refresh() { p.st = calcStats(); p.hp = Math.min(p.hp, p.st.hp); p.mp = Math.min(p.mp, p.st.mp); }
+function refresh() { p.fx = {}; for (const k in p.equip) if (p.equip[k] && p.equip[k].fx) p.fx[p.equip[k].fx] = true; p.st = calcStats(); p.hp = Math.min(p.hp, p.st.hp); p.mp = Math.min(p.mp, p.st.mp); }
 
 // ---------- 玩家 ----------
 const SK = {
@@ -231,7 +351,7 @@ function newPlayer() {
   resetRuntime(); refresh(); p.hp = p.st.hp; p.mp = p.st.mp;
 }
 function resetRuntime() {
-  Object.assign(p, { aim: 0, atkCd: 0, slashT: 0, slashA: 0, whirlT: 0, whirlTick: 0, dashT: 0, dashX: 0, dashY: 0, inv_t: 0, potCd: 0, hurtT: 0, moving: false, moveA: 0, combo: 0, cd: { fire: 0, whirl: 0, nova: 0, dash: 0 } });
+  Object.assign(p, { aim: 0, atkCd: 0, slashT: 0, slashA: 0, whirlT: 0, whirlTick: 0, dashT: 0, dashX: 0, dashY: 0, inv_t: 0, potCd: 0, hurtT: 0, moving: false, moveA: 0, combo: 0, buff: null, streak: 0, streakT: 0, thornCd: 0, trapCd: 0, stepT: 0, cd: { fire: 0, whirl: 0, nova: 0, dash: 0 } });
 }
 const xpNeed = l => Math.round(40 * Math.pow(l, 1.7));
 function gainXp(v) {
@@ -240,7 +360,7 @@ function gainXp(v) {
     p.xp -= xpNeed(p.lvl); p.lvl++; p.sp++; refresh(); p.hp = p.st.hp; p.mp = p.st.mp;
     floatText(p.x, p.y, '升級！', '#ffcf6b', 24);
     burst(p.x, p.y, '#ffcf6b', 40, 160, 1, 1, 6); fxRing(p.x, p.y, 90, 0xffcf6b, 0.6);
-    sfx(520, 0.25, 'triangle', 0.08, 500);
+    SND.level();
   }
 }
 function save() {
@@ -281,7 +401,7 @@ function spawnEnemy(type, x, y, elite) {
     type, x, y, r: d.r * (elite ? 1.25 : 1), hp: d.hp * hs * (elite ? 3.2 : 1), dmg: d.dmg * ds * (elite ? 1.4 : 1),
     spd: d.spd * rand(0.9, 1.1), xp: d.xp * (1 + 0.2 * (f - 1)) * (elite ? 4 : 1), elite: !!elite,
     awake: false, atkCd: rand(0, 0.6), atkT: 0, shotCd: rand(1, 2.5), flash: 0, slow: 0, freeze: 0, kx: 0, ky: 0, ph: rand(0, 6.28), ch: null, chCd: rand(2, 4),
-    face: rand(0, 6.28), faceLock: 0, act: 2.5, volley: 0, volT: 0, v: null,
+    face: rand(0, 6.28), faceLock: 0, riseT: 0, act: 2.5, volley: 0, volT: 0, v: null,
   };
   e.maxHp = e.hp;
   if (type === 'boss') { e.name = BOSSN[(Math.floor(f / 5) - 1) % BOSSN.length]; boss = e; }
@@ -293,6 +413,7 @@ function enemyShot(e, ang, spd, dmg, col, r = 6, arrow = false) {
 function updateEnemy(e, dt) {
   e.flash -= dt; e.atkCd -= dt; e.ph += dt * 6;
   if (e.kx || e.ky) { moveEnt(e, e.kx * dt, e.ky * dt); e.kx *= Math.pow(0.002, dt); e.ky *= Math.pow(0.002, dt); if (Math.abs(e.kx) + Math.abs(e.ky) < 5) e.kx = e.ky = 0; }
+  if (e.riseT > 0) { e.riseT -= dt; return; }
   if (e.freeze > 0) { e.freeze -= dt; return; }
   const sm = e.slow > 0 ? 0.45 : 1; e.slow -= dt;
   const d = dist(e, p);
@@ -398,7 +519,8 @@ function hitEnemy(e, mult, kb = 120, src) {
   else if (e.type !== 'boss' && !e.ch && e.atkT <= 0 && e.v && e.v.lock <= 0) charOnce(e, 'Hit_A', 2, 0.2);
 }
 function killEnemy(e) {
-  e.dead = true; gainXp(Math.round(e.xp)); sfx(160, 0.12, 'square', 0.05, -100); noise(0.12, 0.06, 900);
+  e.dead = true; gainXp(Math.round(e.xp * (1 + Math.min(p.streak, 25) * 0.02)));
+  if (p.fx.boom && e.type !== 'boss') booms.push({ x: e.x, y: e.y, t: 0.16 }); SND.bones();
   burst(e.x, e.y, '#d8d2c0', e.elite ? 20 : 10, 130, 0.6, 1.2, 4);
   toCorpse(e);
   const f = p.floor;
@@ -412,6 +534,8 @@ function killEnemy(e) {
     return;
   }
   if (e.summoned) return;
+  p.streak++; p.streakT = 3.5;
+  if (p.streak === 5 || p.streak === 10 || p.streak % 20 === 0) { floatText(p.x, p.y, `連殺 ×${p.streak}！`, '#ff9a3a', 20); for (let i = 0; i < 3; i++) dropGold(e.x, e.y, p.streak * (1 + f * 0.25)); SND.level(); }
   if (Math.random() < 0.7) dropGold(e.x, e.y, irand(2, 6) * (1 + f * 0.25) * (e.elite ? 4 : 1));
   const r = Math.random();
   if (r < 0.07) drops.push(mk('hp', e.x, e.y)); else if (r < 0.11) drops.push(mk('mp', e.x, e.y));
@@ -423,15 +547,54 @@ function dropItem(x, y, it) { drops.push(mk('item', x, y, { it })); if (it.rarit
 
 function hurtPlayer(d) {
   if (p.inv_t > 0 || p.dashT > 0 || state !== 'play') return;
-  d = Math.max(1, Math.round(d * 100 / (100 + p.st.armor) * rand(0.9, 1.1)));
+  d = Math.max(1, Math.round(d * 100 / (100 + p.st.armor) * rand(0.9, 1.1) * (p.buff && p.buff.k === 'ward' ? 0.5 : 1)));
   p.hp -= d; p.hurtT = 0.25; p.inv_t = 0.25; shake = Math.max(shake, 5);
-  floatText(p.x, p.y, '-' + d, '#ff6a6a', 17); sfx(110, 0.12, 'sawtooth', 0.07, -40);
+  floatText(p.x, p.y, '-' + d, '#ff6a6a', 17); SND.hurt();
   burst(p.x, p.y, '#ff4444', 6, 90, 0.4, 1.4, 2);
   $('hurt').style.opacity = 1; setTimeout(() => $('hurt').style.opacity = 0, 120);
+  if (p.fx.thorns && p.thornCd <= 0) { p.thornCd = 0.8; fxRing(p.x, p.y, 125, 0x66ff88, 0.35); for (const e of enemies) if (!e.dead && dist(e, p) < 125 + e.r) hitEnemy(e, 1.5, 220); }
+  if (p.hp <= 0 && p.fx.phoenix && !p.phoenixUsed) {
+    p.phoenixUsed = true; p.hp = p.st.hp * 0.5; p.inv_t = 1.5; banner('', '晨曦庇護了你'); hitStop = 0.2;
+    blast(p.x, p.y, 210, 3, 0xffaa30); burst(p.x, p.y, '#ffcf6b', 50, 240, 1, 1, 8);
+  }
   if (p.hp <= 0) die();
 }
+function blast(x, y, R, mult, color, vol = 0.6) {
+  const src = { x, y };
+  fxRing(x, y, R, color, 0.35); burst(x, y, '#' + color.toString(16).padStart(6, '0'), 18, 150, 0.5, 1, 5); fxFlash(x, y, color, 0.2);
+  for (const e of enemies) if (!e.dead && dist(e, src) < R + e.r) hitEnemy(e, mult, 150, src);
+  for (const o of props) if (o.kind === 'barrel' && !o.dead && dist(o, src) < R) breakBarrel(o);
+  SND.boom(vol); shake = Math.max(shake, 4);
+}
+function chain(from) { // 連鎖閃電
+  let cur = from; const seen = new Set([from]);
+  for (let i = 0; i < 3; i++) {
+    let best = null, bd = 180;
+    for (const e of enemies) if (!e.dead && !seen.has(e)) { const d = dist(e, cur); if (d < bd) { bd = d; best = e; } }
+    if (!best) break;
+    for (let k = 0; k <= 10; k++) { const u = k / 10; parts.push(mkPart(cur.x + (best.x - cur.x) * u + rand(-7, 7), cur.y + (best.y - cur.y) * u + rand(-7, 7), 1.5 + rand(-0.3, 0.3), 0, 0, 0, k % 2 ? '#ffffff' : '#88ccff', 0.22, 6)); }
+    fxFlash(best.x, best.y, 0x88ccff, 0.15); hitEnemy(best, 0.7, 30, cur); seen.add(best); cur = best;
+  }
+  if (seen.size > 1) SND.zap();
+}
+function ambush(o) {
+  banner('伏擊！', '寶庫的守衛從地底爬出來了'); shake = 8; sfx(70, 0.6, 'sawtooth', 0.1, 40);
+  dropItem(o.x + 30, o.y + 10, makeItem(p.floor, rollRarity(1)));
+  const n = Math.min(9, 5 + Math.floor(p.floor / 2));
+  for (let i = 0; i < n; i++) {
+    const a = i / n * 6.283, x = o.x + Math.cos(a) * 120, y = o.y + Math.sin(a) * 120;
+    if (circleHits(x, y, 16)) continue;
+    const e = spawnEnemy(rollType(p.floor), x, y, i === 0 && p.floor >= 2); e.awake = true; e.rise = true; e.riseT = 1.3; e.atkCd = 0.5; e.shotCd = 1; e.face = Math.atan2(o.y - y, o.x - x);
+    burst(x, y, '#aa66ff', 12, 70, 0.7, 0.3, 4);
+  }
+}
+function useShrine() {
+  const b = BUFFS[shrine.kind]; shrine.used = true; p.buff = { k: shrine.kind, t: 45 }; refresh();
+  p.hp = Math.min(p.st.hp, p.hp + p.st.hp * 0.3); banner(b[1] + '祝福', b[2] + '（45 秒）');
+  fxRing(p.x, p.y, 110, b[3], 0.6); burst(shrine.x, shrine.y, '#' + b[3].toString(16).padStart(6, '0'), 40, 150, 1, 3, 6); SND.shrine();
+}
 function die() {
-  p.hp = 0; state = 'dead';
+  p.hp = 0; state = 'dead'; intensity = 0;
   const lost = Math.floor(p.gold * 0.3); p.gold -= lost;
   if (hero) hero.once('Death_A', 1, 99);
   $('deadTxt').innerHTML = `你倒在第 ${p.floor} 層（最深紀錄：第 ${p.best} 層）。<br>掉了 ${lost} 枚金幣，裝備和等級都還在。`;
@@ -454,13 +617,16 @@ function attack() {
   p.combo = (p.combo + 1) % 3;
   if (hero) hero.once(SWINGS[p.combo], 0.5 / p.atkCd, p.atkCd * 0.9);
   fxSlash(p.x, p.y, p.aim, p.combo);
-  sfx(330, 0.06, 'triangle', 0.04, -150); noise(0.07, 0.04, 3000);
-  const range = 68; let hit = false;
+  SND.swing();
+  const range = 68, hits = []; let hit = false;
   for (const e of enemies) {
     const d = dist(e, p); if (d > range + e.r) continue;
-    if (d < e.r + 14 || Math.abs(angDiff(Math.atan2(e.y - p.y, e.x - p.x), p.aim)) < 1.05) { hitEnemy(e, p.combo === 2 ? 1.25 : 1, p.combo === 2 ? 170 : 110); hit = true; }
+    if (d < e.r + 14 || Math.abs(angDiff(Math.atan2(e.y - p.y, e.x - p.x), p.aim)) < 1.05) { hitEnemy(e, p.combo === 2 ? 1.25 : 1, p.combo === 2 ? 170 : 110); hit = true; hits.push(e); }
   }
-  if (hit) { shake = Math.max(shake, 2.5); hitStop = Math.max(hitStop, 0.03); sfx(140, 0.07, 'square', 0.05, -60); }
+  if (hit) { shake = Math.max(shake, 2.5); hitStop = Math.max(hitStop, 0.03); SND.hit(); }
+  if (p.fx.frost) for (const e of hits) if (!e.dead) { e.slow = 2.5; if (e.type !== 'boss' && Math.random() < 0.18) e.freeze = Math.max(e.freeze, 1.1); }
+  if (p.fx.chain && hits.length && Math.random() < 0.3) chain(hits[0]);
+  if (p.fx.wave && p.combo === 2) shots.push({ x: p.x + Math.cos(p.aim) * 24, y: p.y + Math.sin(p.aim) * 24, vx: Math.cos(p.aim) * 470, vy: Math.sin(p.aim) * 470, r: 22, from: 'p', life: 0.55, col: '#ff8a2a', wave: true, hit: new Set(hits) });
   for (const o of props) if (o.kind === 'barrel' && !o.dead && dist(o, p) < range + o.r && Math.abs(angDiff(Math.atan2(o.y - p.y, o.x - p.x), p.aim)) < 1.2) breakBarrel(o);
 }
 function breakBarrel(o) {
@@ -474,12 +640,12 @@ function cast(k) {
   if (k === 'hp' || k === 'mpp') return potion(k);
   const s = SK[k]; if (p.cd[k] > 0) return;
   if (p.mp < s.mp) { floatText(p.x, p.y, '魔力不足', '#6bf', 13); return; }
-  p.mp -= s.mp; p.cd[k] = s.cd;
+  p.mp -= s.mp; p.cd[k] = s.cd * (k === 'dash' && p.fx.blink ? 0.5 : 1);
   if (k === 'fire') {
     const a = p.aim = aimAngle();
-    shots.push({ x: p.x + Math.cos(a) * 18, y: p.y + Math.sin(a) * 18, vx: Math.cos(a) * 520, vy: Math.sin(a) * 520, r: 8, from: 'p', life: 1.4, col: '#ff8a2a', fire: true });
+    for (const o of (p.fx.twin ? [-0.22, 0, 0.22] : [0])) shots.push({ x: p.x + Math.cos(a + o) * 18, y: p.y + Math.sin(a + o) * 18, vx: Math.cos(a + o) * 520, vy: Math.sin(a + o) * 520, r: 8, from: 'p', life: 1.4, col: '#ff8a2a', fire: true });
     sfx(240, 0.2, 'sawtooth', 0.05, 300); if (hero) hero.once('Spellcast_Shoot', 2.4, 0.3);
-  } else if (k === 'whirl') { p.whirlT = 1.2; p.whirlTick = 0; }
+  } else if (k === 'whirl') { p.whirlT = p.fx.storm ? 2 : 1.2; p.whirlTick = 0; }
   else if (k === 'nova') {
     const l = p.skl.nova, R = 175;
     for (const e of enemies) if (dist(e, p) < R + e.r) { e.freeze = Math.max(e.freeze, (1.5 + l * 0.3) * (e.type === 'boss' ? 0.35 : 1)); e.slow = e.freeze + 2; e.atkT = 0; hitEnemy(e, 1 + l * 0.25, 60); }
@@ -505,7 +671,7 @@ function explode(s) {
   for (const o of props) if (o.kind === 'barrel' && !o.dead && dist(o, s) < R) breakBarrel(o);
   burst(s.x, s.y, '#ff8a2a', 26, 200, 0.6, 1.2, 6); burst(s.x, s.y, '#ffd84a', 12, 110, 0.5, 1.2, 4);
   fxRing(s.x, s.y, R, 0xff8a2a, 0.3); fxFlash(s.x, s.y, 0xff8030, 0.25);
-  sfx(90, 0.25, 'sawtooth', 0.07, -40); noise(0.3, 0.12, 700); shake = Math.max(shake, 5);
+  SND.boom(); shake = Math.max(shake, 5);
 }
 
 // ---------- 更新 ----------
@@ -526,10 +692,12 @@ function update(dt) {
   p.moving = false;
   if (p.dashT > 0) {
     p.dashT -= dt; moveEnt(p, p.dashX * 700 * dt, p.dashY * 700 * dt);
+    if (p.dashT <= 0 && p.fx.blink) blast(p.x, p.y, 95, 1.2, 0xaa88ff);
     parts.push(mkPart(p.x, p.y, 1.2, 0, 0, 0, '#88ccff', 0.25, 9));
   } else if (m > 0.05) {
     const sp = 190 * (1 + st.move / 100) * (p.whirlT > 0 ? 0.8 : p.atkCd > 0.12 ? 0.45 : 1);
     moveEnt(p, moveX * sp * dt, moveY * sp * dt); p.moving = true; p.moveA = Math.atan2(moveY, moveX);
+    if ((p.stepT -= dt) <= 0) { p.stepT = 0.29; SND.step(); }
     if (touchMode && p.slashT <= 0) p.aim = p.moveA;
   }
   if (!touchMode) p.aim = aimAngle();
@@ -539,6 +707,7 @@ function update(dt) {
     p.whirlT -= dt; p.whirlTick -= dt;
     if (p.whirlTick <= 0) {
       p.whirlTick = 0.2; sfx(260, 0.06, 'triangle', 0.03, 100); noise(0.08, 0.03, 2500);
+      if (p.fx.storm) for (const e of enemies) { const d = dist(e, p); if (d < 230 && d > 50 && e.type !== 'boss') { e.kx += (p.x - e.x) / d * 420; e.ky += (p.y - e.y) / d * 420; } }
       for (const e of enemies) if (dist(e, p) < 88 + e.r) hitEnemy(e, 0.6 + p.skl.whirl * 0.12, 40);
       for (const o of props) if (o.kind === 'barrel' && !o.dead && dist(o, p) < 88) breakBarrel(o);
     }
@@ -560,7 +729,14 @@ function update(dt) {
   for (const s of shots) {
     s.life -= dt; s.x += s.vx * dt; s.y += s.vy * dt;
     const wall = solid(Math.floor(s.x / T), Math.floor(s.y / T));
-    if (s.from === 'p') {
+    if (s.wave) { // 火焰劍氣：穿透，每個敵人只打一次
+      if (wall || s.life <= 0) s.dead = true;
+      else {
+        for (const e of enemies) if (!s.hit.has(e) && dist(e, s) < e.r + s.r) { s.hit.add(e); hitEnemy(e, 1.3, 140, s); }
+        for (const o of props) if (o.kind === 'barrel' && !o.dead && dist(o, s) < o.r + s.r) breakBarrel(o);
+        parts.push(mkPart(s.x + rand(-14, 14), s.y + rand(-14, 14), 1.2, 0, 0, rand(0, 2), '#ff7a2a', 0.3, 5));
+      }
+    } else if (s.from === 'p') {
       let hit = wall || s.life <= 0;
       if (!hit) for (const e of enemies) if (dist(e, s) < e.r + s.r) { hit = true; break; }
       if (!hit) for (const o of props) if (o.kind === 'barrel' && !o.dead && dist(o, s) < o.r + s.r) { hit = true; break; }
@@ -575,7 +751,7 @@ function update(dt) {
   props = props.filter(o => { if (o.dead) killVis(o); return !o.dead; });
 
   for (const o of props) if (o.kind === 'chest' && !o.open && dist(o, p) < o.r + p.r + 10) {
-    o.open = true; sfx(660, 0.2, 'triangle', 0.06, 300); burst(o.x, o.y, '#ffd84a', 24, 110, 0.9, 1, 6);
+    o.open = true; if (o.vault) ambush(o); sfx(660, 0.2, 'triangle', 0.06, 300); burst(o.x, o.y, '#ffd84a', 24, 110, 0.9, 1, 6);
     for (let i = 0; i < irand(3, 6) * (o.gold ? 2 : 1); i++) dropGold(o.x + rand(-20, 20), o.y + 26, irand(4, 9) * (1 + p.floor * 0.25));
     dropItem(o.x, o.y + 30, makeItem(p.floor, rollRarity(o.gold ? 2 : Math.random() < 0.35 ? 1 : 0)));
     if (Math.random() < 0.5) drops.push(mk(Math.random() < 0.6 ? 'hp' : 'mp', o.x, o.y + 26));
@@ -586,7 +762,7 @@ function update(dt) {
     const ds = dist(d, p);
     if (d.kind === 'gold' && ds < 110) { d.x += (p.x - d.x) / ds * 420 * dt; d.y += (p.y - d.y) / ds * 420 * dt; }
     if (ds > p.r + 12) continue;
-    if (d.kind === 'gold') { p.gold += d.amt; d.dead = true; sfx(1200, 0.04, 'square', 0.025); floatText(p.x, p.y, '+' + d.amt, '#ffd84a', 12); }
+    if (d.kind === 'gold') { p.gold += d.amt; d.dead = true; SND.coin(); floatText(p.x, p.y, '+' + d.amt, '#ffd84a', 12); }
     else if (d.kind === 'hp') { if (p.hpPot < 9) { p.hpPot++; d.dead = true; sfx(800, 0.08, 'sine', 0.04); } }
     else if (d.kind === 'mp') { if (p.mpPot < 9) { p.mpPot++; d.dead = true; sfx(800, 0.08, 'sine', 0.04); } }
     else if (p.inv.length < 24) { p.inv.push(d.it); d.dead = true; floatText(p.x, p.y, d.it.name, RAR[d.it.rarity].c, 14); sfx(700, 0.1, 'triangle', 0.05, 200); }
@@ -601,6 +777,23 @@ function update(dt) {
   texts = texts.filter(t => t.t > 0);
   shake = Math.max(0, shake - dt * 30);
   $('act').style.display = stairs.open && dist(stairs, p) < 44 ? 'block' : 'none';
+
+  p.thornCd -= dt; p.trapCd -= dt;
+  if (p.streakT > 0 && (p.streakT -= dt) <= 0) p.streak = 0;
+  if (p.buff && (p.buff.t -= dt) <= 0) { p.buff = null; refresh(); floatText(p.x, p.y, '祝福消失了', '#aaa', 13); }
+  if (shrine && !shrine.used && dist(shrine, p) < 48) useShrine();
+  for (let i = booms.length - 1; i >= 0; i--) { const b = booms[i]; if ((b.t -= dt) <= 0) { booms.splice(i, 1); blast(b.x, b.y, 85, 0.8, 0x9955ff, 0.35); } }
+  const ptx = Math.floor(p.x / T), pty = Math.floor(p.y / T);
+  for (const t of traps) {
+    const up = (time + t.ph) % 2.6 > 1.75;
+    if (up && !t.up && Math.abs(t.tx - ptx) + Math.abs(t.ty - pty) < 7) SND.spike();
+    t.up = up;
+    if (up && t.tx === ptx && t.ty === pty && p.trapCd <= 0 && p.dashT <= 0) { p.trapCd = 0.9; hurtPlayer(9 * (1 + 0.16 * (p.floor - 1))); }
+  }
+  // 音樂強度跟著附近醒著的敵人數量走
+  let near = 0; for (const e of enemies) if (e.awake && dist(e, p) < 450) near++;
+  musicTarget = boss && boss.awake ? 1 : Math.min(0.8, near * 0.2);
+  intensity += (musicTarget - intensity) * Math.min(1, dt * 0.9);
 }
 function descend() {
   if (state !== 'play' || !stairs.open || dist(stairs, p) > 44) return;
@@ -642,7 +835,8 @@ const loader = new GLTFLoader();
 const ASSETS = ['knight', 'skel_warrior', 'skel_mage', 'skel_minion', 'skel_rogue', 'w_blade', 'w_axe', 'w_staff', 'w_crossbow', 'w_shield_large_a',
   'wall', 'wall_cracked', 'floor_tile_large', 'floor_tile_large_rocks', 'floor_dirt_large', 'floor_dirt_large_rocky', 'floor_tile_big_grate_open',
   'torch_mounted', 'barrel_large', 'box_large', 'banner_patternA_red', 'banner_patternB_blue', 'banner_shield_green', 'coin', 'bottle_A_labeled_green',
-  'chest', 'chest_gold', 'pillar', 'coin_stack_small'];
+  'chest', 'chest_gold', 'pillar', 'coin_stack_small', 'coin_stack_medium', 'coin_stack_large', 'h_sword_2handed', 'h_axe_1handed', 'h_dagger',
+  'h_shield_round', 'h_shield_square', 'h_shield_spikes', 'table_medium', 'stool', 'keg', 'crates_stacked', 'barrel_small_stack', 'column', 'candle_triple'];
 const CLIPS = { knight: {}, skel: {} };
 async function loadAssets() {
   let done = 0;
@@ -688,7 +882,7 @@ class Char {
 let hero = null;
 const ents = new THREE.Group(); scene.add(ents);
 let lvl = new THREE.Group(); scene.add(lvl);
-let torchSpots = [], flames = null, stairFx = null;
+let torchSpots = [], flames = null, stairFx = null, shrineFx = null, trapFx = null;
 
 const VIS = {
   minion: ['skel_minion', 1], imp: ['skel_minion', 0.68, 0x9fe08a], archer: ['skel_rogue', 1], brute: ['skel_warrior', 1.22],
@@ -705,9 +899,22 @@ function ensureVis(e) {
   if (e.type === 'boss') { c.hold('handslotr', 'w_blade', 1.2); c.hold('handslotl', 'w_shield_large_a', 1.1); }
   c.emissive(c.base, c.baseK);
   c.root.position.set(e.x * U, 0, e.y * U); c.root.rotation.y = Math.PI / 2 - e.face; c.px = e.x; c.py = e.y;
-  if (e.summoned) c.once('Spawn_Ground_Skeletons', 2.2); else c.play('Idle');
+  if (e.summoned || e.rise) c.once('Spawn_Ground_Skeletons', e.rise ? 1.5 : 2.2); else c.play('Idle');
   if (e.elite) { const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffc040, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false })); ring.scale.setScalar(e.r * U * 1.2 / c.root.scale.x); ring.position.y = 0.08; c.root.add(ring); c.ring = ring; }
   ents.add(c.root); e.v = c; return c;
+}
+// 主角手上的武器與盾牌跟著裝備換
+const WMODEL = { '短劍': 'h_dagger', '戰斧': 'h_axe_1handed', '巨劍': 'h_sword_2handed', '釘錘': 'h_axe_1handed', '彎刀': 'w_blade' };
+const SHIELDS = ['h_shield_round', null, 'h_shield_square', 'h_shield_spikes'];
+function heroLook() {
+  if (!hero) return;
+  for (const o of hero.gear || []) o.dispose(); hero.gear = [];
+  const sw = hero.root.getObjectByName('1H_Sword'), sh = hero.root.getObjectByName('Badge_Shield'), w = p.equip.weapon, a = p.equip.armor;
+  const put = (model, slot, it) => { const bone = hero.root.getObjectByName(slot); if (!bone) return; const o = tintClone(model, 1, colOf(RAR[it.rarity].c).getHex(), it.rarity * 0.2); bone.add(o); hero.gear.push(o); };
+  const wm = w && WMODEL[w.kind], sm = a && SHIELDS[a.rarity];
+  if (sw) sw.visible = !!w && !wm; if (sh) sh.visible = !!a && !sm;
+  if (wm) put(wm, 'handslotr', w); if (sm) put(sm, 'handslotl', a);
+  hero.hand = hero.root.getObjectByName('handslotr'); hero.glow = w && w.rarity === 3 ? RAR[3].c : null;
 }
 function charOnce(e, name, ts, lock) { if (e.v) e.v.once(name, ts, lock); }
 function toCorpse(e) {
@@ -742,7 +949,7 @@ const mat4 = (x, y, z, ry = 0, sx = 1, sy = 1, sz = 1) => new THREE.Matrix4().co
 const hash = (x, y) => { let n = x * 374761393 + y * 668265263; n = (n ^ (n >> 13)) * 1274126177; return ((n ^ (n >> 16)) >>> 0) / 4294967295; };
 
 function buildLevel3D() {
-  scene.remove(lvl); lvl.traverse(o => { if (o.isInstancedMesh) o.dispose(); else if (o.isMesh && o.userData.own) { o.geometry.dispose(); o.material.dispose(); } });
+  scene.remove(lvl); lvl.traverse(o => { if (o.isInstancedMesh) o.dispose(); if (o.isMesh && o.userData.own) { o.geometry.dispose(); o.material.dispose(); } });
   lvl = new THREE.Group(); scene.add(lvl); torchSpots = [];
   const tint = new THREE.Color(pal.tint);
   hemi.color.setHex(pal.hemi); for (const l of wallLights) l.color.setHex(pal.torch);
@@ -803,9 +1010,24 @@ function buildLevel3D() {
       const X = r.x * 4 + 0.5, Z = y * 4 + 2;
       L.torch_mounted.push({ m: mat4(X, 2.3, Z, Math.PI / 2) }); torchSpots.push({ x: X + 0.45, y: 3.1, z: Z });
     }
-    if (r.w >= 8 && r.h >= 7) for (const cx of [r.x * 4 + 1.1, (r.x + r.w) * 4 - 1.1]) L.pillar.push({ m: mat4(cx, 0, r.y * 4 + 1.1, 0, 0.8, 1, 0.8), c: tint });
   }
   for (const n in L) inst(n, L[n]);
+  for (const d of decos) { const o = kitClone(d.model, d.s); o.position.set(d.x * U, 0, d.y * U); o.rotation.y = d.rot; lvl.add(o); }
+  for (const d of fluff) { const o = kitClone(d.model, d.s); o.position.set(d.x * U, d.h || 0, d.y * U); o.rotation.y = d.rot; lvl.add(o); }
+  shrineFx = null;
+  if (shrine) { // 祭壇：石柱上浮著一顆光球
+    const col = BUFFS[shrine.kind][3], orb = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), new THREE.MeshBasicMaterial({ color: col }));
+    orb.position.set(shrine.x * U, 3, shrine.y * U); orb.userData.own = true; lvl.add(orb);
+    const l = new THREE.PointLight(col, 40, 18, 1.6); l.position.copy(orb.position); lvl.add(l); shrineFx = { orb, l };
+  }
+  trapFx = null;
+  if (traps.length) { // 尖刺陷阱：一塊鐵板加九根會升降的刺
+    const plates = new THREE.InstancedMesh(new THREE.BoxGeometry(3.5, 0.08, 3.5), new THREE.MeshStandardMaterial({ color: 0x6a5a58, metalness: 0.1, roughness: 0.8 }), traps.length);
+    traps.forEach((t, i) => { tmpM.makeTranslation(t.tx * 4 + 2, 0.08, t.ty * 4 + 2); plates.setMatrixAt(i, tmpM); });
+    const spikes = new THREE.InstancedMesh(new THREE.ConeGeometry(0.2, 1.5, 6), new THREE.MeshStandardMaterial({ color: 0xd8d8e4, metalness: 0.2, roughness: 0.4, emissive: 0x301008 }), traps.length * 9);
+    for (const m of [plates, spikes]) { m.userData.own = true; m.frustumCulled = false; m.receiveShadow = true; lvl.add(m); }
+    trapFx = spikes;
+  }
   // 火焰
   flames = new THREE.InstancedMesh(new THREE.SphereGeometry(0.22, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(pal.torch).lerp(WHITE, 0.35) }), Math.max(1, torchSpots.length));
   flames.frustumCulled = false; flames.userData.own = true; flames.count = torchSpots.length; lvl.add(flames);
@@ -922,10 +1144,18 @@ function render3d(dt) {
   });
   flames.instanceMatrix.needsUpdate = true;
   for (const l of fxLights) if (l.userData.t > 0) { l.userData.t -= dt; l.intensity = Math.max(0, l.userData.t / l.userData.dur) * l.userData.peak; }
+  if (shrineFx) { shrineFx.orb.visible = !shrine.used; shrineFx.orb.position.y = 3 + Math.sin(time * 2) * 0.2; shrineFx.l.intensity = shrine.used ? 0 : 40 + Math.sin(time * 5) * 8; }
+  if (trapFx) {
+    traps.forEach((t, i) => {
+      const ph = (time + t.ph) % 2.6, h = ph < 1.3 ? 0.15 : ph < 1.75 ? 0.2 : ph < 1.83 ? 0.2 + (ph - 1.75) / 0.08 * 0.8 : ph < 2.45 ? 1 : 1 - (ph - 2.45) / 0.15;
+      for (let k = 0; k < 9; k++) { tmpM.makeTranslation(t.tx * 4 + 2 + ((k % 3) - 1) * 1.05, -0.8 + h * 1.5, t.ty * 4 + 2 + (Math.floor(k / 3) - 1) * 1.05); trapFx.setMatrixAt(i * 9 + k, tmpM); }
+    });
+    trapFx.instanceMatrix.needsUpdate = true;
+  }
   stairFx.beam.visible = stairFx.sl.visible = stairs.open; stairFx.beam.material.opacity = 0.14 + Math.sin(time * 3) * 0.05;
 
   // --- 主角 ---
-  if (!hero) { hero = new Char('knight', CLIPS.knight); ents.add(hero.root); hero.face = 0; }
+  if (!hero) { hero = new Char('knight', CLIPS.knight); ents.add(hero.root); hero.face = 0; heroLook(); }
   hero.root.position.set(p.x * U, 0, p.y * U);
   hero.lock -= dt;
   if (state !== 'dead') {
@@ -941,6 +1171,7 @@ function render3d(dt) {
   hero.root.rotation.y = Math.PI / 2 - hero.face;
   hero.emissive(p.hurtT > 0 ? 0xff2020 : 0x000000, p.hurtT > 0 ? 0.8 : 0);
   hero.mixer.update(dt);
+  if (hero.glow && hero.hand && dt > 0) { v3.set(0, 1.1, 0); hero.hand.localToWorld(v3); parts.push(mkPart(v3.x / U, v3.z / U, v3.y, 0, 0, 0.6, hero.glow, 0.35, 4.5)); }
   whirlFx.forEach((w, i) => { w.visible = p.whirlT > 0; if (w.visible) { w.position.set(p.x * U, 1.2, p.y * U); w.rotation.y = -time * 20 + i * Math.PI; w.material.uniforms.k.value = 0.5; } });
 
   // --- 敵人 ---
@@ -979,7 +1210,7 @@ function render3d(dt) {
     if (!s.v) {
       s.v = new THREE.Mesh(shotGeo, new THREE.MeshBasicMaterial({ color: s.col })); s.v.dispose = function () { this.material.dispose(); this.removeFromParent(); }; scene.add(s.v);
       const r = s.r * U * (s.fire ? 0.6 : 0.55);
-      if (s.arrow) s.v.scale.set(r * 3.4, r * 0.5, r * 0.5); else s.v.scale.setScalar(r);
+      if (s.wave) s.v.scale.set(0.45, 0.9, 2.5); else if (s.arrow) s.v.scale.set(r * 3.4, r * 0.5, r * 0.5); else s.v.scale.setScalar(r);
       s.v.rotation.y = -Math.atan2(s.vy, s.vx);
       if (s.fire) { const l = fxLights.find(l => l.userData.t <= 0 && !l.userData.used); if (l) { l.userData.used = true; l.color.setHex(0xff8030); l.intensity = 60; s.light = l; } }
     }
@@ -1063,6 +1294,8 @@ function drawMini() {
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (explored[y * MW + x] && map[y * MW + x] === 0) { mctx.fillStyle = 'rgba(200,190,220,.55)'; mctx.fillRect(x, y, 1, 1); }
   if (stairs.open && explored[stairs.ty * MW + stairs.tx]) { mctx.fillStyle = '#ffcf6b'; mctx.fillRect(stairs.tx - 1, stairs.ty - 1, 2, 2); }
   if (boss) { mctx.fillStyle = '#f44'; mctx.fillRect(Math.floor(boss.x / T) - 1, Math.floor(boss.y / T) - 1, 2, 2); }
+  if (shrine && !shrine.used && explored[Math.floor(shrine.y / T) * MW + Math.floor(shrine.x / T)]) { mctx.fillStyle = '#5ef'; mctx.fillRect(Math.floor(shrine.x / T), Math.floor(shrine.y / T), 2, 2); }
+  for (const o of props) if (o.vault && !o.open && explored[Math.floor(o.y / T) * MW + Math.floor(o.x / T)]) { mctx.fillStyle = '#fd4'; mctx.fillRect(Math.floor(o.x / T), Math.floor(o.y / T), 2, 2); }
   mctx.fillStyle = '#5f5'; mctx.fillRect(Math.floor(p.x / T) - 0.5, Math.floor(p.y / T) - 0.5, 2, 2);
 }
 
@@ -1081,6 +1314,8 @@ function hud() {
   if (boss && boss.awake) { bb.style.display = 'block'; $('bossName').textContent = boss.name; bb.querySelector('i').style.width = clamp(boss.hp / boss.maxHp * 100, 0, 100) + '%'; }
   else bb.style.display = 'none';
   if (++hudT % 10) return; // 其餘不常變的，每 10 幀更新一次
+  let bt = ''; if (p.buff) { const b = BUFFS[p.buff.k]; bt = `${b[0]} ${b[1]} ${Math.ceil(p.buff.t)}s　`; } if (p.streak >= 3) bt += `🔥 連殺 ×${p.streak}`;
+  $('buff').textContent = bt;
   $('fl').textContent = p.floor; $('lv').textContent = p.lvl; $('gold').textContent = p.gold;
   setBar('xpBar', p.xp, xpNeed(p.lvl));
   $('sk-hp').children[1].textContent = p.hpPot; $('sk-mpp').children[1].textContent = p.mpPot;
@@ -1094,9 +1329,10 @@ function itemHtml(it) {
   let h = `<b style="color:${RAR[it.rarity].c}">${it.name}</b> <span class="dim">${RAR[it.rarity].n}${SLOTS[it.slot].n}・Lv ${it.lvl}</span><br>`;
   for (const k in it.base) h += fmt(k, it.base[k]) + '<br>';
   for (const a of it.aff) h += `<span style="color:#9cf">${fmt(a.k, a.v)}</span><br>`;
+  if (it.fx && LEGFX[it.fx]) h += `<span style="color:#ff8a3a">★ ${LEGFX[it.fx].d}</span><br>`;
   return h;
 }
-function upgradeOf(it) { const eq = Object.assign({}, p.equip); eq[it.slot] = it; return power(calcStats(eq)) - power(p.st); }
+function upgradeOf(it) { const eq = Object.assign({}, p.equip), cur = p.equip[it.slot]; eq[it.slot] = it; return power(calcStats(eq)) - power(p.st) + (it.fx ? 60 : 0) - (cur && cur.fx ? 60 : 0); }
 function drawPanel() {
   const st = p.st;
   $('eq').innerHTML = Object.keys(SLOTS).map(s => { const it = p.equip[s]; return `<div class="slot${sel && sel.it === it && it ? ' sel' : ''}" data-eq="${s}" style="border-color:${it ? RAR[it.rarity].c : '#443a55'}">${it ? SLOTS[s].i : ''}<small>${SLOTS[s].n}</small></div>`; }).join('');
@@ -1141,14 +1377,14 @@ $('panel').addEventListener('click', ev => {
     if (ds.act === 'equip' && i >= 0) { const old = p.equip[it.slot]; p.equip[it.slot] = it; if (old) p.inv[i] = old; else p.inv.splice(i, 1); sfx(500, 0.1, 'triangle', 0.05, 200); }
     else if (ds.act === 'sell' && i >= 0) { p.inv.splice(i, 1); p.gold += it.val; sfx(1200, 0.05, 'square', 0.03); }
     else if (ds.act === 'unequip' && p.inv.length < 24) { p.equip[it.slot] = null; p.inv.push(it); }
-    sel = null; refresh();
+    sel = null; refresh(); heroLook();
   }
   drawPanel();
 });
 $('sellJunk').onclick = () => { let g = 0; p.inv = p.inv.filter(it => it.rarity > 0 || (g += it.val, false)); p.gold += g; sel = null; if (g) sfx(1200, 0.05, 'square', 0.03); drawPanel(); };
 $('closeBtn').onclick = () => togglePanel(false);
 $('bagBtn').onclick = () => togglePanel();
-$('sndBtn').onclick = () => { muted = !muted; $('sndBtn').textContent = muted ? '🔇' : '🔊'; };
+$('sndBtn').onclick = () => { muted = !muted; $('sndBtn').textContent = muted ? '🔇' : '🔊'; audioInit(); if (master) master.gain.value = muted ? 0 : 1; };
 function nextCam() { camMode = (camMode + 1) % CAMS.length; try { localStorage.setItem('ember-depths-cam', camMode); } catch (e) { /* 沒差 */ } if (state === 'play') banner('', '視角：' + CAMS[camMode].name); }
 $('camBtn').onclick = nextCam;
 try { camMode = (+localStorage.getItem('ember-depths-cam') || 0) % CAMS.length; } catch (e) { /* 沒差 */ }
@@ -1156,7 +1392,7 @@ $('act').onclick = descend;
 
 function startGame(fresh) {
   if (fresh || !load()) newPlayer();
-  state = 'play'; paused = false; $('menu').classList.remove('on'); sfx(300, 0.01, 'sine', 0.001); genFloor();
+  state = 'play'; paused = false; $('menu').classList.remove('on'); audioInit(); genFloor(); heroLook();
 }
 $('newBtn').onclick = () => { if (!hasSave() || confirm('要放棄目前的進度，重新開始嗎？')) startGame(true); };
 $('contBtn').onclick = () => startGame(false);
@@ -1237,7 +1473,7 @@ loadAssets().then(() => {
 
 // 測試用
 window.__game = {
-  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; },
+  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
   get quality() { return quality; }, setQuality(v) { autoQ = false; quality = v; applyQuality(); },
   update, descend, cast, keys, mouse, spawnEnemy, hurtPlayer, dropItem, makeItem, genFloor, setCam(i) { camMode = i; camReady = false; }, info: () => renderer.info.render,
 };

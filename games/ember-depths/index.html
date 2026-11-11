@@ -63,6 +63,8 @@
 
     #act { pointer-events: auto; touch-action: manipulation; left: 50%; bottom: calc(96px + var(--sb)); transform: translateX(-50%); display: none; padding: 10px 22px;
       font-size: 18px; border-radius: 12px; border: 2px solid #ffcf6b; background: #2a1d10; color: #ffe; cursor: pointer; }
+    #buff { top: calc(12px + var(--st)); left: 50%; transform: translateX(-50%); font-size: 14px; color: #ffe9b0; white-space: nowrap; }
+    body.touch #buff { top: calc(118px + var(--st)); left: calc(12px + var(--sl)); transform: none; font-size: 13px; }
     #banner { top: 20%; left: 0; right: 0; text-align: center; font-size: clamp(28px, 6vw, 54px); font-weight: 700;
       letter-spacing: 6px; color: #ffcf6b; opacity: 0; transition: opacity .6s; }
     #banner small { display: block; font-size: .4em; letter-spacing: 2px; color: #ddd; font-weight: 400; }
@@ -161,6 +163,7 @@
   <div id="boss" class="hud"><span id="bossName"></span><div class="bar"><i></i></div></div>
   <button id="act" class="hud">⬇️ 往下一層</button>
   <div id="banner" class="hud"></div>
+  <div id="buff" class="hud"></div>
 
   <!-- 主選單 -->
   <div id="menu" class="overlay on"><div class="box" style="max-width:560px">
