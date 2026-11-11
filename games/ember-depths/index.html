@@ -61,7 +61,7 @@
       text-align: center; font-size: 15px; color: #ffb0a0; }
     #boss .bar i { background: linear-gradient(#f93, #a20); }
 
-    #act { left: 50%; bottom: calc(96px + var(--sb)); transform: translateX(-50%); display: none; padding: 10px 22px;
+    #act { pointer-events: auto; touch-action: manipulation; left: 50%; bottom: calc(96px + var(--sb)); transform: translateX(-50%); display: none; padding: 10px 22px;
       font-size: 18px; border-radius: 12px; border: 2px solid #ffcf6b; background: #2a1d10; color: #ffe; cursor: pointer; }
     #banner { top: 20%; left: 0; right: 0; text-align: center; font-size: clamp(28px, 6vw, 54px); font-weight: 700;
       letter-spacing: 6px; color: #ffcf6b; opacity: 0; transition: opacity .6s; }
@@ -84,7 +84,7 @@
     body.touch #sk-hp { right: 172px; bottom: 2px; width: 50px; height: 50px; font-size: 22px; }
     body.touch #sk-mpp { right: 166px; bottom: 60px; width: 50px; height: 50px; font-size: 22px; }
     body.touch #mini { width: 98px; height: 70px; }
-    body.touch #act { bottom: auto; top: 32%; }
+    body.touch #act { bottom: auto; top: 30%; font-size: 20px; padding: 14px 28px; }
     body.touch #info { font-size: 14px; gap: 9px; }
 
     .overlay { position: fixed; inset: 0; z-index: 5; display: none; align-items: center; justify-content: center;
@@ -159,7 +159,7 @@
   </div>
 
   <div id="boss" class="hud"><span id="bossName"></span><div class="bar"><i></i></div></div>
-  <button id="act" class="hud">⬇️ 往下一層 (F)</button>
+  <button id="act" class="hud">⬇️ 往下一層</button>
   <div id="banner" class="hud"></div>
 
   <!-- 主選單 -->
