@@ -105,12 +105,28 @@ let state = 'menu', paused = false, time = 0;
 let map, explored, flow, rooms, stairs, pal;
 let enemies = [], shots = [], drops = [], props = [], parts = [], texts = [], corpses = [];
 let blk = [], decos = [], fluff = [], traps = [], booms = [], shrine = null, hitBlk = null;
+let merchant = null, stock = [], boxMsg = '', actMode = null, storeOpen = false;
 let p = null, boss = null, shake = 0, miniT = 0, flowT = 0, itemId = 1, fullMsgT = 0, hitStop = 0;
 let W = 0, H = 0, dpr = 1;
 
 const keys = {}, mouse = { x: 0, y: 0, l: false, r: false, wx: 0, wy: 0 };
 const joy = { id: null, ox: 0, oy: 0, x: 0, y: 0 };
 let touchMode = false, atkHeld = false;
+
+// ---------- 新手提示：每則只出現一次 ----------
+let tipSeen = {}, tipTimer = null;
+try { tipSeen = JSON.parse(localStorage.getItem('ember-depths-tips')) || {}; } catch (e) { /* 沒差 */ }
+const tipQ = [];
+function tip(key, text) { // 同時觸發好幾則時排隊，一則一則出
+  if (tipSeen[key]) return; tipSeen[key] = 1;
+  try { localStorage.setItem('ember-depths-tips', JSON.stringify(tipSeen)); } catch (e) { /* 沒差 */ }
+  tipQ.push(text); if (!tipTimer) nextTip();
+}
+function nextTip() {
+  const el = $('tip'), text = tipQ.shift();
+  if (!text) { el.style.opacity = 0; tipTimer = null; return; }
+  el.textContent = '💡 ' + text; el.style.opacity = 1; tipTimer = setTimeout(nextTip, 5500);
+}
 
 // ---------- 地城生成 ----------
 const PALS = [
@@ -217,6 +233,9 @@ function genFloor() {
     if (map[ty * MW + tx] !== 0 || blk[ty * MW + tx] || (tx === stairs.tx && ty === stairs.ty)) return null;
     const d = { x: (tx + 0.5) * T, y: (ty + 0.5) * T, r, model, s, rot }; blk[ty * MW + tx] = d; decos.push(d); return d;
   };
+  // 每層起點站著一位商人
+  merchant = addDeco(start.cx + 2, start.cy - 2, null, 10) || { x: (start.cx + 2.5) * T, y: (start.cy - 1.5) * T };
+  stock = [makeItem(f, 1), makeItem(f, Math.max(1, rollRarity())), makeItem(f + 1, Math.random() < 0.12 ? 3 : 2)]; boxMsg = '';
   const others = rooms.filter(r => r !== start && r !== far).sort(() => Math.random() - 0.5);
   const vault = others.length >= 3 && Math.random() < 0.6 ? others[0] : null;
   const shrineRoom = others.length >= 4 && Math.random() < 0.55 ? others[1] : null;
@@ -255,6 +274,7 @@ function genFloor() {
     const nb = irand(1, 4);
     for (let i = 0; i < nb; i++) { const s = freeSpot(r, 12); props.push({ kind: 'barrel', x: s.x, y: s.y, r: 11, skin: Math.random() < 0.6 ? 'barrel_large' : 'box_large', rot: rand(0, 6.28) }); }
   }
+  actMode = null; $('act').style.display = 'none';
   buildLevel3D();
   musicRoot = [110, 98, 123.47, 92.5, 103.83][Math.floor((f - 1) / 5) % 5];
   if (drone) drone.forEach((o, i) => o.frequency.setTargetAtTime(musicRoot / 2 * (1 + i * 0.007), actx.currentTime, 1.5));
@@ -323,10 +343,20 @@ function makeItem(lvl, rarity, slot) {
   it.val = Math.round((5 + lvl * 3) * Math.pow(1 + rarity, 1.5));
   return it;
 }
+// 強化過的裝備（+N）每級讓所有數值多 12%
+const iv = (it, v) => Math.round(v * (1 + 0.12 * (it.up || 0)) * 10) / 10;
+const upCost = it => Math.round(30 * (it.lvl + 2) * Math.pow((it.up || 0) + 1, 1.4));
+const TRAIN = { hp: ['體魄', '生命 +12'], dmg: ['力量', '攻擊 +2'], mp: ['心智', '魔力 +10、每秒回魔 +0.3'] };
+const trainCost = k => Math.round(80 * Math.pow(1.3, p.train[k]));
+const boxCost = () => 80 + p.floor * 40;
+const priceOf = it => it.val * 5;
 function calcStats(eq) {
   eq = eq || p.equip; const L = p.lvl;
-  const s = { dmg: 10 + 2 * (L - 1), hp: 120 + 12 * (L - 1), mp: 50 + 5 * (L - 1), armor: 0, crit: 5, aspd: 0, move: 0, ls: 0, hpr: 1, mpr: 2 };
-  for (const k in eq) { const it = eq[k]; if (!it) continue; for (const b in it.base) s[b] += it.base[b]; for (const a of it.aff) s[a.k] += a.v; }
+  const tr = p.train || { hp: 0, dmg: 0, mp: 0 };
+  const s = { dmg: 10 + 2 * (L - 1) + tr.dmg * 2, hp: 120 + 12 * (L - 1) + tr.hp * 12, mp: 50 + 5 * (L - 1) + tr.mp * 10, armor: 0, crit: 5, aspd: 0, move: 0, ls: 0, hpr: 1, mpr: 3 + tr.mp * 0.3 };
+  for (const k in eq) { const it = eq[k]; if (!it) continue; for (const b in it.base) s[b] += iv(it, it.base[b]); for (const a of it.aff) s[a.k] += iv(it, a.v); }
+  for (const k of ['dmg', 'hp', 'mp', 'armor']) s[k] = Math.round(s[k]);
+  for (const k of ['crit', 'aspd', 'move', 'ls', 'hpr', 'mpr']) s[k] = Math.round(s[k] * 10) / 10;
   s.crit = Math.min(s.crit, 75); s.aspd = Math.min(s.aspd, 100); s.move = Math.min(s.move, 50); s.ls = Math.min(s.ls, 15);
   if (p.buff && p.buff.k === 'rage') s.dmg = Math.round(s.dmg * 1.5);
   if (p.buff && p.buff.k === 'haste') { s.move += 35; s.aspd += 35; }
@@ -344,7 +374,7 @@ const SK = {
 };
 function newPlayer() {
   p = {
-    x: 0, y: 0, r: 13, lvl: 1, xp: 0, gold: 0, floor: 1, best: 1, hpPot: 3, mpPot: 2, sp: 0,
+    x: 0, y: 0, r: 13, lvl: 1, xp: 0, gold: 0, floor: 1, best: 1, hpPot: 3, mpPot: 2, sp: 0, kills: 0, deaths: 0, won: false, train: { hp: 0, dmg: 0, mp: 0 },
     skl: { fire: 1, whirl: 1, nova: 1 }, inv: [],
     equip: { weapon: { id: itemId++, slot: 'weapon', rarity: 0, lvl: 1, base: { dmg: 5 }, aff: [], name: '生鏽的短劍', val: 3 }, armor: null, ring: null },
   };
@@ -358,20 +388,20 @@ function gainXp(v) {
   p.xp += v;
   while (p.xp >= xpNeed(p.lvl)) {
     p.xp -= xpNeed(p.lvl); p.lvl++; p.sp++; refresh(); p.hp = p.st.hp; p.mp = p.st.mp;
-    floatText(p.x, p.y, '升級！', '#ffcf6b', 24);
+    floatText(p.x, p.y, '升級！', '#ffcf6b', 24); tip('lvl', '升級了！點 🎒 用技能點強化技能');
     burst(p.x, p.y, '#ffcf6b', 40, 160, 1, 1, 6); fxRing(p.x, p.y, 90, 0xffcf6b, 0.6);
     SND.level();
   }
 }
 function save() {
   if (!p) return;
-  const o = {}; for (const k of ['lvl', 'xp', 'gold', 'floor', 'best', 'hpPot', 'mpPot', 'sp', 'skl', 'equip', 'inv']) o[k] = p[k];
+  const o = {}; for (const k of ['lvl', 'xp', 'gold', 'floor', 'best', 'hpPot', 'mpPot', 'sp', 'skl', 'equip', 'inv', 'kills', 'deaths', 'won', 'train']) o[k] = p[k];
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(o)); } catch (e) { /* 無痕模式存不了就算了 */ }
 }
 function load() {
   try {
     const o = JSON.parse(localStorage.getItem(SAVE_KEY)); if (!o || !o.lvl) return false;
-    p = Object.assign({ x: 0, y: 0, r: 13 }, o); resetRuntime();
+    p = Object.assign({ x: 0, y: 0, r: 13, kills: 0, deaths: 0, won: false, train: { hp: 0, dmg: 0, mp: 0 } }, o); resetRuntime();
     for (const it of [...p.inv, ...Object.values(p.equip)]) if (it) itemId = Math.max(itemId, it.id + 1);
     refresh(); p.hp = p.st.hp; p.mp = p.st.mp; return true;
   } catch (e) { return false; }
@@ -380,12 +410,12 @@ const hasSave = () => { try { return !!localStorage.getItem(SAVE_KEY); } catch (
 
 // ---------- 敵人 ----------
 const ET = {
-  minion: { n: '骷髏兵', hp: 30, spd: 74, dmg: 8, r: 12, xp: 8 },
-  imp: { n: '小骨魔', hp: 16, spd: 140, dmg: 5, r: 9, xp: 7 },
-  archer: { n: '骸骨弩手', hp: 22, spd: 85, dmg: 9, r: 12, xp: 11, ranged: 1 },
-  brute: { n: '骸骨戰將', hp: 95, spd: 60, dmg: 18, r: 16, xp: 22, charger: 1 },
-  shaman: { n: '亡靈咒術師', hp: 40, spd: 62, dmg: 10, r: 12, xp: 18, ranged: 1 },
-  boss: { n: '守關者', hp: 900, spd: 72, dmg: 20, r: 30, xp: 300, charger: 1 },
+  minion: { n: '骷髏兵', hp: 32, spd: 78, dmg: 11, r: 12, xp: 8 },
+  imp: { n: '小骨魔', hp: 16, spd: 145, dmg: 7, r: 9, xp: 7 },
+  archer: { n: '骸骨弩手', hp: 24, spd: 85, dmg: 12, r: 12, xp: 11, ranged: 1 },
+  brute: { n: '骸骨戰將', hp: 110, spd: 62, dmg: 24, r: 16, xp: 22, charger: 1 },
+  shaman: { n: '亡靈咒術師', hp: 44, spd: 62, dmg: 13, r: 12, xp: 18, ranged: 1 },
+  boss: { n: '守關者', hp: 1500, spd: 76, dmg: 28, r: 30, xp: 300, charger: 1 },
 };
 const BOSSN = ['灰燼守衛', '沼澤骨王', '熔核督軍', '霜冠亡王', '虛空之主'];
 function rollType(f) {
@@ -396,7 +426,7 @@ function rollType(f) {
   return 'minion';
 }
 function spawnEnemy(type, x, y, elite) {
-  const d = ET[type], f = p.floor, hs = 1 + 0.28 * (f - 1), ds = 1 + 0.16 * (f - 1);
+  const d = ET[type], f = p.floor, hs = 1 + 0.36 * (f - 1), ds = 1 + 0.26 * (f - 1);
   const e = {
     type, x, y, r: d.r * (elite ? 1.25 : 1), hp: d.hp * hs * (elite ? 3.2 : 1), dmg: d.dmg * ds * (elite ? 1.4 : 1),
     spd: d.spd * rand(0.9, 1.1), xp: d.xp * (1 + 0.2 * (f - 1)) * (elite ? 4 : 1), elite: !!elite,
@@ -417,7 +447,7 @@ function updateEnemy(e, dt) {
   if (e.freeze > 0) { e.freeze -= dt; return; }
   const sm = e.slow > 0 ? 0.45 : 1; e.slow -= dt;
   const d = dist(e, p);
-  if (!e.awake) { if (d < 340 && los(e, p)) { e.awake = true; if (e === boss) { sfx(90, 0.6, 'sawtooth', 0.08, -40); charOnce(e, 'Taunt', 1.2); e.act = 1.6; } } else return; }
+  if (!e.awake) { if (d < 340 && los(e, p)) { e.awake = true; tip('dash', touchMode ? '敵人舉手要打你時，按 💨 閃避，閃避中不會受傷' : '敵人舉手要打你時，按空白鍵閃避，閃避中不會受傷'); if (e === boss) { sfx(90, 0.6, 'sawtooth', 0.08, -40); charOnce(e, 'Taunt', 1.2); e.act = 1.6; } } else return; }
   // 近戰出手：先有揮擊的前搖，躲得開
   if (e.atkT > 0) {
     e.atkT -= dt; e.face = Math.atan2(p.y - e.y, p.x - e.x);
@@ -529,12 +559,13 @@ function killEnemy(e) {
     for (let i = 0; i < 3; i++) dropItem(e.x + rand(-50, 50), e.y + rand(-50, 50), makeItem(f, rollRarity(i === 0 ? 3 : 2)));
     for (let i = 0; i < 10; i++) dropGold(e.x + rand(-30, 30), e.y + rand(-30, 30), irand(8, 16) * (1 + f * 0.25));
     drops.push(mk('hp', e.x - 20, e.y)); drops.push(mk('mp', e.x + 20, e.y));
-    banner('守關者倒下', '樓梯出現了');
+    banner('守關者倒下', '樓梯出現了'); p.kills++;
+    if (f >= 20 && !p.won) { p.won = true; setTimeout(() => endScreen(true), 2600); }
     for (const o of enemies) if (o !== e && !o.dead) { o.hp = 0; o.dead = true; toCorpse(o); }
     return;
   }
   if (e.summoned) return;
-  p.streak++; p.streakT = 3.5;
+  p.kills++; p.streak++; p.streakT = 3.5;
   if (p.streak === 5 || p.streak === 10 || p.streak % 20 === 0) { floatText(p.x, p.y, `連殺 ×${p.streak}！`, '#ff9a3a', 20); for (let i = 0; i < 3; i++) dropGold(e.x, e.y, p.streak * (1 + f * 0.25)); SND.level(); }
   if (Math.random() < 0.7) dropGold(e.x, e.y, irand(2, 6) * (1 + f * 0.25) * (e.elite ? 4 : 1));
   const r = Math.random();
@@ -597,11 +628,19 @@ function die() {
   p.hp = 0; state = 'dead'; intensity = 0;
   const lost = Math.floor(p.gold * 0.3); p.gold -= lost;
   if (hero) hero.once('Death_A', 1, 99);
-  $('deadTxt').innerHTML = `你倒在第 ${p.floor} 層（最深紀錄：第 ${p.best} 層）。<br>掉了 ${lost} 枚金幣，裝備和等級都還在。`;
-  setTimeout(() => $('dead').classList.add('on'), 1300); sfx(200, 0.7, 'sawtooth', 0.08, -170);
+  p.deaths++; setTimeout(() => endScreen(false, lost), 1300); sfx(200, 0.7, 'sawtooth', 0.08, -170);
   save();
 }
 
+function endScreen(win, lost) {
+  $('deadTitle').textContent = win ? '你征服了餘燼地城' : '火把熄了';
+  $('deadTxt').innerHTML = win
+    ? `第 20 層的虛空之主倒下了。<br>擊殺 ${p.kills}・倒下 ${p.deaths} 次・等級 ${p.lvl}<br>想挑戰極限的話，樓梯還會繼續往下。`
+    : `你倒在第 ${p.floor} 層（最深紀錄：第 ${p.best} 層）。<br>掉了 ${lost} 枚金幣，裝備和等級都還在。<br><span class="dim">擊殺 ${p.kills}・倒下 ${p.deaths} 次</span>`;
+  $('reviveBtn').textContent = win ? '繼續深入' : '重新點燃';
+  $('dead').classList.add('on'); if (win) { paused = true; SND.shrine(); }
+}
+function interact() { if (actMode === 'stairs') descend(); else if (actMode === 'shop') openStore(); }
 function aimAngle() {
   if (!touchMode) return Math.atan2(mouse.wy - p.y, mouse.wx - p.x);
   let best = null, bd = 380;
@@ -623,7 +662,7 @@ function attack() {
     const d = dist(e, p); if (d > range + e.r) continue;
     if (d < e.r + 14 || Math.abs(angDiff(Math.atan2(e.y - p.y, e.x - p.x), p.aim)) < 1.05) { hitEnemy(e, p.combo === 2 ? 1.25 : 1, p.combo === 2 ? 170 : 110); hit = true; hits.push(e); }
   }
-  if (hit) { shake = Math.max(shake, 2.5); hitStop = Math.max(hitStop, 0.03); SND.hit(); }
+  if (hit) { shake = Math.max(shake, 2.5); hitStop = Math.max(hitStop, 0.03); SND.hit(); p.mp = Math.min(p.st.mp, p.mp + 2); } // 砍中會回一點魔力
   if (p.fx.frost) for (const e of hits) if (!e.dead) { e.slow = 2.5; if (e.type !== 'boss' && Math.random() < 0.18) e.freeze = Math.max(e.freeze, 1.1); }
   if (p.fx.chain && hits.length && Math.random() < 0.3) chain(hits[0]);
   if (p.fx.wave && p.combo === 2) shots.push({ x: p.x + Math.cos(p.aim) * 24, y: p.y + Math.sin(p.aim) * 24, vx: Math.cos(p.aim) * 470, vy: Math.sin(p.aim) * 470, r: 22, from: 'p', life: 0.55, col: '#ff8a2a', wave: true, hit: new Set(hits) });
@@ -762,10 +801,10 @@ function update(dt) {
     const ds = dist(d, p);
     if (d.kind === 'gold' && ds < 110) { d.x += (p.x - d.x) / ds * 420 * dt; d.y += (p.y - d.y) / ds * 420 * dt; }
     if (ds > p.r + 12) continue;
-    if (d.kind === 'gold') { p.gold += d.amt; d.dead = true; SND.coin(); floatText(p.x, p.y, '+' + d.amt, '#ffd84a', 12); }
+    if (d.kind === 'gold') { p.gold += d.amt; d.dead = true; SND.coin(); if (p.gold >= 150) tip('gold', '金幣夠了：回這一層的起點找商人（小地圖上的白點）'); floatText(p.x, p.y, '+' + d.amt, '#ffd84a', 12); }
     else if (d.kind === 'hp') { if (p.hpPot < 9) { p.hpPot++; d.dead = true; sfx(800, 0.08, 'sine', 0.04); } }
     else if (d.kind === 'mp') { if (p.mpPot < 9) { p.mpPot++; d.dead = true; sfx(800, 0.08, 'sine', 0.04); } }
-    else if (p.inv.length < 24) { p.inv.push(d.it); d.dead = true; floatText(p.x, p.y, d.it.name, RAR[d.it.rarity].c, 14); sfx(700, 0.1, 'triangle', 0.05, 200); }
+    else if (p.inv.length < 24) { p.inv.push(d.it); d.dead = true; floatText(p.x, p.y, d.it.name, RAR[d.it.rarity].c, 14); tip('item', '撿到裝備了！點 🎒 打開背包，有 ▲ 的比身上的好'); sfx(700, 0.1, 'triangle', 0.05, 200); }
     else if (fullMsgT <= 0) { fullMsgT = 1.5; floatText(p.x, p.y, '背包滿了', '#f77', 13); }
   }
   drops = drops.filter(d => { if (d.dead) killVis(d); return !d.dead; });
@@ -776,19 +815,22 @@ function update(dt) {
   for (const t of texts) t.t -= dt;
   texts = texts.filter(t => t.t > 0);
   shake = Math.max(0, shake - dt * 30);
-  $('act').style.display = stairs.open && dist(stairs, p) < 44 ? 'block' : 'none';
+  const am = stairs.open && dist(stairs, p) < 44 ? 'stairs' : merchant && dist(merchant, p) < 62 ? 'shop' : null;
+  if (am !== actMode) { actMode = am; const el = $('act'); el.style.display = am ? 'block' : 'none'; if (am) el.textContent = am === 'stairs' ? '⬇️ 往下一層' : '🛒 跟商人交易'; }
 
   p.thornCd -= dt; p.trapCd -= dt;
   if (p.streakT > 0 && (p.streakT -= dt) <= 0) p.streak = 0;
   if (p.buff && (p.buff.t -= dt) <= 0) { p.buff = null; refresh(); floatText(p.x, p.y, '祝福消失了', '#aaa', 13); }
+  if (shrine && !shrine.used && dist(shrine, p) < 220) tip('shrine', '碰一下發光的祭壇，可以得到 45 秒祝福');
   if (shrine && !shrine.used && dist(shrine, p) < 48) useShrine();
   for (let i = booms.length - 1; i >= 0; i--) { const b = booms[i]; if ((b.t -= dt) <= 0) { booms.splice(i, 1); blast(b.x, b.y, 85, 0.8, 0x9955ff, 0.35); } }
   const ptx = Math.floor(p.x / T), pty = Math.floor(p.y / T);
   for (const t of traps) {
     const up = (time + t.ph) % 2.6 > 1.75;
+    if (Math.abs(t.tx - ptx) + Math.abs(t.ty - pty) < 4) tip('trap', '地上的鐵板是尖刺陷阱，等刺縮回去再走，或用閃避衝過去');
     if (up && !t.up && Math.abs(t.tx - ptx) + Math.abs(t.ty - pty) < 7) SND.spike();
     t.up = up;
-    if (up && t.tx === ptx && t.ty === pty && p.trapCd <= 0 && p.dashT <= 0) { p.trapCd = 0.9; hurtPlayer(9 * (1 + 0.16 * (p.floor - 1))); }
+    if (up && t.tx === ptx && t.ty === pty && p.trapCd <= 0 && p.dashT <= 0) { p.trapCd = 0.9; hurtPlayer(14 * (1 + 0.26 * (p.floor - 1))); }
   }
   // 音樂強度跟著附近醒著的敵人數量走
   let near = 0; for (const e of enemies) if (e.awake && dist(e, p) < 450) near++;
@@ -835,7 +877,7 @@ const loader = new GLTFLoader();
 const ASSETS = ['knight', 'skel_warrior', 'skel_mage', 'skel_minion', 'skel_rogue', 'w_blade', 'w_axe', 'w_staff', 'w_crossbow', 'w_shield_large_a',
   'wall', 'wall_cracked', 'floor_tile_large', 'floor_tile_large_rocks', 'floor_dirt_large', 'floor_dirt_large_rocky', 'floor_tile_big_grate_open',
   'torch_mounted', 'barrel_large', 'box_large', 'banner_patternA_red', 'banner_patternB_blue', 'banner_shield_green', 'coin', 'bottle_A_labeled_green',
-  'chest', 'chest_gold', 'pillar', 'coin_stack_small', 'coin_stack_medium', 'coin_stack_large', 'h_sword_2handed', 'h_axe_1handed', 'h_dagger',
+  'npc', 'chest', 'chest_gold', 'pillar', 'coin_stack_small', 'coin_stack_medium', 'coin_stack_large', 'h_sword_2handed', 'h_axe_1handed', 'h_dagger',
   'h_shield_round', 'h_shield_square', 'h_shield_spikes', 'table_medium', 'stool', 'keg', 'crates_stacked', 'barrel_small_stack', 'column', 'candle_triple'];
 const CLIPS = { knight: {}, skel: {} };
 async function loadAssets() {
@@ -879,7 +921,7 @@ class Char {
   emissive(hex, k) { for (const m of this.mats) { m.emissive.setHex(hex); m.emissiveIntensity = k; } }
   dispose() { this.mixer.stopAllAction(); for (const m of this.mats) m.dispose(); this.root.removeFromParent(); }
 }
-let hero = null;
+let hero = null, npc = null;
 const ents = new THREE.Group(); scene.add(ents);
 let lvl = new THREE.Group(); scene.add(lvl);
 let torchSpots = [], flames = null, stairFx = null, shrineFx = null, trapFx = null;
@@ -1012,7 +1054,9 @@ function buildLevel3D() {
     }
   }
   for (const n in L) inst(n, L[n]);
-  for (const d of decos) { const o = kitClone(d.model, d.s); o.position.set(d.x * U, 0, d.y * U); o.rotation.y = d.rot; lvl.add(o); }
+  if (npc) npc.dispose();
+  npc = new Char('npc', CLIPS.knight); npc.root.position.set(merchant.x * U, 0, merchant.y * U); npc.play('Idle'); ents.add(npc.root);
+  for (const d of decos) { if (!d.model) continue; const o = kitClone(d.model, d.s); o.position.set(d.x * U, 0, d.y * U); o.rotation.y = d.rot; lvl.add(o); }
   for (const d of fluff) { const o = kitClone(d.model, d.s); o.position.set(d.x * U, d.h || 0, d.y * U); o.rotation.y = d.rot; lvl.add(o); }
   shrineFx = null;
   if (shrine) { // 祭壇：石柱上浮著一顆光球
@@ -1172,6 +1216,7 @@ function render3d(dt) {
   hero.emissive(p.hurtT > 0 ? 0xff2020 : 0x000000, p.hurtT > 0 ? 0.8 : 0);
   hero.mixer.update(dt);
   if (hero.glow && hero.hand && dt > 0) { v3.set(0, 1.1, 0); hero.hand.localToWorld(v3); parts.push(mkPart(v3.x / U, v3.z / U, v3.y, 0, 0, 0.6, hero.glow, 0.35, 4.5)); }
+  if (npc) { const a = Math.atan2(p.y - merchant.y, p.x - merchant.x); npc.root.rotation.y += angDiff(Math.PI / 2 - a, npc.root.rotation.y) * Math.min(1, dt * 4); npc.mixer.update(dt); }
   whirlFx.forEach((w, i) => { w.visible = p.whirlT > 0; if (w.visible) { w.position.set(p.x * U, 1.2, p.y * U); w.rotation.y = -time * 20 + i * Math.PI; w.material.uniforms.k.value = 0.5; } });
 
   // --- 敵人 ---
@@ -1272,6 +1317,7 @@ function drawOverlay() {
     c.fillStyle = e.elite ? '#ffd84a' : '#e44'; c.fillRect(x - w / 2, y, w * Math.max(0, e.hp / e.maxHp), 4);
     if (e.elite) { c.font = '12px sans-serif'; c.fillStyle = '#ffd84a'; c.strokeStyle = '#000'; c.lineWidth = 3; c.strokeText('菁英 ' + ET[e.type].n, x, y - 5); c.fillText('菁英 ' + ET[e.type].n, x, y - 5); }
   }
+  if (merchant) { const [x, y, ok] = project(merchant.x, 3.3, merchant.y); if (ok && x > -40 && x < W + 40) { c.font = '13px sans-serif'; c.lineWidth = 3; c.strokeStyle = '#000'; c.strokeText('💰 商人', x, y); c.fillStyle = '#ffe9b0'; c.fillText('💰 商人', x, y); } }
   c.font = '13px sans-serif';
   for (const d of drops) if (d.kind === 'item' && d.v) {
     const [x, y, ok] = project(d.x, 1.6, d.y); if (!ok || x < -50 || x > W + 50) continue;
@@ -1296,6 +1342,7 @@ function drawMini() {
   if (boss) { mctx.fillStyle = '#f44'; mctx.fillRect(Math.floor(boss.x / T) - 1, Math.floor(boss.y / T) - 1, 2, 2); }
   if (shrine && !shrine.used && explored[Math.floor(shrine.y / T) * MW + Math.floor(shrine.x / T)]) { mctx.fillStyle = '#5ef'; mctx.fillRect(Math.floor(shrine.x / T), Math.floor(shrine.y / T), 2, 2); }
   for (const o of props) if (o.vault && !o.open && explored[Math.floor(o.y / T) * MW + Math.floor(o.x / T)]) { mctx.fillStyle = '#fd4'; mctx.fillRect(Math.floor(o.x / T), Math.floor(o.y / T), 2, 2); }
+  if (merchant) { mctx.fillStyle = '#fff'; mctx.fillRect(Math.floor(merchant.x / T), Math.floor(merchant.y / T), 2, 2); }
   mctx.fillStyle = '#5f5'; mctx.fillRect(Math.floor(p.x / T) - 0.5, Math.floor(p.y / T) - 0.5, 2, 2);
 }
 
@@ -1326,9 +1373,9 @@ function hud() {
 let sel = null;
 const potCost = () => 20 + p.floor * 5;
 function itemHtml(it) {
-  let h = `<b style="color:${RAR[it.rarity].c}">${it.name}</b> <span class="dim">${RAR[it.rarity].n}${SLOTS[it.slot].n}・Lv ${it.lvl}</span><br>`;
-  for (const k in it.base) h += fmt(k, it.base[k]) + '<br>';
-  for (const a of it.aff) h += `<span style="color:#9cf">${fmt(a.k, a.v)}</span><br>`;
+  let h = `<b style="color:${RAR[it.rarity].c}">${it.name}${it.up ? ' +' + it.up : ''}</b> <span class="dim">${RAR[it.rarity].n}${SLOTS[it.slot].n}・Lv ${it.lvl}</span><br>`;
+  for (const k in it.base) h += fmt(k, iv(it, it.base[k])) + '<br>';
+  for (const a of it.aff) h += `<span style="color:#9cf">${fmt(a.k, iv(it, a.v))}</span><br>`;
   if (it.fx && LEGFX[it.fx]) h += `<span style="color:#ff8a3a">★ ${LEGFX[it.fx].d}</span><br>`;
   return h;
 }
@@ -1339,10 +1386,7 @@ function drawPanel() {
   $('stats').innerHTML = Object.keys(STAT).map(k => `${STAT[k][0]}　<b>${Number.isInteger(st[k]) ? st[k] : st[k].toFixed(1)}${STAT[k][1] ? '%' : ''}</b>`).join('<br>');
   $('spTxt').textContent = p.sp > 0 ? `（可用點數 ${p.sp}）` : '';
   $('skl').innerHTML = ['fire', 'whirl', 'nova'].map(k => `<div class="row"><span><b>${SK[k].n}</b> Lv ${p.skl[k]}　<span class="dim">${SK[k].d(p.skl[k])}</span></span><button class="btn" data-up="${k}" ${p.sp > 0 && p.skl[k] < 10 ? '' : 'disabled'}>＋</button></div>`).join('');
-  const c = potCost();
-  $('shop').innerHTML = `<div class="row"><span>🧪 生命藥水（持有 ${p.hpPot}/9）</span><button class="btn" data-buy="hp" ${p.gold >= c && p.hpPot < 9 ? '' : 'disabled'}>${c} 金</button></div>
-    <div class="row"><span>💧 魔力藥水（持有 ${p.mpPot}/9）</span><button class="btn" data-buy="mp" ${p.gold >= c && p.mpPot < 9 ? '' : 'disabled'}>${c} 金</button></div>
-    <div class="row dim"><span>金幣：${p.gold}</span></div>`;
+  $('panelGold').textContent = `💰 ${p.gold}`;
   $('invTxt').textContent = `${p.inv.length} / 24`;
   let h = '';
   for (let i = 0; i < 24; i++) { const it = p.inv[i]; h += it ? `<div class="slot${sel && sel.it === it ? ' sel' : ''}${upgradeOf(it) > 0.5 ? ' up' : ''}" data-inv="${i}" style="border-color:${RAR[it.rarity].c}">${SLOTS[it.slot].i}</div>` : '<div class="slot"></div>'; }
@@ -1359,7 +1403,7 @@ function drawPanel() {
   d.innerHTML = h;
 }
 function togglePanel(on) {
-  if (state !== 'play') return;
+  if (state !== 'play' || storeOpen) return;
   paused = on === undefined ? !paused : on; sel = null;
   $('panel').classList.toggle('on', paused);
   if (paused) { drawPanel(); joy.id = null; atkHeld = false; mouse.l = mouse.r = false; } else save();
@@ -1381,6 +1425,43 @@ $('panel').addEventListener('click', ev => {
   }
   drawPanel();
 });
+// 商人：藥水、當層商品、神秘寶箱、強化、永久訓練
+function openStore() { if (state !== 'play' || paused) return; paused = storeOpen = true; joy.id = null; atkHeld = false; mouse.l = mouse.r = false; $('store').classList.add('on'); drawStore(); tip('store', '強化和訓練是永久的；倒下會掉三成金幣，別存太多'); }
+function closeStore() { paused = storeOpen = false; $('store').classList.remove('on'); refresh(); heroLook(); save(); }
+function drawStore() {
+  const g = p.gold, btn = (attr, cost, ok = true, label) => `<button class="btn" ${attr} ${g >= cost && ok ? '' : 'disabled'}>${label || cost + ' 金'}</button>`;
+  $('storeGold').textContent = `💰 ${g}`;
+  const c = potCost();
+  let h = `<h2>藥水</h2><div class="row"><span>🧪 生命藥水（持有 ${p.hpPot}/9）</span>${btn('data-buy="hp"', c, p.hpPot < 9)}</div>
+    <div class="row"><span>💧 魔力藥水（持有 ${p.mpPot}/9）</span>${btn('data-buy="mp"', c, p.mpPot < 9)}</div><h2>這一層的貨</h2>`;
+  const full = p.inv.length >= 24;
+  stock.forEach((it, i) => { h += it ? `<div class="row"><span>${SLOTS[it.slot].i} ${itemHtml(it)}${upgradeOf(it) > 0.5 ? '<span class="good">▲ 比身上的好</span>' : ''}</span>${btn(`data-item="${i}"`, priceOf(it), !full)}</div>` : ''; });
+  if (!stock.some(x => x)) h += '<div class="row dim"><span>賣完了，下一層會進新貨</span></div>';
+  h += `<h2>神秘寶箱</h2><div class="row"><span>🎁 開出一件隨機裝備，有機會是傳說${boxMsg ? '<br>' + boxMsg : ''}</span>${btn('data-box="1"', boxCost(), !full)}</div>`;
+  if (full) h += '<div class="row bad"><span>背包滿了，先到 🎒 賣掉一些</span></div>';
+  h += '<h2>強化身上的裝備 <span class="dim">每級所有數值 +12%</span></h2>';
+  for (const k in SLOTS) { const it = p.equip[k]; h += it ? `<div class="row"><span>${SLOTS[k].i} <b style="color:${RAR[it.rarity].c}">${it.name}${it.up ? ' +' + it.up : ''}</b></span>${(it.up || 0) >= 8 ? '<span class="dim">已到頂</span>' : btn(`data-upg="${k}"`, upCost(it))}</div>` : `<div class="row dim"><span>${SLOTS[k].i} ${SLOTS[k].n}：沒有裝備</span></div>`; }
+  h += '<h2>訓練 <span class="dim">永久提升，倒下也不會消失</span></h2>';
+  for (const k in TRAIN) h += `<div class="row"><span><b>${TRAIN[k][0]}</b> Lv ${p.train[k]}　<span class="dim">${TRAIN[k][1]}</span></span>${btn(`data-train="${k}"`, trainCost(k))}</div>`;
+  $('storeBody').innerHTML = h;
+}
+$('store').addEventListener('click', ev => {
+  if (ev.target === $('store')) return closeStore();
+  const t = ev.target.closest('[data-buy],[data-item],[data-box],[data-upg],[data-train]'); if (!t || t.disabled) return;
+  const ds = t.dataset, pay = c => { if (p.gold < c) return false; p.gold -= c; SND.coin(); return true; };
+  if (ds.buy) { if ((ds.buy === 'hp' ? p.hpPot : p.mpPot) < 9 && pay(potCost())) { if (ds.buy === 'hp') p.hpPot++; else p.mpPot++; } }
+  else if (ds.item !== undefined) { const it = stock[+ds.item]; if (it && p.inv.length < 24 && pay(priceOf(it))) { p.inv.push(it); stock[+ds.item] = null; } }
+  else if (ds.box) {
+    if (p.inv.length < 24 && pay(boxCost())) {
+      const r = Math.random(), it = makeItem(p.floor, r < 0.07 ? 3 : r < 0.3 ? 2 : r < 0.75 ? 1 : 0); p.inv.push(it);
+      boxMsg = `開出了：<b style="color:${RAR[it.rarity].c}">${it.name}</b>${upgradeOf(it) > 0.5 ? ' <span class="good">▲</span>' : ''}`; if (it.rarity >= 2) SND.level();
+    }
+  }
+  else if (ds.upg) { const it = p.equip[ds.upg]; if (it && (it.up || 0) < 8 && pay(upCost(it))) { it.up = (it.up || 0) + 1; SND.level(); refresh(); } }
+  else if (ds.train) { if (pay(trainCost(ds.train))) { p.train[ds.train]++; SND.level(); refresh(); } }
+  drawStore();
+});
+$('storeClose').onclick = closeStore;
 $('sellJunk').onclick = () => { let g = 0; p.inv = p.inv.filter(it => it.rarity > 0 || (g += it.val, false)); p.gold += g; sel = null; if (g) sfx(1200, 0.05, 'square', 0.03); drawPanel(); };
 $('closeBtn').onclick = () => togglePanel(false);
 $('bagBtn').onclick = () => togglePanel();
@@ -1388,25 +1469,26 @@ $('sndBtn').onclick = () => { muted = !muted; $('sndBtn').textContent = muted ? 
 function nextCam() { camMode = (camMode + 1) % CAMS.length; try { localStorage.setItem('ember-depths-cam', camMode); } catch (e) { /* 沒差 */ } if (state === 'play') banner('', '視角：' + CAMS[camMode].name); }
 $('camBtn').onclick = nextCam;
 try { camMode = (+localStorage.getItem('ember-depths-cam') || 0) % CAMS.length; } catch (e) { /* 沒差 */ }
-$('act').onclick = descend;
+$('act').onclick = interact;
 
 function startGame(fresh) {
   if (fresh || !load()) newPlayer();
   state = 'play'; paused = false; $('menu').classList.remove('on'); audioInit(); genFloor(); heroLook();
+  if (p.floor === 1 && p.lvl === 1) { tip('move', touchMode ? '左半邊螢幕拖曳移動，右下 ⚔️ 按住就會自動瞄準攻擊' : 'WASD 移動，按住滑鼠左鍵朝游標攻擊，Q／E／R 是技能'); setTimeout(() => tip('shop', '旁邊的商人賣藥水和裝備，也能強化裝備；每層起點都有一位'), 9000); }
 }
 $('newBtn').onclick = () => { if (!hasSave() || confirm('要放棄目前的進度，重新開始嗎？')) startGame(true); };
 $('contBtn').onclick = () => startGame(false);
-$('reviveBtn').onclick = () => { $('dead').classList.remove('on'); resetRuntime(); refresh(); p.hp = p.st.hp; p.mp = p.st.mp; state = 'play'; if (hero) hero.lock = 0; genFloor(); };
+$('reviveBtn').onclick = () => { $('dead').classList.remove('on'); if (state !== 'dead') { paused = false; return; } resetRuntime(); refresh(); p.hp = p.st.hp; p.mp = p.st.mp; state = 'play'; if (hero) hero.lock = 0; genFloor(); };
 
 // ---------- 輸入 ----------
 addEventListener('keydown', e => {
   if (e.code === 'Tab' || e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
   if (e.repeat) return; keys[e.code] = true;
   if (e.code === 'KeyI' || e.code === 'Tab' || e.code === 'KeyC' || e.code === 'KeyB') togglePanel();
-  else if (e.code === 'Escape') { if (paused) togglePanel(false); }
+  else if (e.code === 'Escape') { if (storeOpen) closeStore(); else if (paused) togglePanel(false); }
   else if (e.code === 'KeyQ') cast('fire'); else if (e.code === 'KeyE') cast('whirl'); else if (e.code === 'KeyR') cast('nova');
   else if (e.code === 'Space') cast('dash'); else if (e.code === 'Digit1') cast('hp'); else if (e.code === 'Digit2') cast('mpp');
-  else if (e.code === 'KeyF') descend(); else if (e.code === 'KeyV') nextCam();
+  else if (e.code === 'KeyF') interact(); else if (e.code === 'KeyV') nextCam();
 });
 addEventListener('keyup', e => { keys[e.code] = false; });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouse.l = mouse.r = false; atkHeld = false; joy.id = null; });
@@ -1473,7 +1555,7 @@ loadAssets().then(() => {
 
 // 測試用
 window.__game = {
-  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
+  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get merchant() { return merchant; }, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
   get quality() { return quality; }, setQuality(v) { autoQ = false; quality = v; applyQuality(); },
   update, descend, cast, keys, mouse, spawnEnemy, hurtPlayer, dropItem, makeItem, genFloor, setCam(i) { camMode = i; camReady = false; }, info: () => renderer.info.render,
 };

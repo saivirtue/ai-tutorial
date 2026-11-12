@@ -63,6 +63,10 @@
 
     #act { pointer-events: auto; touch-action: manipulation; left: 50%; bottom: calc(96px + var(--sb)); transform: translateX(-50%); display: none; padding: 10px 22px;
       font-size: 18px; border-radius: 12px; border: 2px solid #ffcf6b; background: #2a1d10; color: #ffe; cursor: pointer; }
+    #tip { left: 50%; bottom: calc(84px + var(--sb)); transform: translateX(-50%); max-width: min(520px, 62vw); padding: 8px 14px; border-radius: 10px;
+      background: #000b; border: 1px solid #b98b3e88; font-size: 14px; line-height: 1.5; color: #ffe9b0; opacity: 0; transition: opacity .5s; text-align: center; }
+    body.touch #tip { bottom: calc(8px + var(--sb)); max-width: 36vw; font-size: 13px; padding: 6px 10px; }
+    @media (orientation: portrait) { body.touch #tip { bottom: calc(220px + var(--sb)); max-width: 86vw; } }
     #buff { top: calc(12px + var(--st)); left: 50%; transform: translateX(-50%); font-size: 14px; color: #ffe9b0; white-space: nowrap; }
     body.touch #buff { top: calc(118px + var(--st)); left: calc(12px + var(--sl)); transform: none; font-size: 13px; }
     #banner { top: 20%; left: 0; right: 0; text-align: center; font-size: clamp(28px, 6vw, 54px); font-weight: 700;
@@ -86,7 +90,8 @@
     body.touch #sk-hp { right: 172px; bottom: 2px; width: 50px; height: 50px; font-size: 22px; }
     body.touch #sk-mpp { right: 166px; bottom: 60px; width: 50px; height: 50px; font-size: 22px; }
     body.touch #mini { width: 98px; height: 70px; }
-    body.touch #act { bottom: auto; top: 30%; font-size: 20px; padding: 14px 28px; }
+    body.touch #act { bottom: calc(74px + var(--sb)); font-size: 19px; padding: 13px 26px; white-space: nowrap; }
+    @media (orientation: portrait) { body.touch #act { bottom: calc(290px + var(--sb)); } }
     body.touch #info { font-size: 14px; gap: 9px; }
 
     .overlay { position: fixed; inset: 0; z-index: 5; display: none; align-items: center; justify-content: center;
@@ -164,6 +169,7 @@
   <button id="act" class="hud">⬇️ 往下一層</button>
   <div id="banner" class="hud"></div>
   <div id="buff" class="hud"></div>
+  <div id="tip" class="hud"></div>
 
   <!-- 主選單 -->
   <div id="menu" class="overlay on"><div class="box" style="max-width:560px">
@@ -186,7 +192,8 @@
       <b>E、R</b><span>旋風斬、冰霜新星</span>
       <b>空白鍵</b><span>閃避（瞬間無敵）</span>
       <b>1、2</b><span>生命藥水、魔力藥水</span>
-      <b>I / Tab</b><span>背包、技能、商人</span>
+      <b>I / Tab</b><span>背包、技能</span>
+      <b>商人</b><span>每層起點都有一位：藥水、裝備、強化、訓練</span>
       <b>F、V</b><span>下樓梯、切換視角</span>
     </div>
     <p class="dim" style="font-size:12px;margin-top:10px">3D 模型：KayKit（Kay Lousberg，CC0）</p>
@@ -201,11 +208,9 @@
         <div class="stats" id="stats"></div>
         <h2>技能 <span class="dim" id="spTxt"></span></h2>
         <div id="skl"></div>
-        <h2>隨行商人</h2>
-        <div id="shop"></div>
       </div>
       <div>
-        <h2 style="margin-top:0">背包 <span class="dim" id="invTxt"></span></h2>
+        <h2 style="margin-top:0">背包 <span class="dim" id="invTxt"></span> <span id="panelGold" style="float:right"></span></h2>
         <div class="grid" id="inv"></div>
         <div id="detail"></div>
         <div style="margin-top:8px">
@@ -216,9 +221,15 @@
     </div>
   </div></div>
 
+  <!-- 商人 -->
+  <div id="store" class="overlay"><div class="box" style="max-width:640px">
+    <div style="display:flex;align-items:center;gap:10px"><h1 style="font-size:24px;letter-spacing:3px;text-align:left;flex:1">流浪商人</h1><b id="storeGold" style="color:#ffcf6b"></b><button class="btn" id="storeClose" style="margin:0">離開</button></div>
+    <div id="storeBody"></div>
+  </div></div>
+
   <!-- 倒下 -->
   <div id="dead" class="overlay"><div class="box center" style="max-width:420px">
-    <h1 style="font-size:36px">火把熄了</h1>
+    <h1 style="font-size:32px;letter-spacing:4px" id="deadTitle">火把熄了</h1>
     <p id="deadTxt" style="margin:12px 0"></p>
     <button class="btn big" id="reviveBtn">重新點燃</button>
   </div></div>
