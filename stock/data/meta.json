@@ -1,18 +1,18 @@
 {
-  "fetchedAt": "2026-11-12T18:32:05Z",
+  "fetchedAt": "2026-11-13T17:58:47Z",
   "sources": {
     "daily": {
       "label": "個股日成交資訊",
       "path": "exchangeReport/STOCK_DAY_ALL",
       "status": "ok",
-      "count": 1390,
+      "count": 1389,
       "http": "200"
     },
     "valuation": {
       "label": "本益比、殖利率、股價淨值比",
       "path": "exchangeReport/BWIBBU_ALL",
       "status": "ok",
-      "count": 1087,
+      "count": 1086,
       "http": "200"
     },
     "revenue": {
