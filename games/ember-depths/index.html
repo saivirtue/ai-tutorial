@@ -48,6 +48,16 @@
     .sk.nomp { filter: grayscale(1) brightness(.6); }
     .sk:active { transform: scale(.94); }
     #sk-atk { display: none; }
+    #sk-ember { border-color: #7a4a2a; filter: grayscale(.8) brightness(.7); } #sk-ember u { background: #000c; }
+    #sk-ember.ready { filter: none; border-color: #ff8a3a; box-shadow: 0 0 14px 4px #ff7a2a; animation: pulse .7s infinite alternate; }
+    #sk-ember.burning { filter: none; border-color: #ffd84a; }
+    @keyframes pulse { to { transform: scale(1.12); } }
+    #emberBar { height: 6px; } #emberBar i { background: linear-gradient(90deg, #a03010, #ff8a3a); }
+    .card { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 10px; border-radius: 14px; border: 2px solid; background: #221a2e; color: #eee; font-family: inherit; cursor: pointer; text-align: center; }
+    .card:active { transform: scale(.96); } .card i { font-style: normal; font-size: 40px; } .card b { font-size: 17px; } .card span { font-size: 13px; color: #cbb; line-height: 1.5; } .card small { font-size: 12px; letter-spacing: 2px; }
+    #cardRow { display: flex; gap: 10px; margin-top: 12px; }
+    @media (orientation: portrait) and (max-width: 520px) { #cardRow { flex-direction: column; } .card { flex-direction: row; text-align: left; flex-wrap: wrap; } .card i { font-size: 30px; } .card span { flex-basis: 100%; } }
+    .btn.mini { padding: 5px 10px; margin: 0 0 0 4px; font-size: 13px; } .btn.mini.on { background: #b98b3e; color: #1a1208; }
 
     #side { top: calc(10px + var(--st)); right: calc(12px + var(--sr)); display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
     #mini { border: 1px solid #fff3; border-radius: 6px; background: #0008; image-rendering: pixelated;
@@ -84,9 +94,10 @@
     body.touch .sk em { right: 50%; transform: translateX(50%); bottom: 3px; font-size: 13px; font-weight: 700; text-shadow: 0 0 3px #000, 0 0 3px #000; }
     body.touch #sk-atk { display: block; width: 92px; height: 92px; right: 4px; bottom: 4px; font-size: 40px; border-width: 3px; }
     body.touch #sk-dash { right: 108px; bottom: 2px; }
-    body.touch #sk-fire { right: 102px; bottom: 68px; }
-    body.touch #sk-whirl { right: 52px; bottom: 112px; }
-    body.touch #sk-nova { right: -6px; bottom: 132px; margin-right: 6px; }
+    body.touch #sk-s0 { right: 102px; bottom: 68px; }
+    body.touch #sk-s1 { right: 52px; bottom: 112px; }
+    body.touch #sk-s2 { right: -6px; bottom: 132px; margin-right: 6px; }
+    body.touch #sk-ember { right: 118px; bottom: 134px; width: 50px; height: 50px; font-size: 22px; }
     body.touch #sk-hp { right: 172px; bottom: 2px; width: 50px; height: 50px; font-size: 22px; }
     body.touch #sk-mpp { right: 166px; bottom: 60px; width: 50px; height: 50px; font-size: 22px; }
     body.touch #mini { width: 98px; height: 70px; }
@@ -144,14 +155,16 @@
     <div class="bar" id="hpBar"><i></i><span></span></div>
     <div class="bar" id="mpBar"><i></i><span></span></div>
     <div class="bar" id="xpBar"><i></i></div>
+    <div class="bar" id="emberBar"><i></i></div>
   </div>
 
   <div id="skills" class="hud">
     <button class="sk" id="sk-hp" data-k="hp"><small>1</small>🧪<em></em><u></u></button>
     <button class="sk" id="sk-mpp" data-k="mpp"><small>2</small>💧<em></em><u></u></button>
-    <button class="sk" id="sk-fire" data-k="fire"><small>Q</small>🔥<u></u></button>
-    <button class="sk" id="sk-whirl" data-k="whirl"><small>E</small>🌀<u></u></button>
-    <button class="sk" id="sk-nova" data-k="nova"><small>R</small>❄️<u></u></button>
+    <button class="sk" id="sk-s0" data-slot="0"><small>Q</small><span>🔥</span><u></u></button>
+    <button class="sk" id="sk-s1" data-slot="1"><small>E</small><span>＋</span><u></u></button>
+    <button class="sk" id="sk-s2" data-slot="2"><small>R</small><span>＋</span><u></u></button>
+    <button class="sk" id="sk-ember" data-k="ember"><small>G</small>💥<u></u></button>
     <button class="sk" id="sk-dash" data-k="dash"><small>空白</small>💨<u></u></button>
     <button class="sk" id="sk-atk" data-k="atk">⚔️</button>
   </div>
@@ -181,15 +194,15 @@
     </div>
     <div class="center" id="startBtns" style="margin:14px 0; display:none">
       <button class="btn big" id="contBtn">繼續冒險</button>
-      <button class="btn big" id="newBtn">新的冒險</button>
+      <div style="margin-top:8px"><span class="dim">新的冒險：</span><button class="btn" id="newBtn" data-diff="0">普通</button><button class="btn" data-diff="1">困難</button><button class="btn" data-diff="2">煉獄</button></div>
     </div>
     <h2>操作</h2>
     <div class="keys">
       <b>手機</b><span>左半邊拖曳移動；右下 ⚔️ 按住攻擊（自動瞄準），周圍是技能</span>
       <b>WASD / 方向鍵</b><span>移動</span>
       <b>滑鼠左鍵（按住）</b><span>朝游標揮砍</span>
-      <b>Q / 滑鼠右鍵</b><span>火球</span>
-      <b>E、R</b><span>旋風斬、冰霜新星</span>
+      <b>Q、E、R</b><span>三個技能欄（升級時選卡學新技能）</span>
+      <b>G</b><span>餘燼集滿後引爆火把</span>
       <b>空白鍵</b><span>閃避（瞬間無敵）</span>
       <b>1、2</b><span>生命藥水、魔力藥水</span>
       <b>I / Tab</b><span>背包、技能</span>
@@ -214,11 +227,17 @@
         <div class="grid" id="inv"></div>
         <div id="detail"></div>
         <div style="margin-top:8px">
-          <button class="btn" id="sellJunk">賣掉所有普通裝備</button>
+          <button class="btn" id="sellJunk">賣掉用不到的</button><button class="btn" id="sellAll">全部賣掉</button>
           <button class="btn" id="closeBtn" style="float:right">關閉</button>
         </div>
       </div>
     </div>
+  </div></div>
+
+  <!-- 升級選卡 -->
+  <div id="cards" class="overlay"><div class="box" style="max-width:760px">
+    <h1 style="font-size:24px;letter-spacing:3px" id="cardsTitle">升級！</h1>
+    <div id="cardRow"></div>
   </div></div>
 
   <!-- 商人 -->
