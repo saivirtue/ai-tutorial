@@ -231,7 +231,7 @@
         <div class="grid" id="inv"></div>
         <div id="detail"></div>
         <div style="margin-top:8px">
-          <button class="btn" id="sellJunk">賣掉用不到的</button><button class="btn" id="sellAll">全部賣掉</button>
+          <button class="btn" id="recBtn">📖 紀錄</button><button class="btn" id="sellJunk">賣掉用不到的</button><button class="btn" id="sellAll">全部賣掉</button>
           <button class="btn" id="quitRun">🔥 放棄遠征</button><button class="btn" id="closeBtn" style="float:right">關閉</button>
         </div>
       </div>
@@ -247,7 +247,7 @@
   <!-- 告示板 -->
   <div id="board" class="overlay"><div class="box" style="max-width:640px">
     <div style="display:flex;align-items:center;gap:10px"><h1 style="font-size:24px;letter-spacing:3px;text-align:left;flex:1">告示板</h1><button class="btn" id="boardClose" style="margin:0">離開</button></div>
-    <p class="dim" style="margin:4px 0 8px">挑一趟遠征。完成目標後走進火焰回營地，會開獎勵箱。</p>
+    <p class="dim" style="margin:4px 0 0">挑一趟遠征。完成目標後走進火焰回營地，會開獎勵箱。</p>
     <div id="boardList"></div>
   </div></div>
 
@@ -265,6 +265,12 @@
     <div style="display:flex;align-items:center;gap:10px"><h1 style="font-size:24px;letter-spacing:3px;text-align:left;flex:1" id="bldTitle"></h1><button class="btn" id="bldClose" style="margin:0">離開</button></div>
     <p class="dim" id="bldMats" style="margin:4px 0 8px"></p>
     <div id="bldBody"></div>
+  </div></div>
+
+  <!-- 紀錄：成就、圖鑑 -->
+  <div id="rec" class="overlay"><div class="box" style="max-width:640px">
+    <div style="display:flex;align-items:center;gap:10px"><h1 style="font-size:24px;letter-spacing:3px;text-align:left;flex:1">紀錄</h1><button class="btn" id="recClose" style="margin:0">關閉</button></div>
+    <div id="recBody"></div>
   </div></div>
 
   <!-- 商人 -->
