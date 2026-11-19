@@ -266,7 +266,9 @@ function bProps(k, L) {
   return P[k];
 }
 const runLen = t => t === 1 ? 2 : 3;
-const effFloor = r => (r.tier - 1) * 3 + r.depth;
+// 危險度：每一級讓敵人 +2 級，掉寶與材料變好
+const effFloor = r => (r.tier - 1) * 4 + r.depth + (r.danger || 0) * 2;
+const recLv = (tier, dg = 0) => 1 + (tier - 1) * 4 + dg * 2;
 const mapName = t => PALS[(t - 1) % PALS.length].name;
 // ---------- 回訪內容 ----------
 // 以日期當種子，同一天每次打開都是同一組懸賞
@@ -339,7 +341,7 @@ function startRun(i) {
   const o = p.board[i]; if (!o) return;
   $('board').classList.remove('on'); paused = false;
   if (o.goal === 'endless') p.board.pop();
-  p.run = { glass: o.glass, pots: 0, tier: o.tier, goal: o.goal, who: o.who, mod: o.mod, len: o.goal === 'endless' ? 999 : runLen(o.tier), depth: 1, kills: 0, gold0: p.gold, items: 0, t0: Date.now(), first: o.goal === 'boss' && o.tier === p.tier };
+  p.run = { danger: p.danger || 0, glass: o.glass, pots: 0, tier: o.tier, goal: o.goal, who: o.who, mod: o.mod, len: o.goal === 'endless' ? 999 : runLen(o.tier), depth: 1, kills: 0, gold0: p.gold, items: 0, t0: Date.now(), first: o.goal === 'boss' && o.tier === p.tier };
   dailyCheck(); refresh(); p.hp = p.st.hp; p.mp = p.st.mp; p.ember = [0, 0, 40, 70][bl('altar')]; genFloor();
 }
 const rmod = k => p.run && p.run.mod === k;
@@ -485,7 +487,7 @@ function genCamp(keep) {
   for (const [dx, dy] of [[-2, 0], [2, 0], [0, 2], [-1, -2], [1, -2]]) fluff.push({ model: 'stool', x: (r.cx + 0.5 + dx * 0.9) * T, y: (r.cy + 0.5 + dy * 0.9) * T, s: 1.2, rot: rand(0, 6) });
   for (const [tx, ty, m] of [[r.x, r.y + r.h - 1, 'crates_stacked'], [r.x + 1, r.y + r.h - 1, 'keg'], [r.x + r.w - 1, r.y + r.h - 1, 'barrel_small_stack'], [r.x + r.w - 1, r.y + 4, 'crates_stacked']]) put(tx, ty, m, 13, 0.9, rand(0, 6));
   if (!keep) stock = [makeItem(p.floor, 1, 'weapon'), makeItem(p.floor, Math.max(1, rollRarity())), makeItem(p.floor + 1, Math.random() < 0.12 ? 3 : 2)]; boxMsg = '';
-  if (!p.board || !p.board.length) rollBoard();
+  if (!keep || !p.board || !p.board.length) rollBoard();
   if (!keep) p.rerolls = [0, 1, 2, 3][bl('guild')];
   if (keep) { p.x = px0; p.y = py0; } else { p.x = (r.cx + 0.5) * T; p.y = (r.cy + 3) * T; }
   buildLevel3D();
@@ -562,7 +564,7 @@ const BUFFS = { rage: ['⚔️', '狂怒', '攻擊 +50%', 0xff5030], haste: ['�
 const fmt = (k, v) => `${STAT[k][0]} ${v > 0 ? '+' : ''}${Number.isInteger(v) ? v : v.toFixed(1)}${STAT[k][1] ? '%' : ''}`;
 
 function rollRarity(min = 0) {
-  const r = Math.random(), bonus = Math.min(0.1, p.floor * 0.004) + diff().loot;
+  const r = Math.random(), bonus = Math.min(0.1, p.floor * 0.004) + diff().loot + ((p.run && p.run.danger) || 0) * 0.015;
   const q = r < 0.02 + bonus * 0.5 ? 3 : r < 0.12 + bonus ? 2 : r < 0.42 + bonus ? 1 : 0;
   return Math.max(q, min);
 }
@@ -708,7 +710,7 @@ function gainXp(v) {
 }
 function save() {
   if (!p) return;
-  const o = {}; for (const k of ['lvl', 'xp', 'gold', 'floor', 'best', 'hpPot', 'mpPot', 'sp', 'skl', 'equip', 'inv', 'kills', 'deaths', 'won', 'train', 'slots', 'mods', 'pas', 'picks', 'diff', 'tier', 'run', 'rescued', 'clears', 'board', 'mats', 'bld', 'cls', 'heroes', 'daily', 'weekly', 'codex', 'ach', 'stat']) o[k] = p[k];
+  const o = {}; for (const k of ['lvl', 'xp', 'gold', 'floor', 'best', 'hpPot', 'mpPot', 'sp', 'skl', 'equip', 'inv', 'kills', 'deaths', 'won', 'train', 'slots', 'mods', 'pas', 'picks', 'diff', 'tier', 'run', 'rescued', 'clears', 'board', 'mats', 'bld', 'cls', 'heroes', 'daily', 'weekly', 'codex', 'ach', 'stat', 'danger']) o[k] = p[k];
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(o)); } catch (e) { /* 無痕模式存不了就算了 */ }
 }
 function load() {
@@ -918,7 +920,7 @@ function killEnemy(e) {
   if (e.summoned) return;
   p.kills++; if (p.run) p.run.kills++; bounty('kill'); if (e.elite) bounty('elite'); p.streak++; p.streakT = 3.5;
   if (p.streak === 5 || p.streak === 10 || p.streak % 20 === 0) { floatText(p.x, p.y, `連殺 ×${p.streak}！`, '#ff9a3a', 20); for (let i = 0; i < 3; i++) dropGold(e.x, e.y, p.streak * (1 + f * 0.25)); SND.level(); }
-  if (e.elite) { for (let i = 0; i < 3; i++) dropMat('bone', e.x, e.y); if (Math.random() < 0.35) dropMat('cry', e.x, e.y); } else if (Math.random() < 0.1) dropMat('bone', e.x, e.y);
+  if (e.elite) { for (let i = 0; i < 3; i++) dropMat('bone', e.x, e.y); if (Math.random() < 0.35) dropMat('cry', e.x, e.y); } else if (Math.random() < 0.1 * (1 + ((p.run && p.run.danger) || 0) * 0.15)) dropMat('bone', e.x, e.y);
   if (Math.random() < 0.7) dropGold(e.x, e.y, irand(2, 6) * (1 + f * 0.25) * (e.elite ? 4 : 1));
   const r = Math.random();
   if (r < 0.07) drops.push(mk('hp', e.x, e.y)); else if (r < 0.11) drops.push(mk('mp', e.x, e.y));
@@ -1014,7 +1016,7 @@ function finishRun() {
   if (unlock) p.tier++;
   const firstEver = !p.clears; p.clears = (p.clears || 0) + 1; bounty('clear');
   const n = 2 + (rmod('elite') ? 1 : 0) + (R.goal === 'rescue' ? 1 : 0) + (bl('guild') >= 3 ? 1 : 0);
-  const mb = 8 + R.tier * 4, mc = 1 + Math.floor(R.tier / 2); p.mats.bone += mb; p.mats.cry += mc;
+  const dk = 1 + (R.danger || 0) * 0.15, mb = Math.round((8 + R.tier * 4) * dk), mc = Math.round((1 + Math.floor(R.tier / 2)) * dk); p.mats.bone += mb; p.mats.cry += mc;
   chestItems = [];
   for (let i = 0; i < n; i++) chestItems.push(makeItem(p.floor + 1, i === 0 && (firstEver || (unlock && Math.random() < 0.35)) ? 3 : Math.max(1, rollRarity(i === 0 ? 2 : 1))));
   const g = Math.round((40 + p.floor * 25) * diff().gold * (bl('guild') >= 2 ? 1.25 : 1)); p.gold += g;
@@ -1487,7 +1489,9 @@ function clearEntities() {
   for (const e of enemies) killVis(e); for (const s of shots) killVis(s); for (const d of drops) killVis(d); for (const o of props) killVis(o);
   for (const c of corpses) c.c.dispose(); corpses = [];
   for (const c of extraChars) c.dispose(); extraChars = [];
-  for (const r of rings) r.visible = false; for (const s of slashes) s.visible = false; for (const t of teles) t.visible = false;
+  for (const r of rings) r.visible = false; for (const s of slashes) s.visible = false; for (const t of teles) t.visible = false; for (const w of whirlFx) w.visible = false;
+  for (const o of [...ents.children]) if (o !== (hero && hero.root) && o !== (npc && npc.root)) o.removeFromParent();
+  if (moon.shadow.map) { moon.shadow.map.dispose(); moon.shadow.map = null; } // 陰影貼圖重算，不留上一層的影子
   for (const l of fxLights) { l.intensity = 0; l.userData.t = 0; l.userData.used = false; }
 }
 
@@ -1977,16 +1981,18 @@ function openBoard() {
   if (state !== 'play') return; paused = true; joy.id = null; atkHeld = false; mouse.l = mouse.r = false;
   if (!p.board || !p.board.length) rollBoard();
   dailyCheck(); weekCheck();
-  const R0 = bountyReward(), wr = weekRule();
+  const R0 = bountyReward(), wr = weekRule(), dg = p.danger || 0, easy = p.lvl >= recLv(p.tier, dg) + 4;
+  const dh = `<div class="row" style="background:#2a1a12;border-radius:10px;padding:6px 10px"><span>⚠️ <b>危險度 ${dg}</b>　<span class="dim">${dg ? `敵人 +${dg * 2} 級、掉寶更好、材料 +${dg * 15}%` : '想更刺激就往上調'}</span>${easy ? '<br><span class="good">你比建議等級高很多，試試提高危險度</span>' : ''}</span><button class="btn mini" data-dg="-1" ${dg > 0 ? '' : 'disabled'}>－</button><button class="btn mini" data-dg="1" ${dg < 10 ? '' : 'disabled'}>＋</button></div>`;
   const bh = `<h2 style="margin-top:4px">📜 今日懸賞 <span class="dim">每天換一批・獎勵 💎 ${R0.cry}、🦴 ${R0.bone}、💰 ${R0.gold}</span></h2>` + p.daily.list.map((b, i) => `<div class="row"><span>${b.claimed ? '✅' : b.done ? '🎁' : '▫️'} ${BOUNTY[b.k].d(b)}　<span class="dim">${b.n} / ${b.need}</span></span>${b.done && !b.claimed ? `<button class="btn" data-claim="${i}">領獎</button>` : ''}</div>`).join('')
     + (p.clears ? `<h2>🌀 每週挑戰：${wr.n} <span class="dim">${wr.d}</span></h2><div class="row"><span>無盡往下，能走多深就走多深；倒下不扣金幣。每 3 層 💎 +2<br><span class="dim">本週最佳：完成 ${p.weekly.best} 層</span></span><button class="btn" data-week="1">挑戰</button></div>` : '') + '<h2>遠征</h2>';
-  $('boardList').innerHTML = bh + p.board.map((o, i) => {
-    const rec = 1 + (o.tier - 1) * 3, warn = p.lvl + 1 < rec ? ` <span class="bad">（建議 Lv ${rec}）</span>` : ` <span class="dim">建議 Lv ${rec}</span>`;
+  $('boardList').innerHTML = dh + bh + p.board.map((o, i) => {
+    const rec = recLv(o.tier, p.danger || 0), warn = p.lvl + 1 < rec ? ` <span class="bad">（建議 Lv ${rec}）</span>` : ` <span class="dim">建議 Lv ${rec}</span>`;
     return `<div class="row"><span><b style="color:#ffcf6b">${mapName(o.tier)}</b> 等級 ${o.tier}${warn}<br>${o.goal === 'boss' ? `💀 獵首領：${BOSSN[(o.tier - 1) % BOSSN.length]}${o.tier === p.tier ? '　<span class="good">擊敗可解鎖下一區</span>' : ''}` : `⛓️ 救人：${o.who}（救回後會住進營地）`}　<span class="dim">${runLen(o.tier)} 層</span>${RUNMOD[o.mod][0] ? `<br><span style="color:#ff8a3a">◆ ${RUNMOD[o.mod][0]}：${RUNMOD[o.mod][1]}</span>` : ''}</span><button class="btn" data-run="${i}">出發</button></div>`;
   }).join('') + (bl('guild') ? `<div class="row"><span class="dim">🏹 獵人公會：換一批遠征</span><button class="btn" data-reroll="1" ${p.rerolls > 0 ? '' : 'disabled'}>🔄 重抽（剩 ${p.rerolls || 0} 次）</button></div>` : '');
   $('board').classList.add('on');
 }
 $('board').addEventListener('click', ev => {
+  const dgb = ev.target.closest('[data-dg]'); if (dgb) { if (!dgb.disabled) { p.danger = clamp((p.danger || 0) + +dgb.dataset.dg, 0, 10); SND.card(); save(); } return openBoard(); }
   const cl = ev.target.closest('[data-claim]'); if (cl) { const b = p.daily.list[+cl.dataset.claim], R0 = bountyReward(); if (b && b.done && !b.claimed) { b.claimed = true; p.mats.cry += R0.cry; p.mats.bone += R0.bone; p.gold += R0.gold; p.stat.bounty = (p.stat.bounty || 0) + 1; SND.legend(); checkAch(); save(); } return openBoard(); }
   if (ev.target.closest('[data-week]')) { const wr = weekRule(); p.board.push({ tier: p.tier, goal: 'endless', mod: wr.mod, glass: wr.glass }); return startRun(p.board.length - 1); }
   const t = ev.target.closest('[data-run]'), rr = ev.target.closest('[data-reroll]'); if (rr && !rr.disabled && p.rerolls > 0) { p.rerolls--; rollBoard(); SND.card(); openBoard(); } else if (t) startRun(+t.dataset.run); else if (ev.target === $('board') || ev.target.id === 'boardClose') { $('board').classList.remove('on'); paused = false; } });
@@ -2178,7 +2184,7 @@ loadAssets().then(() => {
 
 // 測試用
 window.__game = {
-  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get merchant() { return merchant; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
+  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get merchant() { return merchant; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
   get quality() { return quality; }, setQuality(v) { autoQ = false; quality = v; applyQuality(); },
   update, descend, cast, keys, mouse, spawnEnemy, hurtPlayer, dropItem, makeItem, genFloor, setCam(i) { camMode = i; camReady = false; }, info: () => renderer.info.render,
 };
