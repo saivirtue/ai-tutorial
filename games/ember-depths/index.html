@@ -57,6 +57,9 @@
     .card:active { transform: scale(.96); } .card i { font-style: normal; font-size: 40px; } .card b { font-size: 17px; } .card span { font-size: 13px; color: #cbb; line-height: 1.5; } .card small { font-size: 12px; letter-spacing: 2px; }
     #cardRow { display: flex; gap: 10px; margin-top: 12px; }
     @media (orientation: portrait) and (max-width: 520px) { #cardRow { flex-direction: column; } .card { flex-direction: row; text-align: left; flex-wrap: wrap; } .card i { font-size: 30px; } .card span { flex-basis: 100%; } }
+    .loot { margin: 8px auto 0; padding: 8px 12px; border-radius: 10px; background: #0e0b14; border: 1px solid #443a55; max-width: 420px; animation: pop .35s ease-out; }
+    .loot.r2 { border-color: #ffd84a; } .loot.r3 { border-color: #ff8a3a; box-shadow: 0 0 18px 4px #ff7a2a88; animation: pop .6s ease-out; }
+    @keyframes pop { from { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.08); } to { transform: scale(1); opacity: 1; } }
     .btn.mini { padding: 5px 10px; margin: 0 0 0 4px; font-size: 13px; } .btn.mini.on { background: #b98b3e; color: #1a1208; }
 
     #side { top: calc(10px + var(--st)); right: calc(12px + var(--sr)); display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
@@ -148,7 +151,7 @@
 
   <div id="info" class="hud">
     <a href="../../" title="回首頁">🏠</a>
-    <span>第 <b id="fl">1</b> 層</span><span>Lv <b id="lv">1</b></span><span>💰 <b id="gold">0</b></span>
+    <b id="fl">營地</b><span>Lv <b id="lv">1</b></span><span>💰 <b id="gold">0</b></span>
   </div>
 
   <div id="bars" class="hud">
@@ -206,7 +209,7 @@
       <b>空白鍵</b><span>閃避（瞬間無敵）</span>
       <b>1、2</b><span>生命藥水、魔力藥水</span>
       <b>I / Tab</b><span>背包、技能</span>
-      <b>商人</b><span>每層起點都有一位：藥水、裝備、強化、訓練</span>
+      <b>營地</b><span>告示板挑遠征；商人賣藥水、裝備、強化、訓練</span>
       <b>F、V</b><span>下樓梯、切換視角</span>
     </div>
     <p class="dim" style="font-size:12px;margin-top:10px">3D 模型：KayKit（Kay Lousberg，CC0）</p>
@@ -228,7 +231,7 @@
         <div id="detail"></div>
         <div style="margin-top:8px">
           <button class="btn" id="sellJunk">賣掉用不到的</button><button class="btn" id="sellAll">全部賣掉</button>
-          <button class="btn" id="closeBtn" style="float:right">關閉</button>
+          <button class="btn" id="quitRun">🔥 放棄遠征</button><button class="btn" id="closeBtn" style="float:right">關閉</button>
         </div>
       </div>
     </div>
@@ -238,6 +241,22 @@
   <div id="cards" class="overlay"><div class="box" style="max-width:760px">
     <h1 style="font-size:24px;letter-spacing:3px" id="cardsTitle">升級！</h1>
     <div id="cardRow"></div>
+  </div></div>
+
+  <!-- 告示板 -->
+  <div id="board" class="overlay"><div class="box" style="max-width:640px">
+    <div style="display:flex;align-items:center;gap:10px"><h1 style="font-size:24px;letter-spacing:3px;text-align:left;flex:1">告示板</h1><button class="btn" id="boardClose" style="margin:0">離開</button></div>
+    <p class="dim" style="margin:4px 0 8px">挑一趟遠征。完成目標後走進火焰回營地，會開獎勵箱。</p>
+    <div id="boardList"></div>
+  </div></div>
+
+  <!-- 遠征結算 -->
+  <div id="summary" class="overlay"><div class="box center" style="max-width:520px">
+    <h1 style="font-size:30px;letter-spacing:4px" id="sumTitle">遠征完成</h1>
+    <p id="sumTxt" style="margin:10px 0"></p>
+    <button class="btn big" id="chestBtn">🎁 打開獎勵箱</button>
+    <div id="chestOut"></div>
+    <button class="btn big" id="sumBack" style="display:none;margin-top:12px">🔥 回到營地</button>
   </div></div>
 
   <!-- 商人 -->
