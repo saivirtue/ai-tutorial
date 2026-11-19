@@ -107,6 +107,7 @@
     body.touch #act { bottom: calc(74px + var(--sb)); font-size: 19px; padding: 13px 26px; white-space: nowrap; }
     @media (orientation: portrait) { body.touch #act { bottom: calc(290px + var(--sb)); } }
     body.touch #info { font-size: 14px; gap: 9px; }
+    @media (orientation: portrait) { body.touch #info { flex-wrap: wrap; row-gap: 2px; max-width: calc(100vw - 150px - var(--sr)); } body.touch #bars { top: calc(68px + var(--st)); } body.touch #buff { top: calc(146px + var(--st)); } }
 
     .overlay { position: fixed; inset: 0; z-index: 5; display: none; align-items: center; justify-content: center;
       background: #000c; padding: calc(10px + var(--st)) calc(10px + var(--sr)) calc(10px + var(--sb)) calc(10px + var(--sl)); }
@@ -151,7 +152,7 @@
 
   <div id="info" class="hud">
     <a href="../../" title="回首頁">🏠</a>
-    <b id="fl">營地</b><span>Lv <b id="lv">1</b></span><span>💰 <b id="gold">0</b></span>
+    <b id="fl">營地</b><span>Lv <b id="lv">1</b></span><span>💰 <b id="gold">0</b></span><span>🦴 <b id="bone">0</b></span><span>💎 <b id="cry">0</b></span>
   </div>
 
   <div id="bars" class="hud">
@@ -257,6 +258,13 @@
     <button class="btn big" id="chestBtn">🎁 打開獎勵箱</button>
     <div id="chestOut"></div>
     <button class="btn big" id="sumBack" style="display:none;margin-top:12px">🔥 回到營地</button>
+  </div></div>
+
+  <!-- 營地建築 -->
+  <div id="bld" class="overlay"><div class="box" style="max-width:600px">
+    <div style="display:flex;align-items:center;gap:10px"><h1 style="font-size:24px;letter-spacing:3px;text-align:left;flex:1" id="bldTitle"></h1><button class="btn" id="bldClose" style="margin:0">離開</button></div>
+    <p class="dim" id="bldMats" style="margin:4px 0 8px"></p>
+    <div id="bldBody"></div>
   </div></div>
 
   <!-- 商人 -->
