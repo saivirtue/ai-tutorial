@@ -82,6 +82,26 @@
     @media (orientation: portrait) { body.touch #tip { bottom: calc(220px + var(--sb)); max-width: 86vw; } }
     #buff { top: calc(12px + var(--st)); left: 50%; transform: translateX(-50%); font-size: 14px; color: #ffe9b0; white-space: nowrap; }
     body.touch #buff { top: calc(118px + var(--st)); left: calc(12px + var(--sl)); transform: none; font-size: 13px; }
+    #cine { position: fixed; inset: 0; z-index: 3; pointer-events: none; display: none; }
+    #cine.on { display: block; }
+    #cine::before, #cine::after { content: ''; position: absolute; left: 0; right: 0; height: 12vh; background: #000; animation: bars .5s ease-out; }
+    #cine::before { top: 0; } #cine::after { bottom: 0; }
+    @keyframes bars { from { height: 0; } }
+    #cineTitle { position: absolute; left: 0; right: 0; bottom: 16vh; text-align: center; color: #ffcf6b; font-size: clamp(30px, 7vw, 64px);
+      font-weight: 800; letter-spacing: 12px; text-shadow: 0 0 24px #ff5a20, 0 2px 4px #000; animation: title 2.6s ease-out; }
+    #cineTitle small { display: block; font-size: .32em; letter-spacing: 4px; color: #e8d8c8; font-weight: 400; margin-top: 6px; }
+    @keyframes title { 0% { opacity: 0; transform: scale(1.4); letter-spacing: 40px; } 25% { opacity: 1; transform: scale(1); letter-spacing: 12px; } 85% { opacity: 1; } 100% { opacity: 0; } }
+    body.cine .hud { visibility: hidden; }
+    body.fps .hud, body.fps #vig { visibility: hidden; }
+    #fpsHud { position: fixed; inset: 0; z-index: 3; pointer-events: none; display: none; }
+    #fpsHud.on { display: block; }
+    #fpsHud .cross { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; border: 2px solid #ffe0a0cc; border-radius: 50%; }
+    #fpsHud .cross::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; background: #ffe0a0; border-radius: 50%; }
+    #fpsInfo { position: absolute; top: calc(12px + var(--st)); left: 0; right: 0; text-align: center; font-size: 20px; color: #ffe9b0; text-shadow: 0 2px 3px #000; }
+    #fpsQuit { position: absolute; top: calc(10px + var(--st)); left: calc(12px + var(--sl)); pointer-events: auto; }
+    #fpsFire { position: absolute; right: calc(18px + var(--sr)); bottom: calc(18px + var(--sb)); width: 96px; height: 96px; border-radius: 50%; font-size: 40px;
+      border: 3px solid #b98b3e; background: #1c1626e0; pointer-events: auto; display: none; touch-action: none; }
+    body.touch #fpsFire { display: block; }
     #banner { top: 20%; left: 0; right: 0; text-align: center; font-size: clamp(28px, 6vw, 54px); font-weight: 700;
       letter-spacing: 6px; color: #ffcf6b; opacity: 0; transition: opacity .6s; }
     #banner small { display: block; font-size: .4em; letter-spacing: 2px; color: #ddd; font-weight: 400; }
@@ -185,6 +205,8 @@
   <div id="boss" class="hud"><span id="bossName"></span><div class="bar"><i></i></div></div>
   <button id="act" class="hud">⬇️ 往下一層</button>
   <div id="banner" class="hud"></div>
+  <div id="cine"><div id="cineTitle"></div></div>
+  <div id="fpsHud"><div class="cross"></div><div id="fpsInfo"></div><button class="btn" id="fpsQuit">離開靶場</button><button id="fpsFire">🎯</button></div>
   <div id="buff" class="hud"></div>
   <div id="tip" class="hud"></div>
 
@@ -198,7 +220,8 @@
     </div>
     <div class="center" id="startBtns" style="margin:14px 0; display:none">
       <button class="btn big" id="contBtn">繼續冒險</button>
-      <div style="margin-top:8px"><span class="dim">新的冒險：</span><button class="btn" id="newBtn" data-diff="0">普通</button><button class="btn" data-diff="1">困難</button><button class="btn" data-diff="2">煉獄</button></div>
+      <button class="btn big" id="newBtn" data-diff="0">新的冒險</button>
+      <p class="dim" style="font-size:13px;margin-top:6px">難度在營地的告示板上用「危險度」隨時調整</p>
     </div>
     <h2>操作</h2>
     <div class="keys">

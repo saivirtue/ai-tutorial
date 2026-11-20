@@ -66,6 +66,7 @@ function noise(dur = 0.15, vol = 0.08, lp = 1200, hp = 0, when = 0) {
 const SND = {
   // 揮擊與命中的音色跟著武器走；連續命中時音調一路往上爬
   swing: w => { const k = !w ? 1 : w.heavy ? 0.55 : w.n === '匕首' ? 1.5 : w.n === '斧' ? 0.8 : 1; noise(0.13 / Math.sqrt(k), 0.07, 5200 * k, 1400 * k); sfx(260 * k, 0.09 / k, 'triangle', 0.03, -120 * k); },
+  bossIntro: () => { for (let i = 0; i < 3; i++) { sfx(55, 0.5, 'sine', 0.22, -20, i * 0.32); noise(0.3, 0.12, 400, 0, i * 0.32); } sfx(110, 1.6, 'sawtooth', 0.07, -40, 0.9); },
   hit: (w, n = 0) => { const k = !w ? 1 : w.heavy ? 0.6 : w.n === '匕首' ? 1.4 : 1; noise(0.07 / k, 0.13, 2400 * k); sfx(125 * k * semi(Math.min(n, 12)), 0.1, 'square', 0.06, -70); if (w && w.heavy) sfx(60, 0.25, 'sine', 0.16, -25); else sfx(rand(1800, 2600), 0.05, 'triangle', 0.018); },
   shoot: magic => { if (magic) { sfx(rand(600, 720), 0.16, 'sine', 0.05, 500); noise(0.08, 0.03, 6000, 3000); } else { sfx(rand(170, 200), 0.09, 'sawtooth', 0.05, -90); noise(0.05, 0.06, 4500, 1500); } },
   crit: () => { sfx(rand(2600, 3000), 0.08, 'square', 0.03); sfx(70, 0.2, 'sine', 0.14, -30); noise(0.1, 0.08, 6000, 2000); },
@@ -115,7 +116,7 @@ let enemies = [], shots = [], drops = [], props = [], parts = [], texts = [], co
 let blk = [], decos = [], fluff = [], traps = [], booms = [], shrine = null, hitBlk = null;
 let merchant = null, stock = [], boxMsg = '', actMode = null, storeOpen = false;
 let totems = [], pools = [], dangers = [], cards = null, lockRoom = null;
-let prisoner = null, campFire = null, board = null, extraChars = [], campBlds = [];
+let range = null, prisoner = null, campFire = null, board = null, extraChars = [], campBlds = [];
 let p = null, boss = null, shake = 0, miniT = 0, flowT = 0, itemId = 1, fullMsgT = 0, hitStop = 0;
 let W = 0, H = 0, dpr = 1;
 
@@ -356,7 +357,7 @@ function genFloor() {
   if (!p.run) return genCamp();
   const R = p.run, last = R.depth === R.len, bossF = last && R.goal === 'boss', rescueF = last && R.goal === 'rescue';
   const f = p.floor = effFloor(R); p.best = Math.max(p.best, f);
-  clearEntities(); prisoner = null; campFire = null; campBlds = [];
+  clearEntities(); prisoner = null; campFire = null; range = null; campBlds = [];
   map = new Uint8Array(MW * MH).fill(1);
   explored = new Uint8Array(MW * MH);
   flow = new Int16Array(MW * MH);
@@ -483,6 +484,7 @@ function genCamp(keep) {
   campFire = put(r.cx, r.cy, null, 22);
   merchant = put(r.x + 2, r.y + 2, null, 10);
   board = put(r.x + r.w - 3, r.y + 1, 'table_medium', 14, 1.1);
+  range = put(r.cx, r.y + r.h - 1, 'stool', 10, 1.3); fluff.push({ model: 'h_crossbow', x: range.x, y: range.y, h: 0.7, s: 1.4, rot: 0.4 });
   fluff.push({ model: 'candle_triple', x: board.x - 8, y: board.y, h: 1.05, s: 1, rot: 0 });
   campBlds = [];
   for (const [k, tx, ty] of [['smith', r.x + 5, r.y + 1], ['altar', r.cx + 3, r.y + 1], ['guild', r.x + r.w - 2, r.cy + 2], ['train', r.x + 3, r.y + r.h - 2], ['store', r.x + r.w - 5, r.y + r.h - 2]]) {
@@ -755,7 +757,8 @@ function load() {
     p = Object.assign({ x: 0, y: 0, r: 13, kills: 0, deaths: 0, won: false, train: { hp: 0, dmg: 0, mp: 0 }, mods: {}, pas: {}, picks: 0, diff: 0 }, o);
     if (!p.tier) { p.tier = Math.max(1, Math.ceil(p.floor / 3)); p.run = null; p.clears = p.floor > 1 ? 1 : 0; } // 舊存檔：樓層換成區域等級
     if (!p.rescued) p.rescued = [];
-    if (!p.mats) p.mats = { bone: 0, cry: 0 }; if (!p.bld) p.bld = {}; if (!p.cls) p.cls = 'knight'; if (!p.heroes) p.heroes = {}; if (!p.codex) p.codex = {}; if (!p.cos) p.cos = { light: 'orange', trail: 'none' }; if (!p.cosU) p.cosU = [];
+    if (!p.mats) p.mats = { bone: 0, cry: 0 }; if (!p.bld) p.bld = {}; if (!p.cls) p.cls = 'knight'; if (!p.heroes) p.heroes = {}; if (p.diff) { p.danger = Math.max(p.danger || 0, [0, 3, 6][p.diff] || 0); p.diff = 0; } /* 舊的困難／煉獄換成危險度 */
+    if (!p.codex) p.codex = {}; if (!p.cos) p.cos = { light: 'orange', trail: 'none' }; if (!p.cosU) p.cosU = [];
     for (const it of [...p.inv, ...Object.values(p.equip), ...Object.values(p.heroes || {}).flatMap(h => Object.values(h.equip || {}))]) if (it && it.up) { it.heat = Math.min(5, Math.ceil(it.up * 0.6)); it.hx = 0; delete it.up; } /* 舊的 +N 強化換成熱度 */ if (!p.ach) p.ach = {}; if (!p.stat) p.stat = {};
     if (!p.slots) { p.slots = SKILLS.filter(k => p.skl[k]).slice(0, 3); while (p.slots.length < 3) p.slots.push(null); p.picks += p.sp || 0; p.sp = 0; } // 舊存檔：技能點換成升級卡
     resetRuntime();
@@ -768,6 +771,7 @@ const hasSave = () => { try { return !!localStorage.getItem(SAVE_KEY); } catch (
 // ---------- 敵人 ----------
 const ET = {
   minion: { n: '骷髏兵', hp: 32, spd: 78, dmg: 11, r: 12, xp: 8 },
+  crystal: { n: '餘燼水晶', hp: 70, spd: 0, dmg: 9, r: 14, xp: 0 },
   imp: { n: '小骨魔', hp: 16, spd: 145, dmg: 7, r: 9, xp: 7 },
   archer: { n: '骸骨弩手', hp: 24, spd: 85, dmg: 12, r: 12, xp: 11, ranged: 1 },
   brute: { n: '骸骨戰將', hp: 110, spd: 62, dmg: 24, r: 16, xp: 22, charger: 1 },
@@ -776,6 +780,7 @@ const ET = {
 };
 const TRAITN = { split: '分裂', bomb: '自爆', haste: '疾走', ward: '護盾' };
 const BOSSN = ['灰燼守衛', '沼澤骨王', '熔核督軍', '霜冠亡王', '虛空之主'];
+const BOSSE = ['灰燼迴廊的看門人', '沼澤深處的腐骨之王', '熔岩礦坑的督軍', '霜封墓穴的亡王', '虛空的主宰'];
 function rollType(f) {
   const w = [['minion', 5], ['imp', 3]];
   if (f >= 2) w.push(['archer', 3]); if (f >= 3) w.push(['brute', 2]); if (f >= 4) w.push(['shaman', 2]);
@@ -801,14 +806,20 @@ function enemyShot(e, ang, spd, dmg, col, r = 6, arrow = false) {
 }
 function updateEnemy(e, dt) {
   e.flash -= dt; e.atkCd -= dt; e.ph += dt * 6;
+  if (e.type === 'crystal') { // 餘燼水晶：不會動，定時放一圈彈幕，有光束連到首領
+    if ((e.shotCd -= dt) <= 0) { e.shotCd = 2.6; const o = rand(0, 6.28); for (let i = 0; i < 8; i++) enemyShot(e, o + i / 8 * 6.283, 140, e.dmg, '#ff9a3a', 6); sfx(520, 0.12, 'triangle', 0.03, 200); }
+    if (boss && Math.random() < 0.6) { const u = Math.random(); parts.push(mkPart(e.x + (boss.x - e.x) * u, e.y + (boss.y - e.y) * u, 1.6 + Math.sin(u * 3.14) * 1.5, 0, 0, 0, '#7fe8ff', 0.3, 4)); }
+    return;
+  }
   if (e.kx || e.ky) { moveEnt(e, e.kx * dt, e.ky * dt); e.kx *= Math.pow(0.002, dt); e.ky *= Math.pow(0.002, dt); if (Math.abs(e.kx) + Math.abs(e.ky) < 5) e.kx = e.ky = 0; }
   if (e.riseT > 0) { e.riseT -= dt; return; }
   if (e.freeze > 0) { e.freeze -= dt; return; }
+  if (e.broken > 0) { e.broken -= dt; if (Math.random() < 0.3) parts.push(mkPart(e.x + rand(-20, 20), e.y + rand(-20, 20), 5 + rand(0, 1), rand(-20, 20), rand(-20, 20), 0, '#ffe080', 0.5, 4)); return; }
   if (e.trait === 'ward') { e.wardT -= dt; if ((e.wardCd -= dt) <= 0 && e.awake) { e.wardCd = 6; e.wardT = 2.4; } }
   if (e.stun > 0) { e.stun -= dt; return; } // 被打到會踉蹌一下
   const sm = e.slow > 0 ? 0.45 : 1; e.slow -= dt;
   const d = dist(e, p);
-  if (!e.awake) { if (d < 340 && los(e, p)) { e.awake = true; tip('dash', touchMode ? '敵人舉手要打你時，按 💨 閃避，閃避中不會受傷' : '敵人舉手要打你時，按空白鍵閃避，閃避中不會受傷'); if (e === boss) { sfx(90, 0.6, 'sawtooth', 0.08, -40); charOnce(e, 'Taunt', 1.2); e.act = 1.6; } } else return; }
+  if (!e.awake) { if (d < 340 && los(e, p)) { e.awake = true; tip('dash', touchMode ? '敵人舉手要打你時，按 💨 閃避，閃避中不會受傷' : '敵人舉手要打你時，按空白鍵閃避，閃避中不會受傷'); if (e === boss) { bossIntro(e); e.act = 1.2; } } else return; }
   // 近戰出手：先有揮擊的前搖，躲得開
   if (e.atkT > 0) {
     e.atkT -= dt; e.face = Math.atan2(p.y - e.y, p.x - e.x);
@@ -864,7 +875,34 @@ function updateEnemy(e, dt) {
     charOnce(e, e.type === 'minion' || e.type === 'imp' ? 'Unarmed_Melee_Attack_Punch_A' : '1H_Melee_Attack_Chop', e.type === 'imp' ? 2.2 : 1.7);
   }
 }
+// ---------- 首領戰演出 ----------
+let cine = null; // { t, e, kind: 'intro' | 'outro' }：演出中鏡頭對準首領
+function startCine(e, kind, title, sub, t) {
+  cine = { t, e, kind }; document.body.classList.add('cine'); $('cine').classList.add('on');
+  $('cineTitle').innerHTML = `${title}<small>${sub}</small>`; $('cineTitle').style.animation = 'none'; void $('cineTitle').offsetWidth; $('cineTitle').style.animation = '';
+}
+function endCine() { cine = null; document.body.classList.remove('cine'); $('cine').classList.remove('on'); }
+function bossIntro(e) {
+  startCine(e, 'intro', e.name, BOSSE[e.bi] || '', 2.8); SND.bossIntro(); charOnce(e, 'Taunt', 1); shake = 4;
+  fxRing(e.x, e.y, 160, 0xff5a3a, 1.2);
+}
+// 特殊階段：6 成血時張開屏障，要打碎房間裡的三顆餘燼水晶
+function bossShield(e) {
+  e.phased = true; e.shield = true; e.act = 2;
+  banner('屏障', '打碎房間裡的餘燼水晶，才傷得到首領'); SND.bossIntro(); shake = 6;
+  const easy = !p.run || p.run.tier <= 1, n = easy ? 2 : 3; // 第 1 區當教學：只有 2 顆、不放彈幕
+  for (let i = 0; i < n; i++) {
+    for (const R of [150, 120, 90, 60]) { const a = i * 6.283 / n + 0.5, x = stairs.x + Math.cos(a) * R, y = stairs.y + Math.sin(a) * R; if (!circleHits(x, y, 18)) { const c = spawnEnemy('crystal', x, y); c.awake = true; c.fixed = true; c.summoned = true; c.shotCd = easy ? 1e9 : 1 + i * 0.6; burst(x, y, '#ff9a3a', 24, 140, 0.8, 1.5, 6); break; } }
+  }
+  tip('crystal', '首領張開屏障時，先打碎發光的水晶；全部打碎後首領會破防，傷害加五成');
+}
+function bossBreak(e) {
+  e.shield = false; e.broken = 4; hitStop = 0.15; shake = 12;
+  banner('破防！', '4 秒內首領動不了，受到的傷害 +50%'); SND.burn(); fxRing(e.x, e.y, 200, 0xffcf6b, 0.7); burst(e.x, e.y, '#7fe8ff', 60, 260, 0.9, 2, 8);
+}
 function bossAI(e, dt, d, see, startCharge) {
+  if (!e.phased && e.hp < e.maxHp * 0.6) bossShield(e);
+  if (e.shield && !enemies.some(c => c.type === 'crystal' && !c.dead)) bossBreak(e);
   const rage = e.hp < e.maxHp * 0.5;
   if (rage && !e.raged) { e.raged = true; fxRing(e.x, e.y, 200, 0xff4020, 0.7); shake = 8; sfx(70, 0.7, 'sawtooth', 0.09, 60); floatText(e.x, e.y, '狂暴！', '#ff5a3a', 22); }
   if (e.spiral > 0 && (e.spT -= dt) <= 0) { e.spT = 0.055; e.spiral--; e.spA += 0.42; for (const o of [0, Math.PI]) enemyShot(e, e.spA + o, 185, e.dmg * 0.55, '#ff7030', 7); if (e.spiral % 4 === 0) sfx(300, 0.05, 'square', 0.03); }
@@ -874,7 +912,7 @@ function bossAI(e, dt, d, see, startCharge) {
   }
   e.act -= dt;
   if (e.act > 0 || !see) return false;
-  e.act = rage ? 1.7 : 2.5;
+  e.act = (rage ? 1.7 : 2.5) * (e.shield ? 1.5 : 1);
   if (e.bi > 0 && Math.random() < 0.42) { // 各層守關者的招牌招式
     const blink = (x, y) => { if (circleHits(x, y, e.r)) return false; burst(e.x, e.y, '#c9a0ff', 24, 160, 0.5, 2, 5); e.x = x; e.y = y; burst(x, y, '#c9a0ff', 24, 160, 0.5, 2, 5); sfx(700, 0.2, 'sine', 0.06, -500); return true; };
     if (e.bi === 1) { // 沼澤骨王：腳下冒出毒爆
@@ -915,13 +953,15 @@ function burst(x, y, c, n, spd, life = 0.5, h = 1.2, up = 3) {
 function hitEnemy(e, mult, kb = 120, src, o = {}) {
   if (e.dead) return;
   if (e.wardT > 0) { floatText(e.x, e.y, '格擋', '#7fe8ff', 13); e.awake = true; return; }
+  if (e.shield) { if (Math.random() < 0.4) { floatText(e.x, e.y, '屏障', '#7fe8ff', 13); sfx(1600, 0.05, 'triangle', 0.03); } return; }
   let dmg = p.st.dmg * mult * rand(0.88, 1.12) * (p.burnT > 0 ? 1.3 : 1 + p.ember / 100 * 0.2); const crit = Math.random() * 100 < p.st.crit; // 火越旺打得越痛
   if (crit) dmg *= wtOf(p.equip.weapon) === WT.dagger ? 2.6 : 2;
   dmg = Math.max(1, Math.round(dmg));
   e.hp -= dmg; e.flash = 0.12; e.awake = true;
-  const s0 = src || p, a = Math.atan2(e.y - s0.y, e.x - s0.x), k = e.type === 'boss' ? 0.1 : e.type === 'brute' ? 0.4 : 1;
+  if (e.broken > 0) { dmg = Math.round(dmg * 1.5); e.hp -= Math.round(dmg / 3); }
+  const s0 = src || p, a = Math.atan2(e.y - s0.y, e.x - s0.x), k = e.fixed ? 0 : e.type === 'boss' ? 0.1 : e.type === 'brute' ? 0.4 : 1;
   e.kx += Math.cos(a) * kb * k * 3; e.ky += Math.sin(a) * kb * k * 3;
-  if (e.type !== 'boss' && !e.ch && kb > 0 && (o.heavy || time > (e.stunAt || 0))) { e.stun = Math.max(e.stun, o.heavy ? 0.4 : 0.15); e.stunAt = time + 1.1; if (o.heavy) e.atkT = 0; } // 踉蹌後有一小段抗性，不會被連打鎖死
+  if (e.type !== 'boss' && !e.fixed && !e.ch && kb > 0 && (o.heavy || time > (e.stunAt || 0))) { e.stun = Math.max(e.stun, o.heavy ? 0.4 : 0.15); e.stunAt = time + 1.1; if (o.heavy) e.atkT = 0; } // 踉蹌後有一小段抗性，不會被連打鎖死
   floatText(e.x, e.y, crit ? dmg + '!' : '' + dmg, crit ? '#ffd84a' : '#fff', crit ? 24 : o.heavy ? 18 : 15);
   // 火花往被打的方向噴
   const chunk = Math.min(1, dmg / e.maxHp);
@@ -947,7 +987,7 @@ function killEnemy(e) {
   toCorpse(e);
   const f = p.floor;
   if (e.type === 'boss') {
-    boss = null; stairs.open = true; shake = 16; hitStop = 0.25; burst(e.x, e.y, '#ffcf6b', 90, 260, 1.2, 2, 8); fxRing(e.x, e.y, 260, 0xffcf6b, 0.9); sfx(80, 0.8, 'sawtooth', 0.09, 300);
+    boss = null; stairs.open = true; shake = 16; hitStop = 0.12; startCine(e, 'outro', '擊敗', e.name, 2); SND.legend(); burst(e.x, e.y, '#ffcf6b', 90, 260, 1.2, 2, 8); fxRing(e.x, e.y, 260, 0xffcf6b, 0.9); sfx(80, 0.8, 'sawtooth', 0.09, 300);
     for (let i = 0; i < 2; i++) dropItem(e.x + rand(-50, 50), e.y + rand(-50, 50), makeItem(f, rollRarity(i === 0 ? 2 : 1)));
     for (let i = 0; i < 10; i++) dropGold(e.x + rand(-30, 30), e.y + rand(-30, 30), irand(8, 16) * (1 + f * 0.25));
     for (let i = 0; i < 2 + Math.floor((p.run ? p.run.tier : 1) / 2); i++) dropMat('cry', e.x, e.y); for (let i = 0; i < 6; i++) dropMat('bone', e.x, e.y);
@@ -1089,11 +1129,11 @@ function endScreen(win, lost) {
   $('reviveBtn').textContent = win ? '繼續' : '回到營地';
   $('dead').classList.add('on'); if (win) { paused = true; SND.shrine(); }
 }
-function interact() { if (actMode === 'stairs') descend(); else if (actMode === 'shop') openStore(); else if (actMode === 'board') openBoard(); else if (actMode === 'fire') openBld('cos'); else if (actMode === 'portal') finishRun(); else if (actMode === 'free') freePrisoner(); else if (BLD[actMode]) openBld(actMode); else if (actMode && actMode.startsWith('hero:')) switchHero(actMode.slice(5)); }
+function interact() { if (actMode === 'stairs') descend(); else if (actMode === 'shop') openStore(); else if (actMode === 'board') openBoard(); else if (actMode === 'fire') openBld('cos'); else if (actMode === 'range') startRange(); else if (actMode === 'portal') finishRun(); else if (actMode === 'free') freePrisoner(); else if (BLD[actMode]) openBld(actMode); else if (actMode && actMode.startsWith('hero:')) switchHero(actMode.slice(5)); }
 function aimAngle() {
   if (!touchMode) return Math.atan2(mouse.wy - p.y, mouse.wx - p.x);
   let best = null, bd = 380;
-  for (const e of enemies) { const d = dist(e, p); if (d < bd && e.awake && los(p, e)) { bd = d; best = e; } }
+  for (const e of enemies) { const d = dist(e, p) * (e.type === 'crystal' ? 0.5 : 1); if (d < bd && e.awake && !e.shield && los(p, e)) { bd = d; best = e; } }
   if (best) return Math.atan2(best.y - p.y, best.x - p.x);
   for (const o of props) { if (o.kind === 'barrel' && dist(o, p) < 80) return Math.atan2(o.y - p.y, o.x - p.x); }
   return p.aim;
@@ -1333,8 +1373,8 @@ function update(dt) {
   for (const t of texts) t.t -= dt;
   texts = texts.filter(t => t.t > 0);
   shake = Math.max(0, shake - dt * 30);
-  const am = stairs.open && dist(stairs, p) < 44 ? (stairs.portal ? 'portal' : 'stairs') : merchant && dist(merchant, p) < 62 ? 'shop' : board && !p.run && dist(board, p) < 66 ? 'board' : campFire && !p.run && dist(campFire, p) < 70 ? 'fire' : prisoner && !prisoner.freed && dist(prisoner, p) < 60 ? 'free' : (campBlds.find(d => dist(d, p) < 62) || {}).k || (!p.run && (extraChars.find(c => c.ref && c.ref.camp && c.ref.who.cls && Math.hypot(c.x - p.x, c.y - p.y) < 60) || {}).ref?.who.cls && 'hero:' + extraChars.find(c => c.ref && c.ref.camp && c.ref.who.cls && Math.hypot(c.x - p.x, c.y - p.y) < 60).ref.who.cls) || null;
-  if (am !== actMode) { actMode = am; const el = $('act'); el.style.display = am ? 'block' : 'none'; if (am) el.textContent = { stairs: '⬇️ 往下一層', shop: '🛒 跟商人交易', board: '📜 挑選遠征', fire: '🔥 篝火：火光與腳印', portal: '🔥 回到營地（結算）', free: '🔓 救出' + (prisoner ? prisoner.who.n : '') }[am] || (am.startsWith('hero:') ? `🔁 換${CLS[am.slice(5)].n}出征` : `${BLD[am].i} ${BLD[am].n}${bl(am) ? ' Lv ' + bl(am) : '（建造）'}`); }
+  const am = stairs.open && dist(stairs, p) < 44 ? (stairs.portal ? 'portal' : 'stairs') : merchant && dist(merchant, p) < 62 ? 'shop' : board && !p.run && dist(board, p) < 66 ? 'board' : campFire && !p.run && dist(campFire, p) < 70 ? 'fire' : range && !p.run && dist(range, p) < 60 ? 'range' : prisoner && !prisoner.freed && dist(prisoner, p) < 60 ? 'free' : (campBlds.find(d => dist(d, p) < 62) || {}).k || (!p.run && (extraChars.find(c => c.ref && c.ref.camp && c.ref.who.cls && Math.hypot(c.x - p.x, c.y - p.y) < 60) || {}).ref?.who.cls && 'hero:' + extraChars.find(c => c.ref && c.ref.camp && c.ref.who.cls && Math.hypot(c.x - p.x, c.y - p.y) < 60).ref.who.cls) || null;
+  if (am !== actMode) { actMode = am; const el = $('act'); el.style.display = am ? 'block' : 'none'; if (am) el.textContent = { stairs: '⬇️ 往下一層', shop: '🛒 跟商人交易', board: '📜 挑選遠征', fire: '🔥 篝火：火光與腳印', range: '🎯 射擊靶場（第一人稱）', portal: '🔥 回到營地（結算）', free: '🔓 救出' + (prisoner ? prisoner.who.n : '') }[am] || (am.startsWith('hero:') ? `🔁 換${CLS[am.slice(5)].n}出征` : `${BLD[am].i} ${BLD[am].n}${bl(am) ? ' Lv ' + bl(am) : '（建造）'}`); }
   for (const c of extraChars) if (c.ref && c.ref.camp && (c.talkT -= dt) <= 0 && Math.hypot(c.x - p.x, c.y - p.y) < 70) { c.talkT = 8; floatText(c.x, c.y, c.ref.who.b && !bl(c.ref.who.b) ? c.ref.who.ask : c.ref.who.line, '#ffe9b0', 13); }
 
   // 競技場封門與解鎖
@@ -1486,6 +1526,12 @@ const VIS = {
 };
 function ensureVis(e) {
   if (e.v) return e.v;
+  if (e.type === 'crystal') {
+    const g = new THREE.Group(), m = new THREE.Mesh(cryGeo, crystalMat), l = new THREE.PointLight(0xff8a3a, 22, 12, 1.6);
+    m.scale.set(0.9, 1.6, 0.9); m.position.y = 1.7; l.position.y = 1.7; g.add(m, l); g.position.set(e.x * U, 0, e.y * U); ents.add(g);
+    const f = { root: g, gem: m, lock: 0, px: e.x, py: e.y, base: 0, baseK: 0, mixer: { update() {} }, once() {}, play() {}, emissive() {}, dispose() { g.removeFromParent(); } };
+    e.v = f; return f;
+  }
   const [model, sc, tint0] = VIS[e.type], tint = e.tint || tint0;
   const c = new Char(model, CLIPS.skel, tint); c.base = e.elite ? 0x553300 : e.type === 'boss' ? 0x330800 : 0x000000; c.baseK = e.elite || e.type === 'boss' ? 1 : 0;
   c.root.scale.setScalar(sc * (e.elite ? 1.22 : 1));
@@ -1528,6 +1574,7 @@ function toCorpse(e) {
 }
 function killVis(o) { if (o.v) { if (o.v.dispose) o.v.dispose(); else o.v.removeFromParent(); o.v = null; } if (o.light) { o.light.intensity = 0; o.light.userData.used = false; o.light = null; } }
 function clearEntities() {
+  if (cine) endCine();
   for (const t of totems) killVis(t); totems = [];
   for (const e of enemies) killVis(e); for (const s of shots) killVis(s); for (const d of drops) killVis(d); for (const o of props) killVis(o);
   for (const c of corpses) c.c.dispose(); corpses = [];
@@ -1694,7 +1741,8 @@ const pMat = new THREE.ShaderMaterial({
 const pPoints = new THREE.Points(pGeo, pMat); pPoints.frustumCulled = false; scene.add(pPoints);
 const colCache = {}; const colOf = c => colCache[c] || (colCache[c] = new THREE.Color(c));
 
-const cryGeo = new THREE.OctahedronGeometry(1), cryMat = new THREE.MeshBasicMaterial({ color: 0xff8a3a });
+const cryGeo = new THREE.OctahedronGeometry(1), cryMat = new THREE.MeshBasicMaterial({ color: 0xff8a3a }), crystalMat = new THREE.MeshBasicMaterial({ color: 0xffb060 });
+const bubbleGeo = new THREE.SphereGeometry(1, 24, 16), bubbleMat = new THREE.MeshBasicMaterial({ color: 0x60d8ff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false });
 const shotGeo = new THREE.SphereGeometry(1, 12, 8), totemMat = new THREE.MeshBasicMaterial({ color: 0xff9a3a });
 const beamGeo = new THREE.CylinderGeometry(0.1, 0.1, 8, 8, 1, true);
 const kitClone = (name, s = 1) => { const o = A[name].scene.clone(); o.scale.setScalar(s); return o; };
@@ -1726,21 +1774,23 @@ function resize() {
 
 function render3d(dt) {
   // --- 鏡頭 ---
-  const cm = CAMS[camMode], kk = camReady ? 1 - Math.pow(0.002, dt) : 1;
-  camCur.yaw += (cm.yaw - camCur.yaw) * kk; camCur.pitch += (cm.pitch - camCur.pitch) * kk;
-  let D = cm.dist; const halfW = Math.tan(camera.fov * Math.PI / 360) * camera.aspect;
+  const cm = CAMS[camMode], kk = camReady ? 1 - Math.pow(0.002, dt) : 1, bf = cine ? cine.e : boss && boss.awake && !boss.dead && dist(boss, p) < 600 ? boss : null;
+  camCur.yaw += (cm.yaw - camCur.yaw) * kk; camCur.pitch += ((cine ? 24 : bf ? cm.pitch - 12 : cm.pitch) - camCur.pitch) * kk;
+  let D = cine ? 17 : bf ? cm.dist * 0.75 + clamp(dist(bf, p) * U * 0.4, 0, 14) : cm.dist; const halfW = Math.tan(camera.fov * Math.PI / 360) * camera.aspect;
   if (camera.aspect < 1) D = Math.max(D * 0.8, 7.5 / halfW * (cm.dist / 39)); // 直式螢幕拉遠一點，左右才看得到
   camCur.dist += (D - camCur.dist) * kk;
   const pr = camCur.pitch * Math.PI / 180;
   camOff.set(Math.sin(camCur.yaw) * Math.cos(pr), Math.sin(pr), Math.cos(camCur.yaw) * Math.cos(pr)).multiplyScalar(camCur.dist);
   const lead = touchMode ? 0 : 1.6; // 稍微往瞄準方向偏，前方看得比較遠
   v3.set(p.x * U + Math.cos(p.aim) * lead, 1.2, p.y * U + Math.sin(p.aim) * lead);
+  if (cine) v3.set(cine.e.x * U, 2.6, cine.e.y * U); else if (bf) v3.lerp(new THREE.Vector3(bf.x * U, 1.6, bf.y * U), 0.35);
   if (!camReady) { camTgt.copy(v3); camReady = true; } else camTgt.lerp(v3, 1 - Math.pow(0.0005, dt));
   if (punch > 0) { punch -= dt; camOff.multiplyScalar(1 - Math.max(0, punch) * 0.9); }
   camera.position.copy(camTgt).add(camOff);
   if (shake > 0) { camera.position.x += rand(-1, 1) * shake * 0.035; camera.position.y += rand(-1, 1) * shake * 0.035; }
   camera.lookAt(camTgt);
   scene.fog.near = camCur.dist + 6; scene.fog.far = camCur.dist + 52;
+  if (fps) fpsCam();
 
   // --- 燈光 ---
   const fl = 1 + Math.sin(time * 11) * 0.06 + Math.sin(time * 27) * 0.04;
@@ -1780,7 +1830,7 @@ function render3d(dt) {
     }
     if (face !== null) hero.face += angDiff(face, hero.face) * (1 - Math.pow(1e-7, dt));
   }
-  hero.root.rotation.y = Math.PI / 2 - hero.face;
+  hero.root.rotation.y = Math.PI / 2 - hero.face; hero.root.visible = !fps;
   hero.emissive(p.hurtT > 0 ? 0xff2020 : p.burnT > 0 ? 0xff5a10 : 0x000000, p.hurtT > 0 ? 0.8 : p.burnT > 0 ? 0.45 + Math.sin(time * 12) * 0.15 : 0);
   hero.mixer.update(dt);
   if (hero.glow && hero.hand && dt > 0) for (let i = 0; i < hero.glowN; i++) { v3.set(0, rand(0.3, 1.2), 0); hero.hand.localToWorld(v3); parts.push(mkPart(v3.x / U, v3.z / U, v3.y, rand(-10, 10), rand(-10, 10), rand(0.4, 1.5), hero.glow, 0.4, rand(3.5, 6), -0.5)); } // 高熱度的武器拖火尾
@@ -1795,11 +1845,13 @@ function render3d(dt) {
     const d = Math.hypot(e.x - camTgt.x / U, e.y - camTgt.z / U);
     if (d > 420) { if (e.v) e.v.root.visible = false; continue; }
     const c = ensureVis(e); c.root.visible = true;
+    if (c.gem) { c.gem.rotation.y += dt * 2; c.gem.position.y = 1.7 + Math.sin(time * 3 + e.ph) * 0.25; continue; }
+    if (e.type === 'boss') { if (!c.bubble) { c.bubble = new THREE.Mesh(bubbleGeo, bubbleMat); c.bubble.position.y = 1.4; c.bubble.scale.setScalar(1.6); c.root.add(c.bubble); } c.bubble.visible = !!e.shield; if (e.shield) c.bubble.scale.setScalar(1.6 + Math.sin(time * 6) * 0.05); }
     const sp = Math.hypot(e.x - c.px, e.y - c.py) / Math.max(dt, 0.001); c.px = e.x; c.py = e.y;
     c.root.position.set(e.x * U, 0, e.y * U);
     c.root.rotation.y += angDiff(Math.PI / 2 - e.face, c.root.rotation.y) * (1 - Math.pow(1e-5, dt));
     c.lock -= dt;
-    if (e.freeze > 0) c.emissive(0x2050c0, 0.55); else if (e.wardT > 0) c.emissive(0x30e0ff, 1.1); else if (e.flash > 0) c.emissive(0xffffff, 0.9); else c.emissive(c.base, c.baseK);
+    if (e.freeze > 0) c.emissive(0x2050c0, 0.55); else if (e.wardT > 0 || e.shield) c.emissive(0x30e0ff, 1.1); else if (e.broken > 0) c.emissive(0xff8a20, 0.8 + Math.sin(time * 20) * 0.4); else if (e.flash > 0) c.emissive(0xffffff, 0.9); else c.emissive(c.base, c.baseK);
     if (e.freeze <= 0) {
       if (c.lock <= 0) {
         if (e.ch && !e.ch.wind) c.play('Running_C', true, 2.2);
@@ -1896,12 +1948,13 @@ function drawOverlay() {
     c.fillStyle = e.elite ? '#ffd84a' : '#e44'; c.fillRect(x - w / 2, y, w * Math.max(0, e.hp / e.maxHp), 4);
     if (e.elite) { c.font = '12px sans-serif'; c.fillStyle = '#ffd84a'; c.strokeStyle = '#000'; c.lineWidth = 3; const nm = `${e.key ? '🔑 鑰匙守衛' : '菁英 ' + ET[e.type].n}〔${TRAITN[e.trait] || ''}〕`; c.strokeText(nm, x, y - 5); c.fillText(nm, x, y - 5); }
   }
-  const label = (x0, y0, h, txt, col) => { const [x, y, ok] = project(x0, h, y0); if (ok && x > -60 && x < W + 60) { c.font = '13px sans-serif'; c.lineWidth = 3; c.strokeStyle = '#000'; c.strokeText(txt, x, y); c.fillStyle = col; c.fillText(txt, x, y); } };
+  const label = (x0, y0, h, txt, col) => { if (fps) return; const [x, y, ok] = project(x0, h, y0); if (ok && x > -60 && x < W + 60) { c.font = '13px sans-serif'; c.lineWidth = 3; c.strokeStyle = '#000'; c.strokeText(txt, x, y); c.fillStyle = col; c.fillText(txt, x, y); } };
   if (board && !p.run) label(board.x, board.y, 2.6, '📜 告示板', '#ffe9b0');
+  if (range && !p.run) label(range.x, range.y, 2.2, '🎯 靶場（實驗）', '#ffd890');
   if (campFire && !p.run) label(campFire.x, campFire.y, -0.6, '🔥 篝火', '#ffc890');
   for (const d of campBlds) { const B = BLD[d.k], L = bl(d.k), lock = B.need && !p.rescued.includes(B.need); label(d.x, d.y, 2.4, `${lock ? '🔒' : B.i} ${B.n}${L ? ' Lv ' + L : lock ? '' : '（可建造）'}`, L ? '#ffd890' : '#aaa'); }
   for (const ch of extraChars) if (ch.ref) label(ch.x, ch.y, -0.4, ch.ref.camp ? ch.ref.who.n + (ch.ref.who.cls ? `（Lv ${(p.heroes[ch.ref.who.cls] || {}).lvl || '新'}）` : '') : ch.ref.freed ? '' : '⛓️ ' + ch.ref.who.n, '#ffd0a0');
-  if (merchant) { const [x, y, ok] = project(merchant.x, 3.3, merchant.y); if (ok && x > -40 && x < W + 40) { c.font = '13px sans-serif'; c.lineWidth = 3; c.strokeStyle = '#000'; c.strokeText('💰 商人', x, y); c.fillStyle = '#ffe9b0'; c.fillText('💰 商人', x, y); } }
+  if (merchant && !fps) { const [x, y, ok] = project(merchant.x, 3.3, merchant.y); if (ok && x > -40 && x < W + 40) { c.font = '13px sans-serif'; c.lineWidth = 3; c.strokeStyle = '#000'; c.strokeText('💰 商人', x, y); c.fillStyle = '#ffe9b0'; c.fillText('💰 商人', x, y); } }
   c.font = '13px sans-serif';
   for (const d of drops) if (d.kind === 'item' && d.v) {
     const [x, y, ok] = project(d.x, 1.6, d.y); if (!ok || x < -50 || x > W + 50) continue;
@@ -2172,9 +2225,118 @@ for (const b of document.querySelectorAll('[data-diff]')) b.onclick = () => { if
 $('contBtn').onclick = () => startGame(false);
 $('reviveBtn').onclick = () => { $('dead').classList.remove('on'); if (state !== 'dead') { paused = false; return; } resetRuntime(); refresh(); p.hp = p.st.hp; p.mp = p.st.mp; state = 'play'; if (hero) hero.lock = 0; p.run = null; genCamp(); };
 
+// ---------- 第一人稱射擊靶場（營地小遊戲，實驗中） ----------
+// 站在營地南邊，骷髏從北邊衝過來；60 秒、3 條命。電腦用滑鼠轉視角、左鍵射擊；手機拖曳轉視角、按射擊鈕
+let fps = null, fpsDrag = null;
+const FOES = { minion: { m: 'skel_minion', hp: 1, spd: [3.2, 4.5], s: 1, pts: 10 }, imp: { m: 'skel_minion', hp: 1, spd: [6, 7.5], s: 0.7, pts: 15, tint: 0x8fe07a }, brute: { m: 'skel_warrior', hp: 3, spd: [2.2, 2.8], s: 1.25, pts: 30, tint: 0x9fb4e0 } };
+function startRange() {
+  if (fps || p.run) return;
+  const r = rooms[0];
+  fps = { t: 60, score: 0, lives: 3, hits: 0, shots: 0, combo: 0, yaw: 0, pitch: -0.05, foes: [], spawnT: 1, cd: 0, kick: 0,
+    x: (r.x + r.w / 2) * 4, z: (r.y + r.h - 1.6) * 4, zFar: (r.y + 1) * 4, xMin: (r.x + 1) * 4, xMax: (r.x + r.w - 1) * 4 };
+  p.x = fps.x / U; p.y = fps.z / U;
+  paused = true; joy.id = null; atkHeld = false; mouse.l = mouse.r = false;
+  document.body.classList.add('fps'); $('fpsHud').classList.add('on');
+  camera.fov = W < H ? 75 : 62; camera.updateProjectionMatrix(); scene.add(camera);
+  fps.gun = A.h_crossbow.scene.clone(); fps.gun.scale.setScalar(0.55); fps.gun.rotation.set(0.05, Math.PI + 0.08, 0); camera.add(fps.gun);
+  fps.flash = new THREE.PointLight(0xffc070, 0, 12, 2); fps.flash.position.set(0.3, -0.2, -1.2); camera.add(fps.flash);
+  fps.lamp = new THREE.PointLight(0xffb070, 140, 70, 1.1); fps.lamp.position.set(fps.x, 7, fps.zFar + 8); scene.add(fps.lamp); // 靶場遠端照亮，衝過來的骷髏才看得清楚
+  if (!touchMode && cv.requestPointerLock) try { cv.requestPointerLock(); } catch (e) { /* 不支援就用一般滑鼠移動 */ }
+  tip('fps', touchMode ? '拖曳螢幕轉視角，按 🎯 射擊；打頭分數加倍' : '移動滑鼠瞄準，左鍵射擊；打頭分數加倍，Esc 離開');
+  SND.bossIntro(); fpsHud();
+}
+function endRange(show) {
+  if (!fps) return;
+  for (const f of fps.foes) f.c.dispose();
+  fps.gun.removeFromParent(); fps.flash.removeFromParent(); fps.lamp.removeFromParent();
+  if (document.pointerLockElement) document.exitPointerLock();
+  const sc = fps.score, best = Math.max(sc, p.stat.range || 0), newBest = sc > (p.stat.range || 0), acc = fps.shots ? Math.round(fps.hits / fps.shots * 100) : 0;
+  p.stat.range = best; const bone = Math.floor(sc / 25), gold = sc * 2; p.mats.bone += bone; p.gold += gold;
+  fps = null; fpsDrag = null; document.body.classList.remove('fps'); $('fpsHud').classList.remove('on');
+  resize(); paused = false; camReady = false; save();
+  if (show) { banner(newBest ? '新紀錄！' : '靶場結束', `${sc} 分・命中率 ${acc}%・最高 ${best} 分・獲得 🦴 ${bone}、💰 ${gold}`); SND.level(); }
+}
+function fpsHud() {
+  if (!fps) return;
+  $('fpsInfo').innerHTML = `⏱ ${Math.ceil(fps.t)}　${'❤️'.repeat(fps.lives)}${'🖤'.repeat(3 - fps.lives)}　<b>${fps.score}</b> 分${fps.combo >= 3 ? `　🔥×${fps.combo}` : ''}`;
+}
+function fpsDir(out) { const cp = Math.cos(fps.pitch); return out.set(-Math.sin(fps.yaw) * cp, Math.sin(fps.pitch), -Math.cos(fps.yaw) * cp); }
+function fpsFire() {
+  if (!fps || fps.cd > 0) return;
+  fps.cd = 0.3; fps.shots++; fps.kick = 1; fps.flash.intensity = 40; SND.shoot(false); noise(0.08, 0.06, 5000, 1500);
+  const O = camera.position, D = fpsDir(new THREE.Vector3()), hd = Math.hypot(D.x, D.z) || 1;
+  let best = null, bt = 1e9, by = 0;
+  for (const f of fps.foes) {
+    if (f.dead) continue;
+    const t = ((f.x - O.x) * D.x + (f.z - O.z) * D.z) / (hd * hd); if (t <= 0) continue;
+    const px = O.x + D.x * t, pz = O.z + D.z * t, py = O.y + D.y * t, H = 2.5 * f.s;
+    if (Math.hypot(px - f.x, pz - f.z) < 0.75 * f.s && py > 0 && py < H && t < bt) { bt = t; best = f; by = py / H; }
+  }
+  const end = best ? bt : 60;
+  for (let i = 1; i < 14; i++) { const u = i / 14 * end; parts.push(mkPart((O.x + D.x * u) / U, (O.z + D.z * u) / U, O.y + D.y * u, 0, 0, 0, '#ffe0a0', 0.12, 3)); }
+  if (!best) { fps.combo = 0; fpsHud(); return; }
+  const head = by > 0.74, hx = O.x + D.x * bt, hy = O.y + D.y * bt, hz = O.z + D.z * bt;
+  fps.hits++; fps.combo++; best.hp -= head ? 2 : 1;
+  burst(hx / U, hz / U, head ? '#ffd84a' : '#e8e2d0', head ? 16 : 8, 140, 0.4, hy, 3); SND.hit(null, fps.combo);
+  if (head) { floatText(hx / U, hz / U, '爆頭！', '#ffd84a', 22); SND.crit(); }
+  if (best.hp <= 0) {
+    best.dead = true; best.c.once('Death_C_Skeletons', 1.6, 99); best.dieT = 1.2;
+    const pts = Math.round(FOES[best.type].pts * (head ? 2 : 1) * (1 + Math.min(fps.combo, 10) * 0.1)); fps.score += pts;
+    floatText(hx / U, hz / U, '+' + pts, '#ffcf6b', 16); SND.bones();
+  } else best.c.once('Hit_A', 2, 0.25);
+  fpsHud();
+}
+function updateFps(dt) {
+  const F = fps; F.t -= dt; F.cd -= dt; F.kick = Math.max(0, F.kick - dt * 8); F.flash.intensity = Math.max(0, F.flash.intensity - dt * 400); time += dt;
+  if (mouse.l) fpsFire();
+  // 出怪：越後面越快
+  if ((F.spawnT -= dt) <= 0 && F.foes.filter(f => !f.dead).length < 10) {
+    const k = clamp(1 - F.t / 60, 0, 1); F.spawnT = 1.5 - k * 0.9;
+    const type = Math.random() < 0.15 + k * 0.2 ? 'brute' : Math.random() < 0.25 + k * 0.2 ? 'imp' : 'minion', D = FOES[type];
+    const c = new Char(D.m, CLIPS.skel, D.tint); c.root.scale.setScalar(D.s); c.emissive(0x5a3018, 0.7); ents.add(c.root); c.once('Spawn_Ground_Skeletons', 2.4);
+    const f = { c, type, hp: D.hp, s: D.s, x: rand(F.xMin, F.xMax), z: F.zFar, spd: rand(D.spd[0], D.spd[1]) * (1 + k * 0.4), wait: 0.6 };
+    c.root.position.set(f.x, 0, f.z); F.foes.push(f);
+  }
+  for (const f of F.foes) {
+    f.c.mixer.update(dt); f.c.lock -= dt;
+    if (f.dead) { f.dieT -= dt; if (f.dieT < 0.5) f.c.root.position.y -= dt * 2; continue; }
+    if ((f.wait -= dt) > 0) continue;
+    const dx = F.x - f.x, dz = F.z - f.z, d = Math.hypot(dx, dz) || 1;
+    f.x += dx / d * f.spd * dt; f.z += dz / d * f.spd * dt; f.c.root.position.set(f.x, 0, f.z); f.c.root.rotation.y = Math.atan2(dx, dz);
+    if (f.c.lock <= 0) f.c.play('Running_A', true, f.spd / 3);
+    if (d < 2.2) { // 衝到面前：扣一條命
+      f.dead = true; f.dieT = 0.01; F.lives--; F.combo = 0; shake = 10; SND.hurt(); $('hurt').style.opacity = 1; setTimeout(() => $('hurt').style.opacity = 0, 200);
+    }
+  }
+  F.foes = F.foes.filter(f => { if (f.dead && f.dieT <= 0) { f.c.dispose(); return false; } return true; });
+  // 手機的輕微自動瞄準：準心附近有敵人時往它的胸口靠一點
+  if (touchMode) {
+    const D = fpsDir(new THREE.Vector3()); let bestA = 0.07, tgt = null;
+    for (const f of F.foes) { if (f.dead) continue; v3.set(f.x - camera.position.x, 1.5 * f.s - camera.position.y, f.z - camera.position.z).normalize(); const a = Math.acos(clamp(v3.dot(D), -1, 1)); if (a < bestA) { bestA = a; tgt = f; } }
+    if (tgt) { const ty = Math.atan2(-(tgt.x - F.x), -(tgt.z - F.z)); F.yaw += angDiff(ty, F.yaw) * Math.min(1, dt * 4); }
+  }
+  for (const q of parts) { q.t -= dt; q.x += q.vx * dt; q.y += q.vy * dt; q.h += q.vh * dt; q.vh -= q.g * dt; q.vx *= 0.95; q.vy *= 0.95; }
+  parts = parts.filter(q => q.t > 0);
+  for (const t of texts) t.t -= dt; texts = texts.filter(t => t.t > 0);
+  shake = Math.max(0, shake - dt * 30);
+  if ((F.hudT = (F.hudT || 0) - dt) <= 0) { F.hudT = 0.2; fpsHud(); }
+  if (F.t <= 0 || F.lives <= 0) endRange(true);
+}
+function fpsCam() {
+  camera.position.set(fps.x, 2.3, fps.z);
+  if (shake > 0) { camera.position.x += rand(-1, 1) * shake * 0.01; camera.position.y += rand(-1, 1) * shake * 0.01; }
+  camera.rotation.set(fps.pitch + fps.kick * 0.04, fps.yaw, 0, 'YXZ');
+  fps.gun.position.set(0.32, -0.34 + Math.sin(time * 2) * 0.008, -0.75 + fps.kick * 0.12);
+  scene.fog.near = 30; scene.fog.far = 110;
+}
+$('fpsFire').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); fpsFire(); });
+$('fpsQuit').addEventListener('click', () => endRange(true));
+document.addEventListener('mousemove', e => { if (fps && !touchMode) { fps.yaw -= e.movementX * 0.0022; fps.pitch = clamp(fps.pitch - e.movementY * 0.0022, -0.7, 0.6); } });
+
 // ---------- 輸入 ----------
 addEventListener('keydown', e => {
   if (e.code === 'Tab' || e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+  if (fps) { if (e.code === 'Escape') endRange(true); else if (e.code === 'Space' || e.code === 'KeyJ') fpsFire(); e.preventDefault(); return; }
   if (e.repeat) return; keys[e.code] = true;
   if (e.code === 'KeyI' || e.code === 'Tab' || e.code === 'KeyC' || e.code === 'KeyB') togglePanel();
   else if (e.code === 'Escape') { if (storeOpen) closeStore(); else if (paused) togglePanel(false); }
@@ -2191,6 +2353,7 @@ function mouseWorld() {
   if (ray.ray.intersectPlane(ground, v3)) { mouse.wx = v3.x / U; mouse.wy = v3.z / U; }
 }
 cv.addEventListener('pointerdown', e => {
+  if (fps) { if (e.pointerType === 'touch') { fpsDrag = { id: e.pointerId, x: e.clientX, y: e.clientY }; } else { if (!document.pointerLockElement && cv.requestPointerLock) try { cv.requestPointerLock(); } catch (er) { /* 沒差 */ } if (e.button === 0) mouse.l = true; } return; }
   if (e.pointerType === 'touch') {
     setTouch(true);
     if (joy.id === null && e.clientX < W * 0.55) { joy.id = e.pointerId; joy.ox = e.clientX; joy.oy = e.clientY; joy.x = joy.y = 0; }
@@ -2200,13 +2363,14 @@ cv.addEventListener('pointerdown', e => {
   if (e.button === 0) mouse.l = true; else if (e.button === 2) mouse.r = true;
 });
 addEventListener('pointermove', e => {
+  if (fps && fpsDrag && e.pointerId === fpsDrag.id) { fps.yaw -= (e.clientX - fpsDrag.x) * 0.006; fps.pitch = clamp(fps.pitch - (e.clientY - fpsDrag.y) * 0.006, -0.7, 0.6); fpsDrag.x = e.clientX; fpsDrag.y = e.clientY; return; }
   if (e.pointerType === 'touch') {
     if (e.pointerId === joy.id) { const dx = e.clientX - joy.ox, dy = e.clientY - joy.oy, m = Math.hypot(dx, dy), k = Math.min(1, m / 52) / (m || 1); joy.x = dx * k; joy.y = dy * k; }
     return;
   }
   mouse.x = e.clientX; mouse.y = e.clientY;
 });
-const up = e => { if (e.pointerId === joy.id) joy.id = null; if (e.pointerType !== 'touch') { if (e.button === 0) mouse.l = false; else if (e.button === 2) mouse.r = false; } };
+const up = e => { if (fpsDrag && e.pointerId === fpsDrag.id) fpsDrag = null; if (e.pointerId === joy.id) joy.id = null; if (e.pointerType !== 'touch') { if (e.button === 0) mouse.l = false; else if (e.button === 2) mouse.r = false; } };
 addEventListener('pointerup', up); addEventListener('pointercancel', up);
 for (const b of document.querySelectorAll('.sk')) {
   b.addEventListener('pointerdown', e => { e.preventDefault(); if (e.pointerType === 'touch') setTouch(true); if (b.dataset.k === 'atk') { atkHeld = true; try { b.setPointerCapture(e.pointerId); } catch (er) { /* 舊瀏覽器 */ } } cast(b.dataset.slot !== undefined ? p && p.slots[+b.dataset.slot] : b.dataset.k); });
@@ -2228,9 +2392,11 @@ cv.addEventListener('webglcontextrestored', () => location.reload());
 let last = performance.now();
 function frame(now) {
   const raw = (now - last) / 1000, dt = Math.min(0.05, raw); last = now;
-  if (state !== 'menu') {
+  if (fps && state === 'play') { updateFps(dt); render3d(dt); }
+  else if (state !== 'menu') {
     if (!touchMode) mouseWorld();
-    if (hitStop > 0) hitStop -= dt;
+    if (cine) { cine.t -= Math.min(raw, 0.1); /* 演出用真實時間，低幀數時才不會拖很久 */ if (cine.kind === 'outro' && state === 'play' && !paused) update(dt * 0.25); if (cine.t <= 0) endCine(); }
+    else if (hitStop > 0) hitStop -= dt;
     else if (state === 'play' && !paused) { if (p.picks > 0) openCards(); else update(dt); }
     render3d(paused ? 0 : hitStop > 0 ? dt * 0.15 : dt); hud();
     // 太慢就自動降畫質
@@ -2247,7 +2413,7 @@ loadAssets().then(() => {
 
 // 測試用
 window.__game = {
-  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get merchant() { return merchant; }, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
+  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get merchant() { return merchant; }, startRange, endRange, fpsFire, updateFps, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
   get quality() { return quality; }, setQuality(v) { autoQ = false; quality = v; applyQuality(); },
   update, descend, cast, keys, mouse, spawnEnemy, hurtPlayer, dropItem, makeItem, genFloor, setCam(i) { camMode = i; camReady = false; }, info: () => renderer.info.render,
 };
