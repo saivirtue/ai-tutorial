@@ -222,13 +222,15 @@ const RESCUE_ORDER = ['鐵匠 葛倫', '遊俠 芙蕾', '祭司 薇拉', '獵人
 // ---------- 可玩角色 ----------
 // 等級、升級卡、身上裝備每個角色各自一份；金幣、材料、背包、建築、訓練全隊共用
 const CLS = {
-  knight: { n: '騎士', model: 'knight', w: '長劍', sk: 'fire', tags: ['fire', 'blade'], d: '均衡型；護甲 +20', st: s => { s.armor += 20; } },
-  ranger: { n: '遊俠 芙蕾', model: 'h_rogue', w: '手弩', sk: 'volley', tags: ['blade', 'storm'], d: '遠程型；移速 +12%，閃避冷卻 -30%', st: s => { s.move += 12; } },
-  mage: { n: '學者 米亞', model: 'h_mage', w: '法杖', sk: 'bolt', tags: ['storm', 'frost', 'fire'], d: '法術型；魔力 +40%，每秒回魔 +1.5', st: s => { s.mp *= 1.4; s.mpr += 1.5; } },
-  barb: { n: '蠻族 布魯', model: 'h_barb', w: '巨劍', sk: 'leap', tags: ['blade'], d: '近戰型；生命 +25%，吸血 +3%', st: s => { s.hp *= 1.25; s.ls += 3; } },
+  knight: { n: '騎士', model: 'knight', w: '長劍', sk: 'fire', tags: ['fire', 'blade'], wts: ['sword', 'axe'], pool: ['fire', 'whirl', 'nova', 'leap'], d: '均衡型；擅長劍、斧；護甲 +20', st: s => { s.armor += 20; } },
+  ranger: { n: '遊俠 芙蕾', model: 'h_rogue', w: '手弩', sk: 'volley', tags: ['blade', 'storm'], wts: ['xbow', 'dagger'], pool: ['volley', 'totem', 'bolt', 'fire'], d: '遠程型；擅長手弩、匕首；移速 +12%，閃避冷卻 -30%', st: s => { s.move += 12; } },
+  mage: { n: '學者 米亞', model: 'h_mage', w: '法杖', sk: 'bolt', tags: ['storm', 'frost', 'fire'], wts: ['staff'], pool: ['bolt', 'nova', 'fire', 'totem'], d: '法術型；擅長法杖；魔力 +40%，每秒回魔 +1.5', st: s => { s.mp *= 1.4; s.mpr += 1.5; } },
+  barb: { n: '蠻族 布魯', model: 'h_barb', w: '巨劍', sk: 'leap', tags: ['blade'], wts: ['great', 'axe'], pool: ['leap', 'whirl', 'nova', 'volley'], d: '近戰型；擅長巨劍、斧；生命 +25%，吸血 +3%', st: s => { s.hp *= 1.25; s.ls += 3; } },
 };
 const HERO_KEYS = ['lvl', 'xp', 'skl', 'slots', 'mods', 'pas', 'picks', 'equip'];
 const clsOf = () => CLS[(p && p.cls) || 'knight'];
+const wtKey = it => (it && KIND2WT[it.kind]) || 'sword';
+const inClass = it => !it || clsOf().wts.includes(wtKey(it)); // 非本職武器傷害 -30%
 function switchHero(c) {
   if (c === p.cls || p.run) return;
   p.heroes[p.cls] = {}; for (const k of HERO_KEYS) p.heroes[p.cls][k] = p[k];
@@ -597,7 +599,8 @@ function makeItem(lvl, rarity, slot, kind) {
     v = (k === 'hpr' || k === 'mpr' || k === 'ls') ? Math.round(v * 10) / 10 : Math.round(v);
     it.aff.push({ k, v });
   }
-  const b = kind || pick(BASES[slot]);
+  const WK = { sword: ['長劍', '彎刀'], dagger: ['短劍'], axe: ['戰斧', '釘錘'], great: ['巨劍'], xbow: ['手弩'], staff: ['法杖'] };
+  const b = kind || (slot === 'weapon' && p && Math.random() < 0.65 ? pick(clsOf().wts.flatMap(w => WK[w])) : pick(BASES[slot]));
   it.kind = b;
   if (rarity >= 3) { it.fx = pick(Object.keys(LEGFX).filter(k => LEGFX[k].slot === slot)); it.fxq = rarity >= 4 ? rand(0.55, 1) : Math.random(); }
   it.name = rarity >= 4 ? `燼・${LEGFX[it.fx].n}之${b}` : rarity === 3 ? `${LEGFX[it.fx].n}之${b}` : rarity === 0 ? b : `${RAR[rarity].n}的${b}`;
@@ -649,7 +652,7 @@ function calcStats(eq) {
   const tr = p.train || { hp: 0, dmg: 0, mp: 0 };
   const s = { dmg: 10 + 2 * (L - 1) + tr.dmg * 2, hp: 120 + 12 * (L - 1) + tr.hp * 12, mp: 50 + 5 * (L - 1) + tr.mp * 10, armor: 0, crit: 5, aspd: 0, move: 0, ls: 0, hpr: 1, mpr: 3 + tr.mp * 0.3 };
   for (const k in eq) { const it = eq[k]; if (!it) continue; for (const b in it.base) s[b] += iv(it, it.base[b]); for (const a of it.aff) s[a.k] += iv(it, a.v); }
-  if (p && p.cls) clsOf().st(s);
+  if (p && p.cls) { clsOf().st(s); if (!inClass(eq.weapon)) s.dmg *= 0.7; }
   const pa = p.pas || {};
   s.crit += (wtOf(eq.weapon).crit || 0) + (pa.critboom || 0) * 8; s.aspd += (pa.haste || 0) * 12; s.mpr += (pa.mana || 0);
   if (p.run && p.run.glass) { s.dmg *= 2; s.hp *= 0.5; }
@@ -709,7 +712,7 @@ function sm(k) { // 技能傷害倍率
 function rollCards() {
   const pool = [];
   const fav = k => clsOf().tags.includes(SKTAG[k]) ? 1.8 : 0.7; // 角色擅長的系別比較常出現
-  for (const k of SKILLS) { if (!p.skl[k]) pool.push({ t: 'learn', k, w: 3 * fav(k) }); else if (p.skl[k] < 6) pool.push({ t: 'up', k, w: p.slots.includes(k) ? 2.2 : 0.5 }); }
+  for (const k of SKILLS) { if (!p.skl[k]) { if (clsOf().pool.includes(k)) pool.push({ t: 'learn', k, w: 3 * fav(k) }); } /* 新技能只出現自己職業的 */ else if (p.skl[k] < 6) pool.push({ t: 'up', k, w: p.slots.includes(k) ? 2.2 : 0.5 }); }
   for (const m in MODS) { const sk = MODS[m][0]; if (!p.mods[m] && (sk === 'dash' || p.skl[sk])) pool.push({ t: 'mod', k: m, w: sk === 'dash' || p.slots.includes(sk) ? 3 : 0.7 }); }
   for (const k in PAS) if ((p.pas[k] || 0) < PAS[k][2] && (!PAS[k][3] || SKILLS.some(q => p.skl[q] && SKTAG[q] === PAS[k][3]))) pool.push({ t: 'pas', k, w: PAS[k][3] ? 2.6 : 1.8 });
   const out = [];
@@ -757,7 +760,7 @@ function gainXp(v) {
 }
 function save() {
   if (!p) return;
-  const o = {}; for (const k of ['lvl', 'xp', 'gold', 'floor', 'best', 'hpPot', 'mpPot', 'sp', 'skl', 'equip', 'inv', 'kills', 'deaths', 'won', 'train', 'slots', 'mods', 'pas', 'picks', 'diff', 'tier', 'run', 'rescued', 'clears', 'board', 'mats', 'bld', 'cls', 'heroes', 'daily', 'weekly', 'codex', 'ach', 'stat', 'danger', 'cos', 'cosU', 'hist']) o[k] = p[k];
+  const o = {}; for (const k of ['lvl', 'xp', 'gold', 'floor', 'best', 'hpPot', 'mpPot', 'sp', 'skl', 'equip', 'inv', 'kills', 'deaths', 'won', 'train', 'slots', 'mods', 'pas', 'picks', 'diff', 'tier', 'run', 'rescued', 'clears', 'board', 'mats', 'bld', 'cls', 'heroes', 'daily', 'weekly', 'codex', 'ach', 'stat', 'danger', 'cos', 'cosU', 'hist', 'pick']) o[k] = p[k];
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(o)); } catch (e) { /* 無痕模式存不了就算了 */ }
 }
 function load() {
@@ -1146,7 +1149,7 @@ function endScreen(win, lost) {
   $('reviveBtn').textContent = win ? '繼續' : '回到營地';
   $('dead').classList.add('on'); if (win) { paused = true; SND.shrine(); }
 }
-function interact() { if (actMode === 'stairs') descend(); else if (actMode === 'shop') openStore(); else if (actMode === 'board') openBoard(); else if (actMode === 'fire') openBld('cos'); else if (actMode === 'range') startRange(); else if (actMode === 'portal') finishRun(); else if (actMode === 'free') freePrisoner(); else if (BLD[actMode]) openBld(actMode); else if (actMode && actMode.startsWith('hero:')) switchHero(actMode.slice(5)); }
+function interact() { if (actMode === 'stairs') descend(); else if (actMode === 'shop') openStore(); else if (actMode === 'board') openBoard(); else if (actMode === 'fire') openBld('cos'); else if (actMode === 'range') startRange(); else if (actMode === 'portal') finishRun(); else if (actMode === 'free') freePrisoner(); else if (actMode === 'pick' && pickNear) { if (p.inv.length < invCap()) { const d = pickNear; p.inv.push(d.it); d.dead = true; if (p.run) p.run.items++; addCodex(d.it); sfx(700, 0.1, 'triangle', 0.05, 200); floatText(p.x, p.y, d.it.name, RAR[d.it.rarity].c, 14); pickNear = null; actMode = null; } else floatText(p.x, p.y, '背包滿了', '#f77', 13); } else if (BLD[actMode]) openBld(actMode); else if (actMode && actMode.startsWith('hero:')) switchHero(actMode.slice(5)); }
 function aimAngle() {
   if (!touchMode) return Math.atan2(mouse.wy - p.y, mouse.wx - p.x);
   let best = null, bd = 380;
@@ -1270,7 +1273,9 @@ function explode(s) {
 }
 
 // ---------- 更新 ----------
-let moveX = 0, moveY = 0;
+let moveX = 0, moveY = 0, pickNear = null;
+const PICKN = ['全部', '精良以上', '稀有以上', '只撿傳說'];
+const skipPick = d => d.kind === 'item' && d.it.rarity < (p.pick || 0); // 自動撿取設定以下的裝備留在地上
 function update(dt) {
   time += dt; p.stat.play = (p.stat.play || 0) + dt;
   // 輸入方向是「螢幕方向」，要依鏡頭水平角轉成世界方向
@@ -1369,10 +1374,11 @@ function update(dt) {
     dropItem(o.x, o.y + 30, makeItem(p.floor, rollRarity(o.gold ? 2 : Math.random() < 0.35 ? 1 : 0)));
     if (Math.random() < 0.5) drops.push(mk(Math.random() < 0.6 ? 'hp' : 'mp', o.x, o.y + 26));
   }
-  fullMsgT -= dt;
+  fullMsgT -= dt; pickNear = null;
   for (const d of drops) {
     d.t += dt; if (d.t < 0.3) continue;
     const ds = dist(d, p);
+    if (skipPick(d)) { if (ds < 46 && (!pickNear || ds < dist(pickNear, p))) pickNear = d; continue; }
     if ((d.kind === 'gold' || d.kind === 'bone' || d.kind === 'cry' || (ncv('magnet') && d.t > 0.8)) && ds < 110 * (1 + ncv('magnet') / 100)) { d.x += (p.x - d.x) / ds * 420 * dt; d.y += (p.y - d.y) / ds * 420 * dt; }
     if (ds > p.r + 12) continue;
     if (d.kind === 'gold') { p.gold += d.amt; d.dead = true; SND.coin(); if (p.gold >= 150 && p.run) tip('gold', '金幣先存著：完成遠征回到營地，可以找商人買東西、強化裝備'); floatText(p.x, p.y, '+' + d.amt, '#ffd84a', 12); }
@@ -1390,8 +1396,8 @@ function update(dt) {
   for (const t of texts) t.t -= dt;
   texts = texts.filter(t => t.t > 0);
   shake = Math.max(0, shake - dt * 30);
-  const am = stairs.open && dist(stairs, p) < 44 ? (stairs.portal ? 'portal' : 'stairs') : merchant && dist(merchant, p) < 62 ? 'shop' : board && !p.run && dist(board, p) < 66 ? 'board' : campFire && !p.run && dist(campFire, p) < 70 ? 'fire' : range && !p.run && dist(range, p) < 60 ? 'range' : prisoner && !prisoner.freed && dist(prisoner, p) < 60 ? 'free' : (campBlds.find(d => dist(d, p) < 62) || {}).k || (!p.run && (extraChars.find(c => c.ref && c.ref.camp && c.ref.who.cls && Math.hypot(c.x - p.x, c.y - p.y) < 60) || {}).ref?.who.cls && 'hero:' + extraChars.find(c => c.ref && c.ref.camp && c.ref.who.cls && Math.hypot(c.x - p.x, c.y - p.y) < 60).ref.who.cls) || null;
-  if (am !== actMode) { actMode = am; const el = $('act'); el.style.display = am ? 'block' : 'none'; if (am) el.textContent = { stairs: '⬇️ 往下一層', shop: '🛒 跟商人交易', board: '📜 挑選遠征', fire: '🔥 篝火：火光與腳印', range: '🎯 射擊靶場（第一人稱）', portal: '🔥 回到營地（結算）', free: '🔓 救出' + (prisoner ? prisoner.who.n : '') }[am] || (am.startsWith('hero:') ? `🔁 換${CLS[am.slice(5)].n}出征` : `${BLD[am].i} ${BLD[am].n}${bl(am) ? ' Lv ' + bl(am) : '（建造）'}`); }
+  const am = stairs.open && dist(stairs, p) < 44 ? (stairs.portal ? 'portal' : 'stairs') : merchant && dist(merchant, p) < 62 ? 'shop' : board && !p.run && dist(board, p) < 66 ? 'board' : campFire && !p.run && dist(campFire, p) < 70 ? 'fire' : range && !p.run && dist(range, p) < 60 ? 'range' : prisoner && !prisoner.freed && dist(prisoner, p) < 60 ? 'free' : pickNear ? 'pick' : (campBlds.find(d => dist(d, p) < 62) || {}).k || (!p.run && (extraChars.find(c => c.ref && c.ref.camp && c.ref.who.cls && Math.hypot(c.x - p.x, c.y - p.y) < 60) || {}).ref?.who.cls && 'hero:' + extraChars.find(c => c.ref && c.ref.camp && c.ref.who.cls && Math.hypot(c.x - p.x, c.y - p.y) < 60).ref.who.cls) || null;
+  if (am !== actMode || (am === 'pick' && $('act').dataset.pid !== String(pickNear.it.id))) { actMode = am; if (am === 'pick') $('act').dataset.pid = pickNear.it.id; const el = $('act'); el.style.display = am ? 'block' : 'none'; if (am) el.textContent = { stairs: '⬇️ 往下一層', shop: '🛒 跟商人交易', board: '📜 挑選遠征', fire: '🔥 篝火：火光與腳印', range: '🎯 射擊靶場（第一人稱）', portal: '🔥 回到營地（結算）', free: '🔓 救出' + (prisoner ? prisoner.who.n : ''), pick: pickNear ? '🫳 撿起 ' + pickNear.it.name : '' }[am] || (am.startsWith('hero:') ? `🔁 換${CLS[am.slice(5)].n}出征` : `${BLD[am].i} ${BLD[am].n}${bl(am) ? ' Lv ' + bl(am) : '（建造）'}`); }
   for (const c of extraChars) if (c.ref && c.ref.camp && (c.talkT -= dt) <= 0 && Math.hypot(c.x - p.x, c.y - p.y) < 70) { c.talkT = 8; floatText(c.x, c.y, c.ref.who.b && !bl(c.ref.who.b) ? c.ref.who.ask : c.ref.who.line, '#ffe9b0', 13); }
 
   // 競技場封門與解鎖
@@ -1983,7 +1989,7 @@ function drawOverlay() {
   for (const d of drops) if (d.kind === 'item' && d.v) {
     const [x, y, ok] = project(d.x, 1.6, d.y); if (!ok || x < -50 || x > W + 50) continue;
     const w = c.measureText(d.it.name).width + 10; c.fillStyle = 'rgba(0,0,0,.7)'; c.fillRect(x - w / 2, y - 14, w, 18);
-    c.fillStyle = RAR[d.it.rarity].c; c.fillText(d.it.name, x, y);
+    c.globalAlpha = skipPick(d) ? 0.45 : 1; c.fillStyle = RAR[d.it.rarity].c; c.fillText(d.it.name, x, y); c.globalAlpha = 1;
   }
   for (const t of texts) {
     const [x, y, ok] = project(t.x, 2.9, t.y); if (!ok) continue;
@@ -2047,7 +2053,7 @@ const heatTag = it => { const k = it.heat || 0, col = '#' + (k ? HEATC[k] : 0x9a
 function itemHtml(it) {
   let h = `<b style="color:${RAR[it.rarity].c}">${it.name}</b> <span class="dim">${RAR[it.rarity].n}${SLOTS[it.slot].n}・Lv ${it.lvl}</span><br>`;
   h += heatTag(it) + ((it.heat || 0) < 5 ? `<span class="dim">　再戰鬥 ${HEATN[it.heat || 0] - (it.hx || 0)} 點升溫</span>` : '<span class="dim">　已達白熾</span>') + '<br>';
-  if (it.slot === 'weapon') { const w = wtOf(it); h += `<span style="color:#e9c14a">${w.n}：${w.desc}</span><br>`; }
+  if (it.slot === 'weapon') { const w = wtOf(it); h += `<span style="color:#e9c14a">${w.n}：${w.desc}</span><br>` + (inClass(it) ? `<span class="good">✓ ${clsOf().n}的本職武器</span><br>` : `<span class="bad">⚠ ${clsOf().n}不擅長${w.n}：傷害 -30%</span><br>`); }
   for (const k in it.base) h += fmt(k, iv(it, it.base[k])) + '<br>';
   for (const a of it.aff) h += `<span style="color:${a.ember ? '#ffb040' : '#9cf'}">${a.ember ? '🔥 ' : ''}${fmt(a.k, iv(it, a.v))}</span><br>`;
   if (it.nc && NC[it.nc.k]) h += `<span style="color:#7fe0c0">✦ ${NC[it.nc.k].n}：${NC[it.nc.k].d(it.nc.v)}</span><br>`;
@@ -2066,6 +2072,7 @@ function drawPanel() {
   $('skl').innerHTML = SKILLS.filter(k => p.skl[k]).map(k => `<div class="row"><span>${SK[k].i} <b>${SK[k].n}</b> Lv ${p.skl[k]}　<span class="dim">${SK[k].d(p.skl[k])}</span></span>${['Q', 'E', 'R'].map((q, i2) => `<button class="btn mini${p.slots[i2] === k ? ' on' : ''}" data-slot="${k}:${i2}">${q}</button>`).join('')}</div>`).join('')
     + `<div class="dim" style="font-size:13px;line-height:1.7;margin-top:4px">${Object.keys(p.mods).map(m => `<span style="color:#ff8a3a">◆${MODS[m][1]}</span>`).concat(Object.keys(p.pas).map(k => `<span style="color:#ffd84a">✨${PAS[k][0]}${p.pas[k] > 1 ? '×' + p.pas[k] : ''}</span>`)).join('　') || '升級時可以選卡片：新技能、變體、被動'}</div>`;
   $('panelGold').textContent = `💰 ${p.gold}`;
+  $('pickBtn').textContent = `🧲 自動撿：${PICKN[p.pick || 0]}`;
   $('quitRun').style.display = p.run ? '' : 'none'; $('recBtn').textContent = `📖 紀錄（${ACH.filter(a => p.ach[a[0]]).length}/${ACH.length}）`;
   $('invTxt').textContent = `${p.inv.length} / ${invCap()}`;
   let h = '';
@@ -2262,6 +2269,7 @@ function openExport() {
   $('exp').classList.add('on');
 }
 $('expBtn').onclick = openExport;
+$('pickBtn').onclick = () => { p.pick = ((p.pick || 0) + 1) % 4; SND.card(); save(); drawPanel(); };
 $('expFull').onchange = () => { $('expText').value = exportText($('expFull').checked); };
 $('expCopy').onclick = async () => {
   const t = $('expText');
@@ -2545,7 +2553,7 @@ loadAssets().then(() => {
 
 // 測試用
 window.__game = {
-  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get merchant() { return merchant; }, rollRarity, get renderer() { return renderer; }, exportText, openExport, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
+  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get merchant() { return merchant; }, get pickNear() { return pickNear; }, clsOf, inClass, rollRarity, get renderer() { return renderer; }, exportText, openExport, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
   get quality() { return quality; }, setQuality(v) { autoQ = false; quality = v; applyQuality(); },
   update, descend, cast, keys, mouse, spawnEnemy, hurtPlayer, dropItem, makeItem, genFloor, setCam(i) { camMode = i; camReady = false; }, info: () => renderer.info.render,
 };
