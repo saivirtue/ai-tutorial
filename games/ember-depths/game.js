@@ -463,6 +463,7 @@ function genFloor() {
   explore(); miniT = 0; flowT = 0;
   if (R.goal === 'endless') { weekCheck(); if (R.depth - 1 > p.weekly.best) p.weekly.best = R.depth - 1; while (p.weekly.paid + 3 <= p.weekly.best) { p.weekly.paid += 3; p.mats.cry += 2; floatText(p.x, p.y, '每週挑戰 💎 +2', '#ff8a3a', 16); } }
   banner(R.goal === 'endless' ? `每週挑戰 第 ${R.depth} 層` : `${pal.name} ${R.depth}/${R.len}`, bossF ? '⚠️ 首領就在這一層' : rescueF ? `⛓️ 救出被囚禁的${prisoner.who.n}` : (RUNMOD[R.mod][0] ? '◆ ' + RUNMOD[R.mod][0] : '打倒 🔑 鑰匙守衛，打開往下的樓梯'));
+  if (bossF) warmBoss();
   if (prisoner) addChar(prisoner.who.cls ? CLS[prisoner.who.cls].model : 'npc', prisoner.x, prisoner.y, prisoner.who.cls ? null : prisoner.who.tint, prisoner);
   save();
 }
@@ -1462,6 +1463,11 @@ Object.assign(moon.shadow.camera, { left: -32, right: 32, top: 32, bottom: -32, 
 const torch = new THREE.PointLight(0xffb070, 70, 32, 1.6); scene.add(torch);
 const wallLights = [0, 1, 2, 3].map(() => { const l = new THREE.PointLight(0xff9a4a, 0, 20, 1.6); scene.add(l); return l; });
 const fxLights = [0, 1, 2].map(() => { const l = new THREE.PointLight(0xff8030, 0, 18, 1.8); scene.add(l); l.userData.t = 0; return l; });
+// 注意：場景裡燈的數量一變，所有材質都要重新編譯，畫面會頓一下。所以戰鬥中用到的燈都在這裡先建好，平常亮度 0，要用時才點亮
+const crystalLights = [0, 1, 2].map(() => { const l = new THREE.PointLight(0xff8a3a, 0, 12, 1.6); scene.add(l); return l; });
+scene.add(camera);
+const camFlash = new THREE.PointLight(0xffc070, 0, 12, 2); camFlash.position.set(0.3, -0.2, -1.2); camera.add(camFlash);
+const rangeLamp = new THREE.PointLight(0xffb070, 0, 70, 1.1); scene.add(rangeLamp);
 
 // 視角：yaw 是鏡頭繞垂直軸的角度（0 = 從南邊往北看），pitch 是俯角
 const CAMS = [
@@ -1534,9 +1540,10 @@ const VIS = {
 function ensureVis(e) {
   if (e.v) return e.v;
   if (e.type === 'crystal') {
-    const g = new THREE.Group(), m = new THREE.Mesh(cryGeo, crystalMat), l = new THREE.PointLight(0xff8a3a, 22, 12, 1.6);
-    m.scale.set(0.9, 1.6, 0.9); m.position.y = 1.7; l.position.y = 1.7; g.add(m, l); g.position.set(e.x * U, 0, e.y * U); ents.add(g);
-    const f = { root: g, gem: m, lock: 0, px: e.x, py: e.y, base: 0, baseK: 0, mixer: { update() {} }, once() {}, play() {}, emissive() {}, dispose() { g.removeFromParent(); } };
+    const g = new THREE.Group(), m = new THREE.Mesh(cryGeo, crystalMat), l = crystalLights.find(l => !l.userData.used);
+    m.scale.set(0.9, 1.6, 0.9); m.position.y = 1.7; g.add(m); g.position.set(e.x * U, 0, e.y * U); ents.add(g);
+    if (l) { l.userData.used = true; l.intensity = 22; l.position.set(e.x * U, 1.7, e.y * U); }
+    const f = { root: g, gem: m, lock: 0, px: e.x, py: e.y, base: 0, baseK: 0, mixer: { update() {} }, once() {}, play() {}, emissive() {}, dispose() { g.removeFromParent(); if (l) { l.intensity = 0; l.userData.used = false; } } };
     e.v = f; return f;
   }
   const [model, sc, tint0] = VIS[e.type], tint = e.tint || tint0;
@@ -1772,6 +1779,7 @@ function applyQuality() {
   if (moon.shadow.map) { moon.shadow.map.dispose(); moon.shadow.map = null; }
   pMat.uniforms.scale.value = H * dpr / (2 * Math.tan(camera.fov * Math.PI / 360)) * 0.1;
 }
+const viewFov = () => { camera.fov = W < H ? 50 : 34; camera.far = 220; camera.updateProjectionMatrix(); renderer.shadowMap.autoUpdate = true; };
 function resize() {
   W = innerWidth; H = innerHeight;
   const k = Math.min(window.devicePixelRatio || 1, 2); ov.width = W * k; ov.height = H * k;
@@ -1821,7 +1829,7 @@ function render3d(dt) {
     trapFx.instanceMatrix.needsUpdate = true;
   }
   gateMat.opacity = 0.26 + Math.sin(time * 6) * 0.08;
-  stairFx.beam.visible = stairFx.sl.visible = stairs.open; stairFx.beam.material.opacity = 0.14 + Math.sin(time * 3) * 0.05;
+  stairFx.beam.visible = stairs.open; stairFx.sl.intensity = stairs.open ? 30 : 0; /* 燈不切換顯示，只調亮度，避免重新編譯 */ stairFx.beam.material.opacity = 0.14 + Math.sin(time * 3) * 0.05;
 
   // --- 主角 ---
   if (!hero) { hero = new Char(clsOf().model, CLIPS.knight); ents.add(hero.root); hero.face = 0; heroLook(); }
@@ -2291,13 +2299,19 @@ function startRange() {
   p.x = fps.x / U; p.y = fps.z / U;
   paused = true; joy.id = null; atkHeld = false; mouse.l = mouse.r = false;
   document.body.classList.add('fps'); $('fpsHud').classList.add('on'); $('fpsQuit').style.display = '';
-  camera.fov = W < H ? 75 : 62; camera.updateProjectionMatrix(); scene.add(camera);
+  camera.fov = W < H ? 75 : 62; camera.far = 85; camera.updateProjectionMatrix(); renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true; /* 第一人稱看得到整個房間，比較重：陰影只算一次、遠處不畫 */
   fps.gun = A.h_crossbow.scene.clone(); fps.gun.scale.setScalar(0.55); fps.gun.rotation.set(0.05, Math.PI + 0.08, 0); camera.add(fps.gun);
-  fps.flash = new THREE.PointLight(0xffc070, 0, 12, 2); fps.flash.position.set(0.3, -0.2, -1.2); camera.add(fps.flash);
-  fps.lamp = new THREE.PointLight(0xffb070, 140, 70, 1.1); fps.lamp.position.set(fps.x, 7, fps.zFar + 8); scene.add(fps.lamp); // 靶場遠端照亮，衝過來的骷髏才看得清楚
+  fps.flash = camFlash; fps.lamp = rangeLamp; rangeLamp.intensity = 140; rangeLamp.position.set(fps.x, 7, fps.zFar + 8); // 靶場遠端照亮，衝過來的骷髏才看得清楚
   if (!touchMode && cv.requestPointerLock) try { cv.requestPointerLock(); } catch (e) { /* 不支援就用一般滑鼠移動 */ }
   tip('fps', touchMode ? '拖曳螢幕轉視角，按 🎯 射擊；打頭分數加倍' : '移動滑鼠瞄準，左鍵射擊；打頭分數加倍，Esc 離開');
   SND.bossIntro(); fpsHud();
+}
+function warmBoss() { // 趁載入時預先編譯首領戰會用到的材質
+  const g = new THREE.Group(), gun = A.h_crossbow.scene.clone();
+  gun.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.emissive.setHex(0xff6a10); o.material.emissiveIntensity = 0.8; } });
+  g.add(new THREE.Mesh(cryGeo, crystalMat), new THREE.Mesh(bubbleGeo, bubbleMat), gun); g.position.copy(camera.position); scene.add(g);
+  try { renderer.compile(scene, camera); } catch (er) { /* 編譯失敗就照舊，第一次出現時再編譯 */ }
+  gun.traverse(o => { if (o.isMesh) o.material.dispose(); }); g.removeFromParent();
 }
 function startSnipe(e) {
   if (fps || e.dead) return;
@@ -2306,10 +2320,10 @@ function startSnipe(e) {
     yaw: Math.atan2(-dx, -dz), pitch: Math.atan2(5 * 0.62 - 2.3, d) };
   joy.id = null; atkHeld = false; mouse.l = mouse.r = false;
   document.body.classList.add('fps'); $('fpsHud').classList.add('on'); $('fpsQuit').style.display = 'none';
-  camera.fov = W < H ? 75 : 62; camera.updateProjectionMatrix(); scene.add(camera);
+  camera.fov = W < H ? 75 : 62; camera.far = 85; camera.updateProjectionMatrix(); renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true; /* 第一人稱看得到整個房間，比較重：陰影只算一次、遠處不畫 */
   fps.gun = A.h_crossbow.scene.clone(); fps.gun.scale.setScalar(0.55); fps.gun.rotation.set(0.05, Math.PI + 0.08, 0); camera.add(fps.gun);
   fps.gun.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.emissive.setHex(0xff6a10); o.material.emissiveIntensity = 0.8; } });
-  fps.flash = new THREE.PointLight(0xffc070, 0, 12, 2); fps.flash.position.set(0.3, -0.2, -1.2); camera.add(fps.flash);
+  fps.flash = camFlash;
   if (!touchMode && cv.requestPointerLock) try { cv.requestPointerLock(); } catch (er) { /* 不支援就用一般滑鼠移動 */ }
   tip('snipe', touchMode ? '破防時間停住了：拖曳瞄準首領的頭，按 🎯 連射' : '破防時間停住了：瞄準首領的頭，按住左鍵連射');
   SND.burn(); fpsHud();
@@ -2318,19 +2332,19 @@ function endRange(show) {
   if (!fps) return;
   if (fps.mode === 'boss') {
     const e = fps.boss, dmg = Math.round(fps.dmg), acc = fps.shots ? Math.round(fps.hits / fps.shots * 100) : 0;
-    fps.gun.traverse(o => { if (o.isMesh) o.material.dispose(); }); fps.gun.removeFromParent(); fps.flash.removeFromParent();
+    fps.gun.traverse(o => { if (o.isMesh) o.material.dispose(); }); fps.gun.removeFromParent(); camFlash.intensity = 0;
     if (document.pointerLockElement) document.exitPointerLock();
-    fps = null; fpsDrag = null; mouse.l = false; document.body.classList.remove('fps'); $('fpsHud').classList.remove('on'); resize(); camReady = false;
+    fps = null; fpsDrag = null; mouse.l = false; document.body.classList.remove('fps'); $('fpsHud').classList.remove('on'); viewFov(); camReady = false;
     if (!e.dead) { e.broken = 1.2; if (show) banner('', `🔥 餘燼弩造成 ${dmg} 傷害・命中率 ${acc}%`); }
     return;
   }
   for (const f of fps.foes) f.c.dispose();
-  fps.gun.removeFromParent(); fps.flash.removeFromParent(); fps.lamp.removeFromParent();
+  fps.gun.removeFromParent(); camFlash.intensity = 0; rangeLamp.intensity = 0;
   if (document.pointerLockElement) document.exitPointerLock();
   const sc = fps.score, best = Math.max(sc, p.stat.range || 0), newBest = sc > (p.stat.range || 0), acc = fps.shots ? Math.round(fps.hits / fps.shots * 100) : 0;
   p.stat.range = best; const bone = Math.floor(sc / 25), gold = sc * 2; p.mats.bone += bone; p.gold += gold;
   fps = null; fpsDrag = null; document.body.classList.remove('fps'); $('fpsHud').classList.remove('on');
-  resize(); paused = false; camReady = false; save();
+  viewFov(); paused = false; camReady = false; save();
   if (show) { banner(newBest ? '新紀錄！' : '靶場結束', `${sc} 分・命中率 ${acc}%・最高 ${best} 分・獲得 🦴 ${bone}、💰 ${gold}`); SND.level(); }
 }
 function fpsHud() {
@@ -2520,7 +2534,7 @@ loadAssets().then(() => {
 
 // 測試用
 window.__game = {
-  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get merchant() { return merchant; }, exportText, openExport, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
+  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get merchant() { return merchant; }, get renderer() { return renderer; }, exportText, openExport, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
   get quality() { return quality; }, setQuality(v) { autoQ = false; quality = v; applyQuality(); },
   update, descend, cast, keys, mouse, spawnEnemy, hurtPlayer, dropItem, makeItem, genFloor, setCam(i) { camMode = i; camReady = false; }, info: () => renderer.info.render,
 };
