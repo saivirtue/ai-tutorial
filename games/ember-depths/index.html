@@ -95,8 +95,11 @@
     body.fps .hud, body.fps #vig { visibility: hidden; }
     #fpsHud { position: fixed; inset: 0; z-index: 3; pointer-events: none; display: none; }
     #fpsHud.on { display: block; }
-    #fpsHud .cross { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; border: 2px solid #ffe0a0cc; border-radius: 50%; }
-    #fpsHud .cross::after { content: ''; position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; background: #ffe0a0; border-radius: 50%; }
+    #fpsHud .cross { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; border: 3px solid #ffe0a0dd; border-radius: 50%;
+      box-shadow: 0 0 6px #000a, inset 0 0 6px #000a; }
+    #fpsHud .cross::before { content: ''; position: absolute; left: 50%; top: -12px; bottom: -12px; width: 3px; margin-left: -1.5px;
+      background: linear-gradient(#ffe0a0 0 14px, transparent 14px calc(100% - 14px), #ffe0a0 calc(100% - 14px)); }
+    #fpsHud .cross::after { content: ''; position: absolute; left: 50%; top: 50%; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; background: #ffb040; border-radius: 50%; box-shadow: 0 0 6px #ff7a2a; }
     #fpsInfo { position: absolute; top: calc(12px + var(--st)); left: 0; right: 0; text-align: center; font-size: 20px; color: #ffe9b0; text-shadow: 0 2px 3px #000; }
     #fpsQuit { position: absolute; top: calc(10px + var(--st)); left: calc(12px + var(--sl)); pointer-events: auto; }
     #fpsFire { position: absolute; right: calc(18px + var(--sr)); bottom: calc(18px + var(--sb)); width: 96px; height: 96px; border-radius: 50%; font-size: 40px;

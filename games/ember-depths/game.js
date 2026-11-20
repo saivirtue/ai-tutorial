@@ -898,7 +898,7 @@ function bossShield(e) {
 }
 function bossBreak(e) {
   e.shield = false; e.broken = 4; hitStop = 0.15; shake = 12;
-  banner('破防！', '4 秒內首領動不了，受到的傷害 +50%'); SND.burn(); fxRing(e.x, e.y, 200, 0xffcf6b, 0.7); burst(e.x, e.y, '#7fe8ff', 60, 260, 0.9, 2, 8);
+  banner('破防！', '時間停住了：用餘燼弩瞄準首領的頭'); setTimeout(() => { if (boss === e && !e.dead && state === 'play' && !paused && !cine) startSnipe(e); }, 300); SND.burn(); fxRing(e.x, e.y, 200, 0xffcf6b, 0.7); burst(e.x, e.y, '#7fe8ff', 60, 260, 0.9, 2, 8);
 }
 function bossAI(e, dt, d, see, startCharge) {
   if (!e.phased && e.hp < e.maxHp * 0.6) bossShield(e);
@@ -987,6 +987,7 @@ function killEnemy(e) {
   toCorpse(e);
   const f = p.floor;
   if (e.type === 'boss') {
+    if (fps && fps.mode === 'boss') endRange(false);
     boss = null; stairs.open = true; shake = 16; hitStop = 0.12; startCine(e, 'outro', '擊敗', e.name, 2); SND.legend(); burst(e.x, e.y, '#ffcf6b', 90, 260, 1.2, 2, 8); fxRing(e.x, e.y, 260, 0xffcf6b, 0.9); sfx(80, 0.8, 'sawtooth', 0.09, 300);
     for (let i = 0; i < 2; i++) dropItem(e.x + rand(-50, 50), e.y + rand(-50, 50), makeItem(f, rollRarity(i === 0 ? 2 : 1)));
     for (let i = 0; i < 10; i++) dropGold(e.x + rand(-30, 30), e.y + rand(-30, 30), irand(8, 16) * (1 + f * 0.25));
@@ -1735,7 +1736,7 @@ const pPos = new Float32Array(PMAX * 3), pCol = new Float32Array(PMAX * 4), pSiz
 pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3)); pGeo.setAttribute('pcolor', new THREE.BufferAttribute(pCol, 4)); pGeo.setAttribute('size', new THREE.BufferAttribute(pSize, 1));
 const pMat = new THREE.ShaderMaterial({
   transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, uniforms: { scale: { value: 1 } },
-  vertexShader: 'attribute float size; attribute vec4 pcolor; varying vec4 vC; uniform float scale; void main(){ vC=pcolor; vec4 mv=modelViewMatrix*vec4(position,1.); gl_PointSize=size*scale/(-mv.z); gl_Position=projectionMatrix*mv; }',
+  vertexShader: 'attribute float size; attribute vec4 pcolor; varying vec4 vC; uniform float scale; void main(){ vC=pcolor; vec4 mv=modelViewMatrix*vec4(position,1.); gl_PointSize=min(size*scale/(-mv.z),90.); gl_Position=projectionMatrix*mv; }',
   fragmentShader: 'varying vec4 vC; void main(){ float d=length(gl_PointCoord-.5); float a=smoothstep(.5,.05,d)*vC.a; gl_FragColor=vec4(vC.rgb*a,a); }',
 });
 const pPoints = new THREE.Points(pGeo, pMat); pPoints.frustumCulled = false; scene.add(pPoints);
@@ -1833,8 +1834,8 @@ function render3d(dt) {
   hero.root.rotation.y = Math.PI / 2 - hero.face; hero.root.visible = !fps;
   hero.emissive(p.hurtT > 0 ? 0xff2020 : p.burnT > 0 ? 0xff5a10 : 0x000000, p.hurtT > 0 ? 0.8 : p.burnT > 0 ? 0.45 + Math.sin(time * 12) * 0.15 : 0);
   hero.mixer.update(dt);
-  if (hero.glow && hero.hand && dt > 0) for (let i = 0; i < hero.glowN; i++) { v3.set(0, rand(0.3, 1.2), 0); hero.hand.localToWorld(v3); parts.push(mkPart(v3.x / U, v3.z / U, v3.y, rand(-10, 10), rand(-10, 10), rand(0.4, 1.5), hero.glow, 0.4, rand(3.5, 6), -0.5)); } // 高熱度的武器拖火尾
-  if (dt > 0 && p.st.mpr > 3.5 && Math.random() < (p.st.mpr - 3) * 0.06) { const a = rand(0, 6.28); parts.push(mkPart(p.x + Math.cos(a) * 18, p.y + Math.sin(a) * 18, rand(0.5, 2), -Math.sin(a) * 40, Math.cos(a) * 40, 0.8, '#6ab8ff', 0.7, 3.5)); } // 回魔：藍色光點
+  if (hero.glow && hero.hand && dt > 0 && !fps) for (let i = 0; i < hero.glowN; i++) { v3.set(0, rand(0.3, 1.2), 0); hero.hand.localToWorld(v3); parts.push(mkPart(v3.x / U, v3.z / U, v3.y, rand(-10, 10), rand(-10, 10), rand(0.4, 1.5), hero.glow, 0.4, rand(3.5, 6), -0.5)); } // 高熱度的武器拖火尾
+  if (dt > 0 && !fps && p.st.mpr > 3.5 && Math.random() < (p.st.mpr - 3) * 0.06) { const a = rand(0, 6.28); parts.push(mkPart(p.x + Math.cos(a) * 18, p.y + Math.sin(a) * 18, rand(0.5, 2), -Math.sin(a) * 40, Math.cos(a) * 40, 0.8, '#6ab8ff', 0.7, 3.5)); } // 回魔：藍色光點
   if (campFire && campFire.light) { campFire.light.intensity = 100 + Math.sin(time * 9) * 14 + Math.sin(time * 23) * 8; if (dt > 0) for (let i = 0; i < 2; i++) parts.push(mkPart(campFire.x + rand(-14, 14), campFire.y + rand(-14, 14), rand(0.3, 1), rand(-8, 8), rand(-8, 8), rand(3, 6), Math.random() < 0.5 ? '#ffb040' : '#ff5a20', rand(0.4, 0.8), rand(5, 10), -2)); }
   for (const c of extraChars) { c.mixer.update(dt); if (c.ref && !c.ref.freed) { const a = Math.atan2(p.y - c.y, p.x - c.x); c.root.rotation.y += angDiff(Math.PI / 2 - a, c.root.rotation.y) * Math.min(1, dt * 3); } }
   if (npc) { const a = Math.atan2(p.y - merchant.y, p.x - merchant.x); npc.root.rotation.y += angDiff(Math.PI / 2 - a, npc.root.rotation.y) * Math.min(1, dt * 4); npc.mixer.update(dt); }
@@ -2236,7 +2237,7 @@ function startRange() {
     x: (r.x + r.w / 2) * 4, z: (r.y + r.h - 1.6) * 4, zFar: (r.y + 1) * 4, xMin: (r.x + 1) * 4, xMax: (r.x + r.w - 1) * 4 };
   p.x = fps.x / U; p.y = fps.z / U;
   paused = true; joy.id = null; atkHeld = false; mouse.l = mouse.r = false;
-  document.body.classList.add('fps'); $('fpsHud').classList.add('on');
+  document.body.classList.add('fps'); $('fpsHud').classList.add('on'); $('fpsQuit').style.display = '';
   camera.fov = W < H ? 75 : 62; camera.updateProjectionMatrix(); scene.add(camera);
   fps.gun = A.h_crossbow.scene.clone(); fps.gun.scale.setScalar(0.55); fps.gun.rotation.set(0.05, Math.PI + 0.08, 0); camera.add(fps.gun);
   fps.flash = new THREE.PointLight(0xffc070, 0, 12, 2); fps.flash.position.set(0.3, -0.2, -1.2); camera.add(fps.flash);
@@ -2245,8 +2246,31 @@ function startRange() {
   tip('fps', touchMode ? '拖曳螢幕轉視角，按 🎯 射擊；打頭分數加倍' : '移動滑鼠瞄準，左鍵射擊；打頭分數加倍，Esc 離開');
   SND.bossIntro(); fpsHud();
 }
+function startSnipe(e) {
+  if (fps || e.dead) return;
+  const bx = e.x * U, bz = e.y * U, px = p.x * U, pz = p.y * U, dx = bx - px, dz = bz - pz, d = Math.hypot(dx, dz) || 1;
+  fps = { mode: 'boss', boss: e, t: 4.5, score: 0, lives: 3, hits: 0, shots: 0, combo: 0, dmg: 0, foes: [], cd: 0, kick: 0, x: px, z: pz,
+    yaw: Math.atan2(-dx, -dz), pitch: Math.atan2(5 * 0.62 - 2.3, d) };
+  joy.id = null; atkHeld = false; mouse.l = mouse.r = false;
+  document.body.classList.add('fps'); $('fpsHud').classList.add('on'); $('fpsQuit').style.display = 'none';
+  camera.fov = W < H ? 75 : 62; camera.updateProjectionMatrix(); scene.add(camera);
+  fps.gun = A.h_crossbow.scene.clone(); fps.gun.scale.setScalar(0.55); fps.gun.rotation.set(0.05, Math.PI + 0.08, 0); camera.add(fps.gun);
+  fps.gun.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.emissive.setHex(0xff6a10); o.material.emissiveIntensity = 0.8; } });
+  fps.flash = new THREE.PointLight(0xffc070, 0, 12, 2); fps.flash.position.set(0.3, -0.2, -1.2); camera.add(fps.flash);
+  if (!touchMode && cv.requestPointerLock) try { cv.requestPointerLock(); } catch (er) { /* 不支援就用一般滑鼠移動 */ }
+  tip('snipe', touchMode ? '破防時間停住了：拖曳瞄準首領的頭，按 🎯 連射' : '破防時間停住了：瞄準首領的頭，按住左鍵連射');
+  SND.burn(); fpsHud();
+}
 function endRange(show) {
   if (!fps) return;
+  if (fps.mode === 'boss') {
+    const e = fps.boss, dmg = Math.round(fps.dmg), acc = fps.shots ? Math.round(fps.hits / fps.shots * 100) : 0;
+    fps.gun.traverse(o => { if (o.isMesh) o.material.dispose(); }); fps.gun.removeFromParent(); fps.flash.removeFromParent();
+    if (document.pointerLockElement) document.exitPointerLock();
+    fps = null; fpsDrag = null; mouse.l = false; document.body.classList.remove('fps'); $('fpsHud').classList.remove('on'); resize(); camReady = false;
+    if (!e.dead) { e.broken = 1.2; if (show) banner('', `🔥 餘燼弩造成 ${dmg} 傷害・命中率 ${acc}%`); }
+    return;
+  }
   for (const f of fps.foes) f.c.dispose();
   fps.gun.removeFromParent(); fps.flash.removeFromParent(); fps.lamp.removeFromParent();
   if (document.pointerLockElement) document.exitPointerLock();
@@ -2258,19 +2282,21 @@ function endRange(show) {
 }
 function fpsHud() {
   if (!fps) return;
+  if (fps.mode === 'boss') { $('fpsInfo').innerHTML = `⏱ ${Math.max(0, fps.t).toFixed(1)}　破防射擊：瞄準頭部　<b>${Math.round(fps.dmg)}</b> 傷害`; return; }
   $('fpsInfo').innerHTML = `⏱ ${Math.ceil(fps.t)}　${'❤️'.repeat(fps.lives)}${'🖤'.repeat(3 - fps.lives)}　<b>${fps.score}</b> 分${fps.combo >= 3 ? `　🔥×${fps.combo}` : ''}`;
 }
 function fpsDir(out) { const cp = Math.cos(fps.pitch); return out.set(-Math.sin(fps.yaw) * cp, Math.sin(fps.pitch), -Math.cos(fps.yaw) * cp); }
 function fpsFire() {
   if (!fps || fps.cd > 0) return;
+  if (fps.mode === 'boss') return snipeFire();
   fps.cd = 0.3; fps.shots++; fps.kick = 1; fps.flash.intensity = 40; SND.shoot(false); noise(0.08, 0.06, 5000, 1500);
-  const O = camera.position, D = fpsDir(new THREE.Vector3()), hd = Math.hypot(D.x, D.z) || 1;
+  const O = new THREE.Vector3(fps.x, 2.3, fps.z), D = fpsDir(new THREE.Vector3()) /* 用主角的位置，不等畫面刷新 */, hd = Math.hypot(D.x, D.z) || 1;
   let best = null, bt = 1e9, by = 0;
   for (const f of fps.foes) {
     if (f.dead) continue;
     const t = ((f.x - O.x) * D.x + (f.z - O.z) * D.z) / (hd * hd); if (t <= 0) continue;
     const px = O.x + D.x * t, pz = O.z + D.z * t, py = O.y + D.y * t, H = 2.5 * f.s;
-    if (Math.hypot(px - f.x, pz - f.z) < 0.75 * f.s && py > 0 && py < H && t < bt) { bt = t; best = f; by = py / H; }
+    if (Math.hypot(px - f.x, pz - f.z) < 0.95 * f.s && py > 0 && py < H * 1.05 && t < bt) { bt = t; best = f; by = py / H; }
   }
   const end = best ? bt : 60;
   for (let i = 1; i < 14; i++) { const u = i / 14 * end; parts.push(mkPart((O.x + D.x * u) / U, (O.z + D.z * u) / U, O.y + D.y * u, 0, 0, 0, '#ffe0a0', 0.12, 3)); }
@@ -2286,7 +2312,35 @@ function fpsFire() {
   } else best.c.once('Hit_A', 2, 0.25);
   fpsHud();
 }
+function snipeFire() {
+  const F = fps, e = F.boss; F.cd = 0.2; F.shots++; F.kick = 1; F.flash.intensity = 50; SND.shoot(false); noise(0.08, 0.06, 5000, 1500);
+  const O = new THREE.Vector3(fps.x, 2.3, fps.z), D = fpsDir(new THREE.Vector3()) /* 用主角的位置，不等畫面刷新 */, hd = Math.hypot(D.x, D.z) || 1, bx = e.x * U, bz = e.y * U, S = 2, H = 2.5 * S;
+  const t = ((bx - O.x) * D.x + (bz - O.z) * D.z) / (hd * hd), px = O.x + D.x * t, pz = O.z + D.z * t, py = O.y + D.y * t;
+  const hit = t > 0 && Math.hypot(px - bx, pz - bz) < 0.95 * S && py > 0 && py < H * 1.05, end = hit ? t : 60;
+  for (let i = 1; i < 14; i++) { const u = i / 14 * end; parts.push(mkPart((O.x + D.x * u) / U, (O.z + D.z * u) / U, O.y + D.y * u, 0, 0, 0, '#ffb060', 0.12, 3.5)); }
+  if (!hit) { F.combo = 0; return fpsHud(); }
+  const head = py / H > 0.72, hp0 = e.hp; F.hits++; F.combo++;
+  burst(px / U, pz / U, head ? '#ffd84a' : '#ff9a40', head ? 18 : 10, 160, 0.4, py, 3);
+  if (head) { floatText(px / U, pz / U, '要害！', '#ffd84a', 22); SND.crit(); }
+  hitEnemy(e, head ? 1 : 0.45, 0, null, { noProc: true });
+  if (!fps) return; // 首領被打倒時已經結束射擊
+  F.dmg += Math.max(0, hp0 - e.hp); SND.hit(null, F.combo); fpsHud();
+}
 function updateFps(dt) {
+  if (fps.mode === 'boss') { // 破防射擊：世界停住，只有你在動
+    const F = fps, e = F.boss; F.t -= dt; F.cd -= dt; F.kick = Math.max(0, F.kick - dt * 8); F.flash.intensity = Math.max(0, F.flash.intensity - dt * 400); time += dt;
+    if (mouse.l) fpsFire();
+    if (Math.random() < 0.4) parts.push(mkPart(e.x + rand(-20, 20), e.y + rand(-20, 20), 5.4, rand(-20, 20), rand(-20, 20), 0, '#ffe080', 0.5, 5));
+    if (touchMode) { // 準心靠近首領時，往頭部靠一點
+      const ty = Math.atan2(-(e.x * U - F.x), -(e.y * U - F.z)), d = Math.hypot(e.x * U - F.x, e.y * U - F.z), tp = Math.atan2(5 * 0.84 - 2.3, d);
+      if (Math.abs(angDiff(ty, F.yaw)) < 0.12) { F.yaw += angDiff(ty, F.yaw) * Math.min(1, dt * 3); F.pitch += (tp - F.pitch) * Math.min(1, dt * 2); }
+    }
+    for (const q of parts) { q.t -= dt; q.x += q.vx * dt; q.y += q.vy * dt; q.h += q.vh * dt; q.vh -= q.g * dt; q.vx *= 0.95; q.vy *= 0.95; }
+    parts = parts.filter(q => q.t > 0); for (const t of texts) t.t -= dt; texts = texts.filter(t => t.t > 0); shake = Math.max(0, shake - dt * 30);
+    if ((F.hudT = (F.hudT || 0) - dt) <= 0) { F.hudT = 0.1; fpsHud(); }
+    if (F.t <= 0 || e.dead) endRange(true);
+    return;
+  }
   const F = fps; F.t -= dt; F.cd -= dt; F.kick = Math.max(0, F.kick - dt * 8); F.flash.intensity = Math.max(0, F.flash.intensity - dt * 400); time += dt;
   if (mouse.l) fpsFire();
   // 出怪：越後面越快
@@ -2331,7 +2385,7 @@ function fpsCam() {
 }
 $('fpsFire').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); fpsFire(); });
 $('fpsQuit').addEventListener('click', () => endRange(true));
-document.addEventListener('mousemove', e => { if (fps && !touchMode) { fps.yaw -= e.movementX * 0.0022; fps.pitch = clamp(fps.pitch - e.movementY * 0.0022, -0.7, 0.6); } });
+document.addEventListener('mousemove', e => { if (fps && !touchMode) { fps.yaw -= e.movementX * 0.0035; fps.pitch = clamp(fps.pitch - e.movementY * 0.0035, -0.7, 0.6); } });
 
 // ---------- 輸入 ----------
 addEventListener('keydown', e => {
@@ -2363,7 +2417,7 @@ cv.addEventListener('pointerdown', e => {
   if (e.button === 0) mouse.l = true; else if (e.button === 2) mouse.r = true;
 });
 addEventListener('pointermove', e => {
-  if (fps && fpsDrag && e.pointerId === fpsDrag.id) { fps.yaw -= (e.clientX - fpsDrag.x) * 0.006; fps.pitch = clamp(fps.pitch - (e.clientY - fpsDrag.y) * 0.006, -0.7, 0.6); fpsDrag.x = e.clientX; fpsDrag.y = e.clientY; return; }
+  if (fps && fpsDrag && e.pointerId === fpsDrag.id) { fps.yaw -= (e.clientX - fpsDrag.x) * 0.0105; fps.pitch = clamp(fps.pitch - (e.clientY - fpsDrag.y) * 0.0085, -0.7, 0.6); fpsDrag.x = e.clientX; fpsDrag.y = e.clientY; return; }
   if (e.pointerType === 'touch') {
     if (e.pointerId === joy.id) { const dx = e.clientX - joy.ox, dy = e.clientY - joy.oy, m = Math.hypot(dx, dy), k = Math.min(1, m / 52) / (m || 1); joy.x = dx * k; joy.y = dy * k; }
     return;
@@ -2413,7 +2467,7 @@ loadAssets().then(() => {
 
 // 測試用
 window.__game = {
-  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get merchant() { return merchant; }, startRange, endRange, fpsFire, updateFps, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
+  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get merchant() { return merchant; }, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
   get quality() { return quality; }, setQuality(v) { autoQ = false; quality = v; applyQuality(); },
   update, descend, cast, keys, mouse, spawnEnemy, hurtPlayer, dropItem, makeItem, genFloor, setCam(i) { camMode = i; camReady = false; }, info: () => renderer.info.render,
 };
