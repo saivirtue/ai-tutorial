@@ -252,6 +252,7 @@ const BLD = {
   guild: { n: '獵人公會', i: '🏹', need: '獵人 洛克', cost: [[60, 3, 400], [220, 9, 3000], [550, 20, 9000]], d: L => ['', '告示板每次回營地可重抽 1 次', '重抽 2 次；完成獎勵金幣 +25%', '重抽 3 次；獎勵箱多一件'][L] },
 };
 const bl = k => (p.bld && p.bld[k]) || 0;
+const canBuild = k => { const B = BLD[k], L = bl(k); if (L >= 3 || (B.need && !p.rescued.includes(B.need))) return false; const [cb, cc, cg] = B.cost[L]; return p.mats.bone >= cb && p.mats.cry >= cc && p.gold >= cg; };
 const invCap = () => 24 + 6 * bl('store');
 const trainCap = () => [0, 5, 10, 20][bl('train')];
 // 建築外觀：沒蓋是一堆瓦礫，等級越高擺設越多。[模型, x 偏移, y 偏移, 縮放, 旋轉, 高度]
@@ -494,7 +495,7 @@ function genCamp(keep) {
   }
   for (const [dx, dy] of [[-2, 0], [2, 0], [0, 2], [-1, -2], [1, -2]]) fluff.push({ model: 'stool', x: (r.cx + 0.5 + dx * 0.9) * T, y: (r.cy + 0.5 + dy * 0.9) * T, s: 1.2, rot: rand(0, 6) });
   for (const [tx, ty, m] of [[r.x, r.y + r.h - 1, 'crates_stacked'], [r.x + 1, r.y + r.h - 1, 'keg'], [r.x + r.w - 1, r.y + r.h - 1, 'barrel_small_stack'], [r.x + r.w - 1, r.y + 4, 'crates_stacked']]) put(tx, ty, m, 13, 0.9, rand(0, 6));
-  if (!keep) stock = [makeItem(p.floor, 1, 'weapon'), makeItem(p.floor, Math.max(1, rollRarity())), makeItem(p.floor + 1, Math.random() < 0.12 ? 3 : 2)]; boxMsg = '';
+  if (!keep) stock = [makeItem(p.floor, 1, 'weapon'), makeItem(p.floor, Math.max(1, rollRarity())), makeItem(p.floor + 1, Math.random() < 0.04 ? 3 : 2)]; boxMsg = '';
   if (!keep || !p.board || !p.board.length) rollBoard();
   if (!keep) p.rerolls = [0, 1, 2, 3][bl('guild')];
   if (keep) { p.x = px0; p.y = py0; } else { p.x = (r.cx + 0.5) * T; p.y = (r.cy + 3) * T; }
@@ -533,7 +534,7 @@ function explore() {
 }
 
 // ---------- 物品 ----------
-const RAR = [{ n: '普通', c: '#d8d8d8' }, { n: '精良', c: '#6aa8ff' }, { n: '稀有', c: '#ffd84a' }, { n: '傳說', c: '#ff8a3a' }];
+const RAR = [{ n: '普通', c: '#d8d8d8' }, { n: '精良', c: '#6aa8ff' }, { n: '稀有', c: '#ffd84a' }, { n: '傳說', c: '#ff8a3a' }, { n: '餘燼', c: '#ff4a3a' }];
 const SLOTS = { weapon: { n: '武器', i: '🗡️' }, armor: { n: '護甲', i: '🛡️' }, ring: { n: '飾品', i: '💍' } };
 const STAT = {
   dmg: ['攻擊', 0], hp: ['生命', 0], mp: ['魔力', 0], armor: ['護甲', 0], crit: ['暴擊', 1], aspd: ['攻速', 1],
@@ -558,22 +559,28 @@ const wtOf = it => WT[(it && KIND2WT[it.kind]) || 'sword'];
 const BASES = { weapon: ['短劍', '長劍', '戰斧', '巨劍', '彎刀', '手弩', '法杖'], armor: ['皮甲', '鎖甲', '鱗甲', '戰袍'], ring: ['指環', '護符', '徽記'] };
 // 傳說裝備各帶一個會改變打法的效果
 const LEGFX = {
-  chain: { slot: 'weapon', n: '雷鳴', d: '揮砍命中時，三成機率放出連鎖閃電，跳向附近 3 個敵人' },
-  wave: { slot: 'weapon', n: '餘燼', d: '每第三下揮砍會射出一道穿透敵人的火焰劍氣' },
-  frost: { slot: 'weapon', n: '霜牙', d: '揮砍讓敵人緩速，並有機會直接冰凍' },
-  thorns: { slot: 'armor', n: '荊棘', d: '受到傷害時，反震周圍所有敵人' },
-  phoenix: { slot: 'armor', n: '晨曦', d: '每層一次：受到致命傷時不會倒下，回復一半生命並引發爆炸' },
-  blink: { slot: 'armor', n: '暮星', d: '閃避的冷卻時間減半，落地時引發爆炸' },
-  twin: { slot: 'ring', n: '三焰', d: '火球變成一次射出三顆' },
-  storm: { slot: 'ring', n: '風暴', d: '旋風斬持續更久，並把周圍的敵人吸過來' },
-  boom: { slot: 'ring', n: '深淵', d: '敵人倒下時會爆炸，傷害附近的敵人' },
+  chain: { slot: 'weapon', n: '雷鳴', r: [2, 6], d: v => `命中時三成機率放出連鎖閃電，跳 ${Math.round(v)} 個敵人` },
+  wave: { slot: 'weapon', n: '餘燼', r: [0.9, 1.8], d: v => `每第三下射出穿透的火焰劍氣，${Math.round(v * 100)}% 攻擊` },
+  frost: { slot: 'weapon', n: '霜牙', r: [0.08, 0.3], d: v => `命中讓敵人緩速，${Math.round(v * 100)}% 機率直接冰凍` },
+  thorns: { slot: 'armor', n: '荊棘', r: [0.8, 2.4], d: v => `受傷時反震周圍敵人，${Math.round(v * 100)}% 攻擊` },
+  phoenix: { slot: 'armor', n: '晨曦', r: [0.25, 0.7], d: v => `每層一次：致命傷時不倒下，回復 ${Math.round(v * 100)}% 生命並爆炸` },
+  blink: { slot: 'armor', n: '暮星', r: [0.6, 2], d: v => `閃避冷卻減半，落地爆炸 ${Math.round(v * 100)}% 攻擊` },
+  twin: { slot: 'ring', n: '三焰', r: [2, 5], d: v => `火球一次射出 ${Math.round(v)} 顆` },
+  storm: { slot: 'ring', n: '風暴', r: [0.4, 1.6], d: v => `旋風斬多轉 ${v.toFixed(1)} 秒，並把敵人吸過來` },
+  boom: { slot: 'ring', n: '深淵', r: [0.4, 1.2], d: v => `敵人倒下時爆炸，${Math.round(v * 100)}% 攻擊` },
 };
+const legVal = it => { const F = LEGFX[it.fx], q = it.fxq === undefined ? 0.5 : it.fxq; return F.r[0] + (F.r[1] - F.r[0]) * q; };
+const fxText = it => { const F = LEGFX[it.fx], v = legVal(it), q = it.fxq === undefined ? 0.5 : it.fxq; return `${F.d(v)}<span class="dim">（${q > 0.85 ? '極品' : q > 0.6 ? '上等' : q > 0.3 ? '中等' : '下等'}・範圍 ${F.d(F.r[0]).match(/[\d.]+/)[0]}～${F.d(F.r[1]).match(/[\d.]+/)[0]}）</span>`; };
 const BUFFS = { rage: ['⚔️', '狂怒', '攻擊 +50%', 0xff5030], haste: ['💨', '迅捷', '移動與攻擊速度 +35%', 0x50e0ff], ward: ['🛡️', '守護', '受到的傷害減半', 0xffe060] };
 const fmt = (k, v) => `${STAT[k][0]} ${v > 0 ? '+' : ''}${Number.isInteger(v) ? v : v.toFixed(1)}${STAT[k][1] ? '%' : ''}`;
 
+// 稀有度機率：傳說約 0.5～2%；危險度 5 起才有機會掉「餘燼」
 function rollRarity(min = 0) {
-  const r = Math.random(), bonus = Math.min(0.1, p.floor * 0.004) + diff().loot + ((p.run && p.run.danger) || 0) * 0.015;
-  const q = r < 0.02 + bonus * 0.5 ? 3 : r < 0.12 + bonus ? 2 : r < 0.42 + bonus ? 1 : 0;
+  const dg = (p.run && p.run.danger) || 0, f = p.floor, r = Math.random();
+  const leg = 0.004 + Math.min(0.006, f * 0.0003) + dg * 0.0015;
+  const ember = dg >= 5 ? leg * (0.15 + (dg - 5) * 0.05) : 0;
+  const rare = Math.min(0.2, 0.05 + f * 0.002 + dg * 0.01), magic = 0.3;
+  const q = r < ember ? 4 : r < ember + leg ? 3 : r < ember + leg + rare ? 2 : r < ember + leg + rare + magic ? 1 : 0;
   return Math.max(q, min);
 }
 function makeItem(lvl, rarity, slot, kind) {
@@ -586,25 +593,25 @@ function makeItem(lvl, rarity, slot, kind) {
   const n = rarity + (slot === 'ring' ? 1 : 0);
   for (let i = 0; i < n; i++) {
     const k = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
-    let v = AFF[k](lvl) * rand(0.8, 1.2) * (rarity === 3 ? 1.25 : 1);
+    let v = AFF[k](lvl) * rand(0.8, 1.2) * (rarity >= 4 ? 1.4 : rarity === 3 ? 1.25 : 1);
     v = (k === 'hpr' || k === 'mpr' || k === 'ls') ? Math.round(v * 10) / 10 : Math.round(v);
     it.aff.push({ k, v });
   }
   const b = kind || pick(BASES[slot]);
   it.kind = b;
-  if (rarity === 3) it.fx = pick(Object.keys(LEGFX).filter(k => LEGFX[k].slot === slot));
-  it.name = rarity === 3 ? `${LEGFX[it.fx].n}之${b}` : rarity === 0 ? b : `${RAR[rarity].n}的${b}`;
+  if (rarity >= 3) { it.fx = pick(Object.keys(LEGFX).filter(k => LEGFX[k].slot === slot)); it.fxq = rarity >= 4 ? rand(0.55, 1) : Math.random(); }
+  it.name = rarity >= 4 ? `燼・${LEGFX[it.fx].n}之${b}` : rarity === 3 ? `${LEGFX[it.fx].n}之${b}` : rarity === 0 ? b : `${RAR[rarity].n}的${b}`;
   it.val = Math.round((5 + lvl * 3) * Math.pow(1 + rarity, 1.5));
-  if (rarity >= 1 && Math.random() < (rarity === 3 ? 0.5 : 0.22)) it.nc = rollNC(lvl);
+  if (rarity >= 1 && Math.random() < (rarity >= 4 ? 1 : rarity === 3 ? 0.5 : 0.22)) it.nc = rollNC(lvl);
   return it;
 }
 // 強化過的裝備（+N）每級讓所有數值多 12%
 // ---------- 熱度：裝備穿著戰鬥會越燒越熱，每級所有數值 +12%，外觀跟著發光變色 ----------
 const HEAT = ['冷鐵', '暗紅', '赤紅', '橙熱', '金焰', '白熾'];
 const HEATC = [0x000000, 0x8a1a08, 0xd23010, 0xff6a10, 0xffb030, 0xfff0c8], HEATK = [0, 0.45, 0.8, 1.2, 1.6, 2.1];
-const HEATN = [25, 60, 120, 220, 360]; // 升到下一級要的「戰鬥值」（一般擊殺 1、菁英 3、首領 15）
+const HEATN = [90, 210, 420, 770, 1260]; // 升到下一級要的「戰鬥值」（一般擊殺 1、菁英 3、首領 15）
 const iv = (it, v) => Math.round(v * (1 + 0.12 * (it.heat || 0)) * 10) / 10;
-const forgeCost = it => Math.round(50 * (it.lvl + 2) * Math.pow((it.heat || 0) + 1, 1.5) * (bl('smith') >= 3 ? 0.8 : 1));
+const forgeCost = it => Math.ceil(((it.heat || 0) + 1) * 4 * (bl('smith') >= 3 ? 0.8 : 1)); // 熔鑄花 💎 結晶
 const forgeCap = () => [0, 2, 4, 5][bl('smith')];
 function heatUp(it, n) { // 回傳是否升級
   if (!it || (it.heat || 0) >= 5) return false;
@@ -636,6 +643,7 @@ const trainCost = k => Math.round(80 * Math.pow(1.3, p.train[k]));
 const boxCost = () => Math.round((80 + p.floor * 40) * shopK());
 const respecCost = () => Math.round(40 * p.lvl * (bl('altar') >= 3 ? 0.5 : 1));
 const priceOf = it => Math.round(it.val * 5 * shopK());
+const sellOf = it => Math.max(1, Math.round(it.val * 0.4)); // 賣價只有買價的一小部分
 function calcStats(eq) {
   eq = eq || p.equip; const L = p.lvl;
   const tr = p.train || { hp: 0, dmg: 0, mp: 0 };
@@ -654,7 +662,7 @@ function calcStats(eq) {
   return s;
 }
 const power = s => s.dmg * (1 + s.crit / 100) * (1 + s.aspd / 100) * 4 + s.hp * (1 + s.armor / 100) * 0.5 + s.mp * 0.2 + s.move + s.ls * 6 + s.hpr * 4 + s.mpr * 4;
-function refresh() { p.nc = {}; for (const k in p.equip) { const it = p.equip[k]; if (it && it.nc) p.nc[it.nc.k] = (p.nc[it.nc.k] || 0) + (it.nc.v || 1); } p.fx = {}; for (const k in p.equip) if (p.equip[k] && p.equip[k].fx) p.fx[p.equip[k].fx] = true; p.st = calcStats(); p.hp = Math.min(p.hp, p.st.hp); p.mp = Math.min(p.mp, p.st.mp); }
+function refresh() { p.nc = {}; p.fxv = {}; for (const k in p.equip) { const it = p.equip[k]; if (it && it.nc) p.nc[it.nc.k] = (p.nc[it.nc.k] || 0) + (it.nc.v || 1); } p.fx = {}; for (const k in p.equip) { const it = p.equip[k]; if (it && it.fx) p.fx[it.fx] = Math.max(p.fx[it.fx] || 0, legVal(it)); } p.st = calcStats(); p.hp = Math.min(p.hp, p.st.hp); p.mp = Math.min(p.mp, p.st.mp); }
 
 // ---------- 玩家 ----------
 const SK = {
@@ -790,7 +798,7 @@ function rollType(f) {
   return 'minion';
 }
 function spawnEnemy(type, x, y, elite) {
-  const d = ET[type], f = p.floor, hs = (1 + 0.42 * (f - 1)) * diff().hp, ds = (1.15 + 0.34 * (f - 1)) * diff().dmg;
+  const d = ET[type], f = p.floor, hs = (1 + 0.42 * (f - 1)) * diff().hp, ds = (1.15 + 0.34 * (f - 1)) * diff().dmg * (1 + 0.08 * ((p.run && p.run.danger) || 0));
   const e = {
     type, x, y, r: d.r * (elite ? 1.25 : 1), hp: d.hp * hs * (elite ? 3.2 : 1), dmg: d.dmg * ds * (elite ? 1.4 : 1),
     spd: d.spd * rand(0.9, 1.1), xp: d.xp * (1 + 0.2 * (f - 1)) * (elite ? 4 : 1), elite: !!elite,
@@ -976,7 +984,7 @@ function hitEnemy(e, mult, kb = 120, src, o = {}) {
 function killEnemy(e) {
   e.dead = true; gainXp(Math.round(e.xp * (1 + Math.min(p.streak, 25) * 0.02)));
   if (!e.summoned) { let hu = null; for (const k in p.equip) if (heatUp(p.equip[k], e.type === 'boss' ? 15 : e.elite ? 3 : 1)) hu = p.equip[k]; if (hu) { refresh(); heroLook(); floatText(p.x, p.y, `🔥 ${hu.name} → ${HEAT[hu.heat]}`, '#' + HEATC[hu.heat].toString(16).padStart(6, '0'), 17); sfx(330, 0.4, 'sawtooth', 0.05, 330); burst(p.x, p.y, '#ffa040', 24, 120, 0.7, 1.2, 6); tip('heat', '裝備穿著戰鬥會越燒越熱：熱度越高數值越強、外觀越亮，燒到白熾會多一條詞綴'); } }
-  if (p.fx.boom && e.type !== 'boss') booms.push({ x: e.x, y: e.y, t: 0.16 }); SND.bones();
+  if (p.fx.boom && e.type !== 'boss') booms.push({ x: e.x, y: e.y, t: 0.16, mult: p.fx.boom }); SND.bones();
   if (e.freeze > 0 && p.mods['nova.shatter']) booms.push({ x: e.x, y: e.y, t: 0.05, R: 78, mult: 0.9, color: 0x88ddff });
   for (let i = 0, n = e.elite ? 26 : 14; i < n; i++) { const b = rand(0, 6.283), v = rand(60, 260); parts.push(mkPart(e.x, e.y, rand(0.8, 2), Math.cos(b) * v + e.kx * 0.15, Math.sin(b) * v + e.ky * 0.15, rand(2, 8), i % 3 ? '#e8e2d0' : '#b8b0a0', rand(0.5, 1), rand(3, 7), 14)); } // 骨頭碎片
   if (p.pas.blood) p.hp = Math.min(p.st.hp, p.hp + p.st.hp * 0.04 * p.pas.blood);
@@ -990,30 +998,31 @@ function killEnemy(e) {
   if (e.type === 'boss') {
     if (fps && fps.mode === 'boss') endRange(false);
     boss = null; stairs.open = true; shake = 16; hitStop = 0.12; startCine(e, 'outro', '擊敗', e.name, 2); SND.legend(); burst(e.x, e.y, '#ffcf6b', 90, 260, 1.2, 2, 8); fxRing(e.x, e.y, 260, 0xffcf6b, 0.9); sfx(80, 0.8, 'sawtooth', 0.09, 300);
-    for (let i = 0; i < 2; i++) dropItem(e.x + rand(-50, 50), e.y + rand(-50, 50), makeItem(f, rollRarity(i === 0 ? 2 : 1)));
-    for (let i = 0; i < 10; i++) dropGold(e.x + rand(-30, 30), e.y + rand(-30, 30), irand(8, 16) * (1 + f * 0.25));
+    for (let i = 0; i < 2; i++) dropItem(e.x + rand(-50, 50), e.y + rand(-50, 50), makeItem(f, i === 0 && (p.run && p.run.danger || 0) >= 5 && Math.random() < 0.3 ? 4 : rollRarity(i === 0 ? 2 : 1)));
+    for (let i = 0; i < 10; i++) dropGold(e.x + rand(-30, 30), e.y + rand(-30, 30), irand(8, 16) * (1 + f * 0.1));
     for (let i = 0; i < 2 + Math.floor((p.run ? p.run.tier : 1) / 2); i++) dropMat('cry', e.x, e.y); for (let i = 0; i < 6; i++) dropMat('bone', e.x, e.y);
     drops.push(mk('hp', e.x - 20, e.y)); drops.push(mk('mp', e.x + 20, e.y));
     p.kills++; bounty('boss'); goalDone(`${e.name}倒下了`);
     for (const o of enemies) if (o !== e && !o.dead) { o.hp = 0; o.dead = true; toCorpse(o); }
     return;
   }
-  if (e.key) { dropMat('cry', e.x, e.y); for (let i = 0; i < 3; i++) dropMat('bone', e.x, e.y); stairs.open = true; banner('封印解除', '樓梯打開了'); SND.shrine(); dropItem(e.x, e.y + 20, makeItem(f, rollRarity(2))); for (let i = 0; i < 5; i++) dropGold(e.x + rand(-25, 25), e.y + rand(-25, 25), irand(6, 12) * (1 + f * 0.25)); }
+  if (e.key) { dropMat('cry', e.x, e.y); for (let i = 0; i < 3; i++) dropMat('bone', e.x, e.y); stairs.open = true; banner('封印解除', '樓梯打開了'); SND.shrine(); dropItem(e.x, e.y + 20, makeItem(f, rollRarity(2))); for (let i = 0; i < 5; i++) dropGold(e.x + rand(-25, 25), e.y + rand(-25, 25), irand(6, 12) * (1 + f * 0.1)); }
   if (e.summoned) return;
   p.kills++; if (p.run) p.run.kills++; bounty('kill'); if (e.elite) bounty('elite'); p.streak++; p.streakT = 3.5;
-  if (p.streak === 5 || p.streak === 10 || p.streak % 20 === 0) { floatText(p.x, p.y, `連殺 ×${p.streak}！`, '#ff9a3a', 20); for (let i = 0; i < 3; i++) dropGold(e.x, e.y, p.streak * (1 + f * 0.25)); SND.level(); }
+  if ([5, 10, 25, 50, 100, 200].includes(p.streak)) { /* 連殺里程碑 */ floatText(p.x, p.y, `連殺 ×${p.streak}！`, '#ff9a3a', 20); dropGold(e.x, e.y, Math.min(p.streak, 50) * 1.5 * (1 + f * 0.1)); SND.level(); } // 連殺獎金有上限
   if (e.elite) { for (let i = 0; i < 3; i++) dropMat('bone', e.x, e.y); if (Math.random() < 0.35) dropMat('cry', e.x, e.y); } else if (Math.random() < 0.1 * (1 + ((p.run && p.run.danger) || 0) * 0.15)) dropMat('bone', e.x, e.y);
-  if (Math.random() < 0.7) dropGold(e.x, e.y, irand(2, 6) * (1 + f * 0.25) * (e.elite ? 4 : 1));
+  if (Math.random() < 0.45) dropGold(e.x, e.y, irand(2, 6) * (1 + f * 0.1) * (e.elite ? 4 : 1));
   const r = Math.random();
   if (r < 0.07) drops.push(mk('hp', e.x, e.y)); else if (r < 0.11) drops.push(mk('mp', e.x, e.y));
-  if (e.elite || Math.random() < 0.09) dropItem(e.x, e.y, makeItem(f, rollRarity(e.elite ? 1 : 0)));
+  if (e.elite || Math.random() < 0.045) dropItem(e.x, e.y, makeItem(f, rollRarity(e.elite ? 1 : 0)));
 }
 const mk = (kind, x, y, extra) => Object.assign({ kind, x: x + rand(-14, 14), y: y + rand(-14, 14), t: 0, v: null }, extra);
 function dropMat(kind, x, y) { drops.push(mk(kind, x, y, { amt: kind === 'bone' ? irand(1, 2) : 1 })); }
 function dropGold(x, y, v) { drops.push(mk('gold', x, y, { amt: Math.max(1, Math.round(v * diff().gold * (rmod('dark') ? 1.5 : 1))) })); }
 function dropItem(x, y, it) {
   drops.push(mk('item', x, y, { it }));
-  if (it.rarity === 3) { // 傳說掉落：畫面一頓、光柱、音樂
+  if (it.rarity >= 4) { floatText(x, y + 10, '🔥 餘燼裝備', '#ff4a3a', 22); fxRing(x, y, 170, 0xff3a20, 1); }
+  if (it.rarity >= 3) { // 傳說掉落：畫面一頓、光柱、音樂
     hitStop = Math.max(hitStop, 0.3); SND.legend(); fxRing(x, y, 120, 0xff8a3a, 0.8); fxRing(x, y, 70, 0xffe080, 0.5); burst(x, y, '#ff9a3a', 40, 180, 1.2, 1, 10);
     floatText(x, y, '★ 傳說 ★', '#ff8a3a', 26); shake = Math.max(shake, 6);
   } else if (it.rarity === 2) { sfx(880, 0.3, 'triangle', 0.06, 400); sfx(1320, 0.3, 'triangle', 0.04, 0, 0.1); fxRing(x, y, 60, 0xffd84a, 0.4); }
@@ -1021,15 +1030,15 @@ function dropItem(x, y, it) {
 
 function hurtPlayer(d) {
   if (p.inv_t > 0 || p.dashT > 0 || state !== 'play') return;
-  const raw0 = d; d = Math.max(1, Math.round(d * 100 / (100 + p.st.armor) * rand(0.9, 1.1) * (p.buff && p.buff.k === 'ward' ? 0.5 : 1)));
+  const raw0 = d; d = Math.max(1, Math.round(d * (60 + 12 * p.floor) / (60 + 12 * p.floor + p.st.armor) * rand(0.9, 1.1) * (p.buff && p.buff.k === 'ward' ? 0.5 : 1)));
   if (p.run) p.run.taken = (p.run.taken || 0) + d; const blocked = 1 - d / raw0; if (blocked > 0.12) { sfx(rand(1700, 2300), 0.12, 'triangle', 0.05 * blocked + 0.02); sfx(rand(900, 1100), 0.18, 'square', 0.02); for (let i = 0; i < 4 + blocked * 16; i++) { const b = rand(0, 6.28), v = rand(60, 200); parts.push(mkPart(p.x, p.y, 1.3, Math.cos(b) * v, Math.sin(b) * v, rand(1, 4), '#e8eef5', 0.3, 3, 8)); } }
   p.hp -= d; p.hurtT = 0.25; p.inv_t = 0.25; shake = Math.max(shake, 5);
   floatText(p.x, p.y, '-' + d, '#ff6a6a', 17); SND.hurt();
   burst(p.x, p.y, '#ff4444', 6, 90, 0.4, 1.4, 2);
   $('hurt').style.opacity = 1; setTimeout(() => $('hurt').style.opacity = 0, 120);
-  if (p.fx.thorns && p.thornCd <= 0) { p.thornCd = 0.8; fxRing(p.x, p.y, 125, 0x66ff88, 0.35); for (const e of enemies) if (!e.dead && dist(e, p) < 125 + e.r) hitEnemy(e, 1.5, 220); }
+  if (p.fx.thorns && p.thornCd <= 0) { p.thornCd = 0.8; fxRing(p.x, p.y, 125, 0x66ff88, 0.35); for (const e of enemies) if (!e.dead && dist(e, p) < 125 + e.r) hitEnemy(e, p.fx.thorns || 1.5, 220); }
   if (p.hp <= 0 && p.fx.phoenix && !p.phoenixUsed) {
-    p.phoenixUsed = true; p.hp = p.st.hp * 0.5; p.inv_t = 1.5; banner('', '晨曦庇護了你'); hitStop = 0.2;
+    p.phoenixUsed = true; p.hp = p.st.hp * (p.fx.phoenix || 0.5); p.inv_t = 1.5; banner('', '晨曦庇護了你'); hitStop = 0.2;
     blast(p.x, p.y, 210, 3, 0xffaa30); burst(p.x, p.y, '#ffcf6b', 50, 240, 1, 1, 8);
   }
   if (p.hp <= 0) die();
@@ -1043,7 +1052,7 @@ function blast(x, y, R, mult, color, vol = 0.6, noProc = false) {
 }
 function chain(from) { // 連鎖閃電
   let cur = from; const seen = new Set([from]);
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < Math.round(p.fx.chain || 3); i++) {
     let best = null, bd = 180;
     for (const e of enemies) if (!e.dead && !seen.has(e)) { const d = dist(e, cur); if (d < bd) { bd = d; best = e; } }
     if (!best) break;
@@ -1107,8 +1116,8 @@ function finishRun() {
   const n = 2 + (Math.random() * 100 < ncv('luck') ? 1 : 0) + (rmod('elite') ? 1 : 0) + (R.goal === 'rescue' ? 1 : 0) + (bl('guild') >= 3 ? 1 : 0);
   const dk = 1 + (R.danger || 0) * 0.15, mb = Math.round((8 + R.tier * 4) * dk), mc = Math.round((1 + Math.floor(R.tier / 2)) * dk); p.mats.bone += mb; p.mats.cry += mc;
   chestItems = [];
-  for (let i = 0; i < n; i++) chestItems.push(makeItem(p.floor + 1, i === 0 && (firstEver || (unlock && Math.random() < 0.35)) ? 3 : Math.max(1, rollRarity(i === 0 ? 2 : 1))));
-  const g = Math.round((40 + p.floor * 25) * diff().gold * (bl('guild') >= 2 ? 1.25 : 1)); p.gold += g;
+  for (let i = 0; i < n; i++) chestItems.push(makeItem(p.floor + 1, i === 0 && (firstEver || (unlock && Math.random() < 0.2)) ? 3 : Math.max(1, rollRarity(i === 0 ? 2 : 1))));
+  const g = Math.round((40 + p.floor * 10) * diff().gold * (bl('guild') >= 2 ? 1.25 : 1)); p.gold += g;
   $('sumTitle').textContent = R.tier >= 7 && unlock && !p.won ? (p.won = true, '你征服了餘燼地城') : '遠征完成';
   $('sumTxt').innerHTML = `${mapName(R.tier)}・${R.goal === 'boss' ? '獵首領' : '救人：' + R.who}${RUNMOD[R.mod][0] ? '・◆' + RUNMOD[R.mod][0] : ''}<br>`
     + `用時 ${Math.floor(sec / 60)} 分 ${sec % 60} 秒・擊殺 ${R.kills}・撿到 ${R.items} 件裝備・賺了 ${p.gold - R.gold0 - g} 金<br>`
@@ -1122,9 +1131,9 @@ $('chestBtn').onclick = () => {
   const show = () => { // 一件一件翻開，稀有度越高越大聲
     const it = chestItems[i++]; if (!it) { $('sumBack').style.display = 'inline-block'; return; }
     if (p.inv.length < invCap()) p.inv.push(it); else p.gold += it.val; addCodex(it);
-    $('chestOut').insertAdjacentHTML('beforeend', `<div class="loot r${it.rarity}">${SLOTS[it.slot].i} <b style="color:${RAR[it.rarity].c}">${it.name}</b>${upgradeOf(it) > 0.5 ? ' <span class="good">▲</span>' : ''}${it.fx ? `<br><small style="color:#ff8a3a">★ ${LEGFX[it.fx].d}</small>` : ''}</div>`);
-    if (it.rarity === 3) SND.legend(); else if (it.rarity === 2) SND.level(); else SND.coin();
-    setTimeout(show, it.rarity === 3 ? 900 : 450);
+    $('chestOut').insertAdjacentHTML('beforeend', `<div class="loot r${it.rarity}">${SLOTS[it.slot].i} <b style="color:${RAR[it.rarity].c}">${it.name}</b>${upgradeOf(it) > 0.5 ? ' <span class="good">▲</span>' : ''}${it.fx ? `<br><small style="color:#ff8a3a">★ ${fxText(it)}</small>` : ''}</div>`);
+    if (it.rarity >= 3) SND.legend(); else if (it.rarity === 2) SND.level(); else SND.coin();
+    setTimeout(show, it.rarity >= 3 ? 900 : 450);
   };
   show();
 };
@@ -1150,7 +1159,7 @@ const SWINGS = ['1H_Melee_Attack_Slice_Diagonal', '1H_Melee_Attack_Slice_Horizon
 function pshot(x, y, a, spd, o) { shots.push(Object.assign({ x: x + Math.cos(a) * 16, y: y + Math.sin(a) * 16, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, r: 6, from: 'p', life: 0.9, ps: true, hit: new Set(), mult: 1, kb: 60, pierce: 0, col: '#ffe9b0' }, o)); }
 function weaponFx(hits) { // 傳說武器與爆燃的命中效果
   if (!hits.length) return;
-  if (p.fx.frost) for (const e of hits) if (!e.dead) { e.slow = 2.5; if (e.type !== 'boss' && Math.random() < 0.18) e.freeze = Math.max(e.freeze, 1.1); }
+  if (p.fx.frost) for (const e of hits) if (!e.dead) { e.slow = 2.5; if (e.type !== 'boss' && Math.random() < p.fx.frost) e.freeze = Math.max(e.freeze, 1.1); }
   if (p.fx.chain && Math.random() < 0.3) chain(hits[0]);
   if (p.burnT > 0) for (const e of hits.slice(0, 3)) blast(e.x, e.y, 48, 0.4, 0xff7a2a, 0.15, true);
 }
@@ -1187,7 +1196,7 @@ function attack() {
 function breakBarrel(o) {
   o.dead = true; burst(o.x, o.y, '#b98552', 14, 120, 0.7, 1, 5); sfx(220, 0.08, 'square', 0.04, -100); noise(0.15, 0.08, 1500);
   const r = Math.random();
-  if (r < 0.55) dropGold(o.x, o.y, irand(1, 5) * (1 + p.floor * 0.25)); else if (r < 0.63) drops.push(mk('hp', o.x, o.y)); else if (r < 0.68) drops.push(mk('mp', o.x, o.y));
+  if (r < 0.55) dropGold(o.x, o.y, irand(1, 5) * (1 + p.floor * 0.1)); else if (r < 0.63) drops.push(mk('hp', o.x, o.y)); else if (r < 0.68) drops.push(mk('mp', o.x, o.y));
 }
 function cast(k) {
   if (state !== 'play' || paused || !k) return;
@@ -1206,9 +1215,9 @@ function cast(k) {
   p.mp -= s.mp; p.cd[k] = s.cd * (k === 'dash' ? (p.fx.blink ? 0.5 : 1) * (p.cls === 'ranger' ? 0.7 : 1) : (wtOf(p.equip.weapon) === WT.sword ? 0.85 : 1) * (k === 'bolt' && p.pas.s_storm ? 0.5 : 1));
   if (k === 'fire') {
     const a = p.aim = aimAngle();
-    for (const o of (p.fx.twin ? [-0.22, 0, 0.22] : [0])) shots.push({ x: p.x + Math.cos(a + o) * 18, y: p.y + Math.sin(a + o) * 18, vx: Math.cos(a + o) * 520, vy: Math.sin(a + o) * 520, r: 8, from: 'p', life: 1.4, col: '#ff8a2a', fire: true });
+    for (const o of (p.fx.twin ? Array.from({ length: Math.round(p.fx.twin) }, (_, i) => (i - (Math.round(p.fx.twin) - 1) / 2) * 0.2) : [0])) shots.push({ x: p.x + Math.cos(a + o) * 18, y: p.y + Math.sin(a + o) * 18, vx: Math.cos(a + o) * 520, vy: Math.sin(a + o) * 520, r: 8, from: 'p', life: 1.4, col: '#ff8a2a', fire: true });
     sfx(240, 0.2, 'sawtooth', 0.05, 300); if (hero) hero.once('Spellcast_Shoot', 2.4, 0.3);
-  } else if (k === 'whirl') { p.whirlT = (p.fx.storm ? 2 : 1.2) + (M['whirl.long'] ? 0.8 : 0); p.whirlTick = 0; }
+  } else if (k === 'whirl') { p.whirlT = 1.2 + (p.fx.storm || 0) + (M['whirl.long'] ? 0.8 : 0); p.whirlTick = 0; }
   else if (k === 'nova') {
     const R = 175 * (M['nova.big'] ? 1.4 : 1); if (M['nova.big']) p.cd.nova = s.cd * 0.7;
     for (const e of enemies) if (dist(e, p) < R + e.r) { e.freeze = Math.max(e.freeze, (1.5 + l * 0.3 + (p.pas.s_frost ? 1 : 0)) * (e.type === 'boss' ? 0.35 : 1)); e.slow = e.freeze + 2; e.atkT = 0; hitEnemy(e, (1 + l * 0.25) * sm('nova'), 60); }
@@ -1282,7 +1291,7 @@ function update(dt) {
     if (u >= 1) { p.leap = null; blast(p.x, p.y, 105, (1.8 + L.l * 0.3) * sm('leap'), 0xffc060, 0.9); shake = 9; hitStop = 0.07; if (p.mods['leap.quake']) booms.push({ x: p.x, y: p.y, t: 0.32, R: 150, mult: 1 + L.l * 0.2, color: 0xffa040 }); if (hero) hero.once('1H_Melee_Attack_Chop', 2.2, 0.2); }
   } else if (p.dashT > 0) {
     p.dashT -= dt; moveEnt(p, p.dashX * 700 * dt, p.dashY * 700 * dt);
-    if (p.dashT <= 0 && p.fx.blink) blast(p.x, p.y, 95, 1.2, 0xaa88ff);
+    if (p.dashT <= 0 && p.fx.blink) blast(p.x, p.y, 95, p.fx.blink || 1.2, 0xaa88ff);
     parts.push(mkPart(p.x, p.y, 1.2, 0, 0, 0, '#88ccff', 0.25, 9));
   } else if (m > 0.05) {
     const sp = 190 * (1 + st.move / 100) * (p.whirlT > 0 ? (p.mods['whirl.long'] ? 1 : 0.8) : p.atkCd > 0.12 ? 0.45 : 1) * (p.burnT > 0 ? 1.2 : 1) * (p.slowT > 0 ? 0.6 : 1);
@@ -1324,7 +1333,7 @@ function update(dt) {
     if (s.wave) { // 火焰劍氣：穿透，每個敵人只打一次
       if (wall || s.life <= 0) s.dead = true;
       else {
-        for (const e of enemies) if (!s.hit.has(e) && dist(e, s) < e.r + s.r) { s.hit.add(e); hitEnemy(e, 1.3, 140, s); }
+        for (const e of enemies) if (!s.hit.has(e) && dist(e, s) < e.r + s.r) { s.hit.add(e); hitEnemy(e, p.fx.wave || 1.3, 140, s); }
         for (const o of props) if (o.kind === 'barrel' && !o.dead && dist(o, s) < o.r + s.r) breakBarrel(o);
         parts.push(mkPart(s.x + rand(-14, 14), s.y + rand(-14, 14), 1.2, 0, 0, rand(0, 2), '#ff7a2a', 0.3, 5));
       }
@@ -1356,7 +1365,7 @@ function update(dt) {
 
   for (const o of props) if (o.kind === 'chest' && !o.open && dist(o, p) < o.r + p.r + 10) {
     o.open = true; bounty('chest'); if (o.vault) { ambush(o); dropMat('cry', o.x, o.y + 20); } else if (Math.random() < 0.5) dropMat('bone', o.x, o.y + 20); sfx(660, 0.2, 'triangle', 0.06, 300); burst(o.x, o.y, '#ffd84a', 24, 110, 0.9, 1, 6);
-    for (let i = 0; i < irand(3, 6) * (o.gold ? 2 : 1); i++) dropGold(o.x + rand(-20, 20), o.y + 26, irand(4, 9) * (1 + p.floor * 0.25));
+    for (let i = 0; i < irand(3, 6) * (o.gold ? 2 : 1); i++) dropGold(o.x + rand(-20, 20), o.y + 26, irand(4, 9) * (1 + p.floor * 0.1));
     dropItem(o.x, o.y + 30, makeItem(p.floor, rollRarity(o.gold ? 2 : Math.random() < 0.35 ? 1 : 0)));
     if (Math.random() < 0.5) drops.push(mk(Math.random() < 0.6 ? 'hp' : 'mp', o.x, o.y + 26));
   }
@@ -1370,8 +1379,8 @@ function update(dt) {
     else if (d.kind === 'bone' || d.kind === 'cry') { p.mats[d.kind] += d.amt; if (p.run) p.run[d.kind] = (p.run[d.kind] || 0) + d.amt; d.dead = true; sfx(d.kind === 'cry' ? 1500 : 700, 0.06, 'triangle', 0.03); floatText(p.x, p.y, `+${d.amt} ${d.kind === 'cry' ? '💎' : '🦴'}`, d.kind === 'cry' ? '#ff9a5a' : '#e8e2d0', 13); if (d.kind === 'cry') tip('mats', '💎 餘燼結晶和 🦴 骨片是蓋營地建築的材料'); }
     else if (d.kind === 'hp') { if (p.hpPot < 9) { p.hpPot++; d.dead = true; sfx(800, 0.08, 'sine', 0.04); } }
     else if (d.kind === 'mp') { if (p.mpPot < 9) { p.mpPot++; d.dead = true; sfx(800, 0.08, 'sine', 0.04); } }
-    else if (p.inv.length < invCap()) { p.inv.push(d.it); d.dead = true; if (p.run) p.run.items++; addCodex(d.it); if (d.it.rarity === 3) { SND.shrine(); burst(p.x, p.y, '#ff9a3a', 30, 140, 0.8, 1, 6); } floatText(p.x, p.y, d.it.name, RAR[d.it.rarity].c, 14); tip('item', '撿到裝備了！點 🎒 打開背包，有 ▲ 的比身上的好'); sfx(700, 0.1, 'triangle', 0.05, 200); }
-    else if (fullMsgT <= 0) { fullMsgT = 1.5; floatText(p.x, p.y, '背包滿了', '#f77', 13); }
+    else if (p.inv.length < invCap()) { p.inv.push(d.it); d.dead = true; if (p.run) p.run.items++; addCodex(d.it); if (d.it.rarity >= 3) { SND.shrine(); burst(p.x, p.y, '#ff9a3a', 30, 140, 0.8, 1, 6); } floatText(p.x, p.y, d.it.name, RAR[d.it.rarity].c, 14); tip('item', '撿到裝備了！點 🎒 打開背包，有 ▲ 的比身上的好'); sfx(700, 0.1, 'triangle', 0.05, 200); }
+    else if (fullMsgT <= 0) { fullMsgT = 1.5; floatText(p.x, p.y, '背包滿了', '#f77', 13); tip('full', '背包滿了：遠征中不能賣，可以在背包把用不到的「丟掉」，或回營地賣掉；倉庫能擴充背包'); }
   }
   drops = drops.filter(d => { if (d.dead) killVis(d); return !d.dead; });
 
@@ -1397,7 +1406,7 @@ function update(dt) {
     let n = 0; for (const e of enemies) if (inRect(lockRoom, e.x, e.y, 0)) n++;
     if (n === 0 || !inRect(lockRoom, p.x, p.y, -0.5)) {
       const r = lockRoom; for (const g of r.gates) gate[g] = 0; gateFx(r, false); r.cleared = true; lockRoom = null;
-      if (n === 0) { const cx = (r.x + r.w / 2) * T, cy = (r.y + r.h / 2) * T; banner('', '✅ 房間淨空'); SND.shrine(); fxRing(p.x, p.y, 130, 0xffe080, 0.6); drops.push(mk('hp', cx, cy)); for (let i = 0; i < 4; i++) dropGold(cx + rand(-30, 30), cy + rand(-30, 30), irand(5, 10) * (1 + p.floor * 0.25)); if (p.burnT <= 0) p.ember = Math.min(100, p.ember + 20); }
+      if (n === 0) { const cx = (r.x + r.w / 2) * T, cy = (r.y + r.h / 2) * T; banner('', '✅ 房間淨空'); SND.shrine(); fxRing(p.x, p.y, 130, 0xffe080, 0.6); drops.push(mk('hp', cx, cy)); for (let i = 0; i < 4; i++) dropGold(cx + rand(-30, 30), cy + rand(-30, 30), irand(5, 10) * (1 + p.floor * 0.1)); if (p.burnT <= 0) p.ember = Math.min(100, p.ember + 20); }
     }
   }
   if (p.run && !stairs.open && !boss && !prisoner && dist(stairs, p) < 120) tip('key', '樓梯被封印了：打倒 🔑 鑰匙守衛（小地圖上的紫點）才能往下');
@@ -1562,7 +1571,7 @@ function ensureVis(e) {
 }
 // 主角手上的武器與盾牌跟著裝備換
 const WMODEL = { '手弩': 'h_crossbow', '法杖': 'h_staff', '短劍': 'h_dagger', '戰斧': 'h_axe_1handed', '巨劍': 'h_sword_2handed', '釘錘': 'h_axe_1handed', '彎刀': 'w_blade' };
-const SHIELDS = ['h_shield_round', null, 'h_shield_square', 'h_shield_spikes'];
+const SHIELDS = ['h_shield_round', null, 'h_shield_square', 'h_shield_spikes', 'h_shield_spikes'];
 function heroLook() {
   if (!hero) return;
   for (const o of hero.gear || []) o.dispose(); hero.gear = [];
@@ -1571,7 +1580,7 @@ function heroLook() {
   const wm = w && WMODEL[w.kind], sm = a && SHIELDS[a.rarity];
   if (sw) sw.visible = !!w && !wm; if (sh) sh.visible = !!a && !sm;
   if (wm) put(wm, 'handslotr', w); if (sm) put(sm, 'handslotl', a);
-  hero.hand = hero.root.getObjectByName('handslotr'); hero.glow = w && (w.heat || 0) >= 3 ? '#' + HEATC[w.heat].toString(16).padStart(6, '0') : w && w.rarity === 3 ? RAR[3].c : null; hero.glowN = w ? Math.max(1, (w.heat || 0) - 1) : 1;
+  hero.hand = hero.root.getObjectByName('handslotr'); hero.glow = w && (w.heat || 0) >= 3 ? '#' + HEATC[w.heat].toString(16).padStart(6, '0') : w && w.rarity >= 3 ? RAR[w.rarity].c : null; hero.glowN = w ? Math.max(1, (w.heat || 0) - 1) : 1;
 }
 const gateGeo = new THREE.BoxGeometry(4, 3.2, 4), gateMat = new THREE.MeshBasicMaterial({ color: 0xff3a20, transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false });
 function gateFx(r, on) {
@@ -1964,10 +1973,10 @@ function drawOverlay() {
     if (e.elite) { c.font = '12px sans-serif'; c.fillStyle = '#ffd84a'; c.strokeStyle = '#000'; c.lineWidth = 3; const nm = `${e.key ? '🔑 鑰匙守衛' : '菁英 ' + ET[e.type].n}〔${TRAITN[e.trait] || ''}〕`; c.strokeText(nm, x, y - 5); c.fillText(nm, x, y - 5); }
   }
   const label = (x0, y0, h, txt, col) => { if (fps) return; const [x, y, ok] = project(x0, h, y0); if (ok && x > -60 && x < W + 60) { c.font = '13px sans-serif'; c.lineWidth = 3; c.strokeStyle = '#000'; c.strokeText(txt, x, y); c.fillStyle = col; c.fillText(txt, x, y); } };
-  if (board && !p.run) label(board.x, board.y, 2.6, '📜 告示板', '#ffe9b0');
+  if (board && !p.run) { const gift = p.daily && p.daily.list.some(b => b.done && !b.claimed), wk = p.clears && (!p.weekly || !p.weekly.best); label(board.x, board.y, 2.6, `📜 告示板${gift ? ' 🎁 懸賞可領' : wk ? ' 🌀 每週挑戰' : ''}`, gift ? '#7dff8a' : '#ffe9b0'); }
   if (range && !p.run) label(range.x, range.y, 2.2, '🎯 靶場（實驗）', '#ffd890');
   if (campFire && !p.run) label(campFire.x, campFire.y, -0.6, '🔥 篝火', '#ffc890');
-  for (const d of campBlds) { const B = BLD[d.k], L = bl(d.k), lock = B.need && !p.rescued.includes(B.need); label(d.x, d.y, 2.4, `${lock ? '🔒' : B.i} ${B.n}${L ? ' Lv ' + L : lock ? '' : '（可建造）'}`, L ? '#ffd890' : '#aaa'); }
+  for (const d of campBlds) { const B = BLD[d.k], L = bl(d.k), lock = B.need && !p.rescued.includes(B.need), can = canBuild(d.k); label(d.x, d.y, 2.4, `${can ? '❗' : ''}${lock ? '🔒' : B.i} ${B.n}${L ? ' Lv ' + L : lock ? '' : '（可建造）'}`, can ? '#7dff8a' : L ? '#ffd890' : '#aaa'); }
   for (const ch of extraChars) if (ch.ref) label(ch.x, ch.y, -0.4, ch.ref.camp ? ch.ref.who.n + (ch.ref.who.cls ? `（Lv ${(p.heroes[ch.ref.who.cls] || {}).lvl || '新'}）` : '') : ch.ref.freed ? '' : '⛓️ ' + ch.ref.who.n, '#ffd0a0');
   if (merchant && !fps) { const [x, y, ok] = project(merchant.x, 3.3, merchant.y); if (ok && x > -40 && x < W + 40) { c.font = '13px sans-serif'; c.lineWidth = 3; c.strokeStyle = '#000'; c.strokeText('💰 商人', x, y); c.fillStyle = '#ffe9b0'; c.fillText('💰 商人', x, y); } }
   c.font = '13px sans-serif';
@@ -1997,6 +2006,7 @@ function drawMini() {
   if (boss) { mctx.fillStyle = '#f44'; mctx.fillRect(Math.floor(boss.x / T) - 1, Math.floor(boss.y / T) - 1, 2, 2); }
   if (shrine && !shrine.used && explored[Math.floor(shrine.y / T) * MW + Math.floor(shrine.x / T)]) { mctx.fillStyle = '#5ef'; mctx.fillRect(Math.floor(shrine.x / T), Math.floor(shrine.y / T), 2, 2); }
   for (const o of props) if (o.vault && !o.open && explored[Math.floor(o.y / T) * MW + Math.floor(o.x / T)]) { mctx.fillStyle = '#fd4'; mctx.fillRect(Math.floor(o.x / T), Math.floor(o.y / T), 2, 2); }
+  for (const d of campBlds) if (canBuild(d.k)) { mctx.fillStyle = '#7dff8a'; mctx.fillRect(Math.floor(d.x / T) - 1, Math.floor(d.y / T) - 1, 3, 3); } /* 可以蓋或升級的建築 */
   if (merchant) { mctx.fillStyle = '#fff'; mctx.fillRect(Math.floor(merchant.x / T), Math.floor(merchant.y / T), 2, 2); }
   mctx.fillStyle = '#5f5'; mctx.fillRect(Math.floor(p.x / T) - 0.5, Math.floor(p.y / T) - 0.5, 2, 2);
 }
@@ -2041,7 +2051,7 @@ function itemHtml(it) {
   for (const k in it.base) h += fmt(k, iv(it, it.base[k])) + '<br>';
   for (const a of it.aff) h += `<span style="color:${a.ember ? '#ffb040' : '#9cf'}">${a.ember ? '🔥 ' : ''}${fmt(a.k, iv(it, a.v))}</span><br>`;
   if (it.nc && NC[it.nc.k]) h += `<span style="color:#7fe0c0">✦ ${NC[it.nc.k].n}：${NC[it.nc.k].d(it.nc.v)}</span><br>`;
-  if (it.fx && LEGFX[it.fx]) h += `<span style="color:#ff8a3a">★ ${LEGFX[it.fx].d}</span><br>`;
+  if (it.fx && LEGFX[it.fx]) h += `<span style="color:#ff8a3a">★ ${fxText(it)}</span><br>`;
   return h;
 }
 function upgradeOf(it) { const eq = Object.assign({}, p.equip), cur = p.equip[it.slot]; eq[it.slot] = it; return power(calcStats(eq)) - power(p.st) + (it.fx ? 60 : 0) - (cur && cur.fx ? 60 : 0); }
@@ -2049,9 +2059,9 @@ function drawPanel() {
   const st = p.st;
   $('eq').innerHTML = Object.keys(SLOTS).map(s => { const it = p.equip[s]; return `<div class="slot${sel && sel.it === it && it ? ' sel' : ''}" data-eq="${s}" style="border-color:${it ? RAR[it.rarity].c : '#443a55'}">${it ? SLOTS[s].i : ''}<small>${SLOTS[s].n}</small></div>`; }).join('');
   $('stats').innerHTML = Object.keys(STAT).map(k => `${STAT[k][0]}　<b>${Number.isInteger(st[k]) ? st[k] : st[k].toFixed(1)}${STAT[k][1] ? '%' : ''}</b>`).join('<br>');
-  const junk = p.inv.filter(it => upgradeOf(it) <= 0.5 && !it.fx), sum = a => a.reduce((t, it) => t + it.val, 0);
-  $('sellJunk').textContent = `賣掉用不到的（${junk.length} 件 +${sum(junk)} 金）`; $('sellJunk').disabled = !junk.length;
-  $('sellAll').textContent = `全部賣掉（+${sum(p.inv)} 金）`; $('sellAll').disabled = !p.inv.length;
+  const junk = p.inv.filter(it => upgradeOf(it) <= 0.5 && !it.fx), sum = a => a.reduce((t, it) => t + sellOf(it), 0);
+  $('sellJunk').textContent = p.run ? '回營地才能賣' : `賣掉用不到的（${junk.length} 件 +${sum(junk)} 金）`; $('sellJunk').disabled = !!p.run || !junk.length;
+  $('sellAll').textContent = `全部賣掉（+${sum(p.inv)} 金）`; $('sellAll').disabled = !!p.run || !p.inv.length; $('sellAll').style.display = p.run ? 'none' : '';
   $('spTxt').textContent = '點 Q／E／R 把技能放上對應的按鈕';
   $('skl').innerHTML = SKILLS.filter(k => p.skl[k]).map(k => `<div class="row"><span>${SK[k].i} <b>${SK[k].n}</b> Lv ${p.skl[k]}　<span class="dim">${SK[k].d(p.skl[k])}</span></span>${['Q', 'E', 'R'].map((q, i2) => `<button class="btn mini${p.slots[i2] === k ? ' on' : ''}" data-slot="${k}:${i2}">${q}</button>`).join('')}</div>`).join('')
     + `<div class="dim" style="font-size:13px;line-height:1.7;margin-top:4px">${Object.keys(p.mods).map(m => `<span style="color:#ff8a3a">◆${MODS[m][1]}</span>`).concat(Object.keys(p.pas).map(k => `<span style="color:#ffd84a">✨${PAS[k][0]}${p.pas[k] > 1 ? '×' + p.pas[k] : ''}</span>`)).join('　') || '升級時可以選卡片：新技能、變體、被動'}</div>`;
@@ -2072,7 +2082,7 @@ function drawPanel() {
     const hits = (st, w) => Math.ceil(hpE / Math.max(1, st.dmg * w.mult)), dps = (st, w) => st.dmg * w.mult * (1 + st.crit / 100) * (1 + st.aspd / 100) / w.cd;
     const h0 = hits(st, wOld), h1 = hits(ns, wNew), r = dps(ns, wNew) / dps(st, wOld) - 1;
     if (h0 !== h1 || Math.abs(r) > 0.03) h += `<div style="margin-top:4px">${h0 !== h1 ? `<span class="${h1 < h0 ? 'good' : 'bad'}">骷髏兵：${h0} 下 → ${h1} 下</span>　` : ''}${Math.abs(r) > 0.03 ? `<span class="${r > 0 ? 'good' : 'bad'}">清怪速度 ${r > 0 ? '快' : '慢'} ${Math.round(Math.abs(r) * 100)}%</span>` : ''}</div>`;
-    h += `<button class="btn" data-act="equip">裝備</button><button class="btn" data-act="sell">賣出（${it.val} 金）</button>`;
+    h += `<button class="btn" data-act="equip">裝備</button>` + (p.run ? '<button class="btn" data-act="drop">丟掉</button><span class="dim" style="font-size:13px">　回營地才能賣</span>' : `<button class="btn" data-act="sell">賣出（${sellOf(it)} 金）</button>`);
   } else h += `<div class="dim" style="margin-top:6px">裝備中</div>` + (p.inv.length < invCap() ? '<button class="btn" data-act="unequip">卸下</button>' : '');
   d.innerHTML = h;
 }
@@ -2093,7 +2103,8 @@ $('panel').addEventListener('click', ev => {
   else if (ds.act && sel) {
     const it = sel.it, i = p.inv.indexOf(it);
     if (ds.act === 'equip' && i >= 0) { const old = p.equip[it.slot]; p.equip[it.slot] = it; if (old) p.inv[i] = old; else p.inv.splice(i, 1); sfx(500, 0.1, 'triangle', 0.05, 200); }
-    else if (ds.act === 'sell' && i >= 0) { p.inv.splice(i, 1); p.gold += it.val; sfx(1200, 0.05, 'square', 0.03); }
+    else if (ds.act === 'sell' && i >= 0 && !p.run) { p.inv.splice(i, 1); p.gold += sellOf(it); sfx(1200, 0.05, 'square', 0.03); }
+    else if (ds.act === 'drop' && i >= 0) { p.inv.splice(i, 1); sfx(300, 0.08, 'triangle', 0.03, -100); }
     else if (ds.act === 'unequip' && p.inv.length < invCap()) { p.equip[it.slot] = null; p.inv.push(it); }
     sel = null; refresh(); heroLook();
   }
@@ -2105,7 +2116,7 @@ function openBoard() {
   if (!p.board || !p.board.length) rollBoard();
   dailyCheck(); weekCheck();
   const R0 = bountyReward(), wr = weekRule(), dg = p.danger || 0, easy = p.lvl >= recLv(p.tier, dg) + 4;
-  const dh = `<div class="row" style="background:#2a1a12;border-radius:10px;padding:6px 10px"><span>⚠️ <b>危險度 ${dg}</b>　<span class="dim">${dg ? `敵人 +${dg * 2} 級、掉寶更好、材料 +${dg * 15}%` : '想更刺激就往上調'}</span>${easy ? '<br><span class="good">你比建議等級高很多，試試提高危險度</span>' : ''}</span><button class="btn mini" data-dg="-1" ${dg > 0 ? '' : 'disabled'}>－</button><button class="btn mini" data-dg="1" ${dg < 10 ? '' : 'disabled'}>＋</button></div>`;
+  const dh = `<div class="row" style="background:#2a1a12;border-radius:10px;padding:6px 10px"><span>⚠️ <b>危險度 ${dg}</b>　<span class="dim">${dg ? `敵人 +${dg * 2} 級、傷害 +${dg * 8}%；傳說機率 ×${(1 + dg * 0.25).toFixed(2)}、材料 +${dg * 15}%` : '想更刺激就往上調'}${dg >= 5 ? '；<b style="color:#ff4a3a">會掉 🔥餘燼裝備</b>' : '；危險度 5 起會掉 🔥餘燼裝備'}</span>${easy ? '<br><span class="good">你比建議等級高很多，試試提高危險度</span>' : ''}</span><button class="btn mini" data-dg="-1" ${dg > 0 ? '' : 'disabled'}>－</button><button class="btn mini" data-dg="1" ${dg < 10 ? '' : 'disabled'}>＋</button></div>`;
   const bh = `<h2 style="margin-top:4px">📜 今日懸賞 <span class="dim">每天換一批・獎勵 💎 ${R0.cry}、🦴 ${R0.bone}、💰 ${R0.gold}</span></h2>` + p.daily.list.map((b, i) => `<div class="row"><span>${b.claimed ? '✅' : b.done ? '🎁' : '▫️'} ${BOUNTY[b.k].d(b)}　<span class="dim">${b.n} / ${b.need}</span></span>${b.done && !b.claimed ? `<button class="btn" data-claim="${i}">領獎</button>` : ''}</div>`).join('')
     + (p.clears ? `<h2>🌀 每週挑戰：${wr.n} <span class="dim">${wr.d}</span></h2><div class="row"><span>無盡往下，能走多深就走多深；倒下不扣金幣。每 3 層 💎 +2<br><span class="dim">本週最佳：完成 ${p.weekly.best} 層</span></span><button class="btn" data-week="1">挑戰</button></div>` : '') + '<h2>遠征</h2>';
   $('boardList').innerHTML = dh + bh + p.board.map((o, i) => {
@@ -2143,7 +2154,7 @@ function drawBld() {
   } else h += '<div class="row dim"><span>已經是最高等級</span></div>';
   if (L) h += `<div class="row"><span class="good">目前：${B.d(L)}</span></div>`;
   if (k === 'train' && L) { h += `<h2>訓練 <span class="dim">永久提升，上限 Lv ${trainCap()}</span></h2>`; for (const q in TRAIN) h += `<div class="row"><span><b>${TRAIN[q][0]}</b> Lv ${p.train[q]}　<span class="dim">${TRAIN[q][1]}</span></span>${p.train[q] >= trainCap() ? '<span class="dim">到上限</span>' : btn(`data-train="${q}"`, trainCost(q))}</div>`; }
-  if (k === 'smith' && L) { h += `<h2>熔鑄 <span class="dim">直接提升一級熱度，上限 ${HEAT[forgeCap()]}；戰鬥本身也會讓裝備變熱</span></h2>`; for (const q in SLOTS) { const it = p.equip[q]; h += it ? `<div class="row"><span>${SLOTS[q].i} <b style="color:${RAR[it.rarity].c}">${it.name}</b>　${heatTag(it)}</span>${(it.heat || 0) >= forgeCap() ? '<span class="dim">到上限</span>' : btn(`data-upg="${q}"`, forgeCost(it))}</div>` : `<div class="row dim"><span>${SLOTS[q].i} ${SLOTS[q].n}：沒有裝備</span></div>`; } }
+  if (k === 'smith' && L) { h += `<h2>熔鑄 <span class="dim">花 💎 結晶直接提升一級熱度，上限 ${HEAT[forgeCap()]}；戰鬥本身也會讓裝備變熱</span></h2>`; for (const q in SLOTS) { const it = p.equip[q]; h += it ? `<div class="row"><span>${SLOTS[q].i} <b style="color:${RAR[it.rarity].c}">${it.name}</b>　${heatTag(it)}</span>${(it.heat || 0) >= forgeCap() ? '<span class="dim">到上限</span>' : `<button class="btn" data-upg="${q}" ${m.cry >= forgeCost(it) ? '' : 'disabled'}>💎 ${forgeCost(it)}</button>`}</div>` : `<div class="row dim"><span>${SLOTS[q].i} ${SLOTS[q].n}：沒有裝備</span></div>`; } }
   if (k === 'altar' && L) h += `<h2>重選升級卡</h2><div class="row"><span>🔄 退回所有技能、變體、被動，重新選 ${p.lvl - 1} 張卡</span>${btn('data-respec="1"', respecCost(), p.lvl > 1)}</div>`;
   if (k === 'store') h += `<div class="row dim"><span>背包目前 ${p.inv.length} / ${invCap()} 格</span></div>`;
   if (k === 'guild' && L) h += `<div class="row dim"><span>這次回營地還能重抽告示板 ${p.rerolls || 0} 次</span></div>`;
@@ -2162,7 +2173,7 @@ $('bld').addEventListener('click', ev => {
       floatText(p.x, p.y, `${BLD[bldK].n} Lv ${L + 1}！`, '#ffcf6b', 20); paused = true;
     }
   }
-  else if (ds.upg) { const it = p.equip[ds.upg]; if (it && (it.heat || 0) < forgeCap() && pay(forgeCost(it))) { it.heat = (it.heat || 0) + 1; it.hx = 0; if (it.heat === 5) emberAffix(it); SND.burn(); refresh(); heroLook(); } }
+  else if (ds.upg) { const it = p.equip[ds.upg]; if (it && (it.heat || 0) < forgeCap() && p.mats.cry >= forgeCost(it) && (p.mats.cry -= forgeCost(it), true)) { it.heat = (it.heat || 0) + 1; it.hx = 0; if (it.heat === 5) emberAffix(it); SND.burn(); refresh(); heroLook(); } }
   else if (ds.respec) { if (pay(respecCost())) { p.skl = { fire: 1 }; p.slots = ['fire', null, null]; p.mods = {}; p.pas = {}; p.picks = p.lvl - 1; refresh(); closeBld(); return; } }
   else if (ds.train) { if (p.train[ds.train] < trainCap() && pay(trainCost(ds.train))) { p.train[ds.train]++; SND.level(); refresh(); } }
   drawBld();
@@ -2191,7 +2202,7 @@ $('store').addEventListener('click', ev => {
   else if (ds.item !== undefined) { const it = stock[+ds.item]; if (it && p.inv.length < invCap() && pay(priceOf(it))) { p.inv.push(it); stock[+ds.item] = null; } }
   else if (ds.box) {
     if (p.inv.length < invCap() && pay(boxCost())) {
-      const r = Math.random(), it = makeItem(p.floor, r < 0.07 ? 3 : r < 0.3 ? 2 : r < 0.75 ? 1 : 0); p.inv.push(it);
+      const r = Math.random(), it = makeItem(p.floor, r < 0.03 ? 3 : r < 0.3 ? 2 : r < 0.75 ? 1 : 0); p.inv.push(it);
       boxMsg = `開出了：<b style="color:${RAR[it.rarity].c}">${it.name}</b>${upgradeOf(it) > 0.5 ? ' <span class="good">▲</span>' : ''}`; if (it.rarity >= 2) SND.level();
     }
   }
@@ -2200,12 +2211,12 @@ $('store').addEventListener('click', ev => {
   drawStore();
 });
 $('storeClose').onclick = closeStore;
-const sellIf = f => { let g = 0; p.inv = p.inv.filter(it => !f(it) || (g += it.val, false)); p.gold += g; sel = null; if (g) SND.coin(); drawPanel(); };
+const sellIf = f => { if (p.run) return; let g = 0; p.inv = p.inv.filter(it => !f(it) || (g += sellOf(it), false)); p.gold += g; sel = null; if (g) SND.coin(); drawPanel(); };
 function openRec() {
   togglePanel(false); paused = true;
   const got = ACH.filter(a => p.ach[a[0]]).length, cx = Object.keys(LEGFX).filter(k => p.codex[k]).length;
   $('recBody').innerHTML = `<h2>🏆 成就 <span class="dim">${got} / ${ACH.length}</span></h2>` + ACH.map(([id, d, , cry, g]) => `<div class="row"><span>${p.ach[id] ? '✅' : '▫️'} ${d}</span><span class="dim" style="flex:none">💎${cry} 💰${g}${COS_UNLOCK[id] ? ' ✨' + COS_NAME(COS_UNLOCK[id]) : ''}</span></div>`).join('')
-    + `<h2>📖 傳說圖鑑 <span class="dim">${cx} / ${Object.keys(LEGFX).length}・每收集一種 💎 +1</span></h2>` + Object.keys(LEGFX).map(k => `<div class="row"><span>${p.codex[k] ? `<b style="color:#ff8a3a">${LEGFX[k].n}</b>（${SLOTS[LEGFX[k].slot].n}）<span class="dim">${LEGFX[k].d}</span>` : `<span class="dim">？？？（${SLOTS[LEGFX[k].slot].n}）</span>`}</span></div>`).join('')
+    + `<h2>📖 傳說圖鑑 <span class="dim">${cx} / ${Object.keys(LEGFX).length}・每收集一種 💎 +1</span></h2>` + Object.keys(LEGFX).map(k => `<div class="row"><span>${p.codex[k] ? `<b style="color:#ff8a3a">${LEGFX[k].n}</b>（${SLOTS[LEGFX[k].slot].n}）<span class="dim">${LEGFX[k].d((LEGFX[k].r[0] + LEGFX[k].r[1]) / 2) + '（數值有範圍）'}</span>` : `<span class="dim">？？？（${SLOTS[LEGFX[k].slot].n}）</span>`}</span></div>`).join('')
     + `<h2>📊 紀錄</h2><div class="row dim"><span>擊殺 ${p.kills}・遠征完成 ${p.clears || 0} 趟・倒下 ${p.deaths} 次・懸賞 ${p.stat.bounty || 0} 個・本週挑戰完成 ${(p.weekly && p.weekly.best) || 0} 層</span></div>`;
   $('rec').classList.add('on');
 }
@@ -2216,7 +2227,7 @@ function exportText(full) {
   const st = p.st, n1 = v => Number.isInteger(v) ? v : (+v).toFixed(1), L = [];
   const itemLine = it => it ? `${it.name}［${RAR[it.rarity].n}${it.slot === 'weapon' ? '・' + wtOf(it).n : ''}・Lv${it.lvl}・${HEAT[it.heat || 0]}${it.heat < 5 ? `(${it.hx || 0}/${HEATN[it.heat || 0]})` : ''}］ `
     + [...Object.keys(it.base).map(k => fmt(k, iv(it, it.base[k]))), ...it.aff.map(a => (a.ember ? '🔥' : '') + fmt(a.k, iv(it, a.v)))].join('、')
-    + (it.fx ? `　★${LEGFX[it.fx].n}` : '') + (it.nc ? `　✦${NC[it.nc.k].n}${it.nc.v ? ' ' + it.nc.v : ''}` : '') : '（空）';
+    + (it.fx ? `　★${LEGFX[it.fx].n} ${Math.round((it.fxq === undefined ? 0.5 : it.fxq) * 100)}%` : '') + (it.nc ? `　✦${NC[it.nc.k].n}${it.nc.v ? ' ' + it.nc.v : ''}` : '') : '（空）';
   const rec = recLv(p.tier, p.danger || 0);
   L.push(`【餘燼地城 狀態匯出】${new Date().toLocaleString('zh-TW')}`);
   L.push(`裝置：${touchMode ? '觸控' : '滑鼠鍵盤'} ${W}×${H}・畫質 ${quality}・總遊玩 ${Math.round((p.stat.play || 0) / 60)} 分鐘`);
@@ -2234,8 +2245,8 @@ function exportText(full) {
   L.push(`\n■ 技能與升級卡`);
   L.push(`技能欄：${p.slots.map(k => k ? `${SK[k].n} Lv${p.skl[k]}` : '空').join('／')}・已學：${SKILLS.filter(k => p.skl[k]).map(k => `${SK[k].n}${p.skl[k]}`).join('、')}`);
   L.push(`變體：${Object.keys(p.mods).map(m => MODS[m][1]).join('、') || '無'}・被動：${Object.keys(p.pas).map(k => PAS[k][0] + '×' + p.pas[k]).join('、') || '無'}・未選的卡 ${p.picks}`);
-  const rc = [0, 0, 0, 0]; for (const it of p.inv) rc[it.rarity]++;
-  L.push(`\n■ 背包 ${p.inv.length}/${invCap()}（普通 ${rc[0]}・精良 ${rc[1]}・稀有 ${rc[2]}・傳說 ${rc[3]}）`);
+  const rc = [0, 0, 0, 0, 0]; for (const it of p.inv) rc[it.rarity]++;
+  L.push(`\n■ 背包 ${p.inv.length}/${invCap()}（普通 ${rc[0]}・精良 ${rc[1]}・稀有 ${rc[2]}・傳說 ${rc[3]}・餘燼 ${rc[4]}）`);
   for (const it of p.inv.filter(it => it.rarity >= 2)) L.push('　' + itemLine(it));
   L.push(`\n■ 收集`);
   L.push(`傳說圖鑑 ${Object.keys(p.codex).length}/${Object.keys(LEGFX).length}・成就 ${ACH.filter(a => p.ach[a[0]]).length}/${ACH.length}・引爆餘燼 ${p.stat.burn || 0} 次・懸賞完成 ${p.stat.bounty || 0}・本週挑戰 ${(p.weekly && p.weekly.best) || 0} 層・靶場最高 ${p.stat.range || 0}`);
@@ -2534,7 +2545,7 @@ loadAssets().then(() => {
 
 // 測試用
 window.__game = {
-  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get merchant() { return merchant; }, get renderer() { return renderer; }, exportText, openExport, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
+  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get merchant() { return merchant; }, rollRarity, get renderer() { return renderer; }, exportText, openExport, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
   get quality() { return quality; }, setQuality(v) { autoQ = false; quality = v; applyQuality(); },
   update, descend, cast, keys, mouse, spawnEnemy, hurtPlayer, dropItem, makeItem, genFloor, setCam(i) { camMode = i; camReady = false; }, info: () => renderer.info.render,
 };
