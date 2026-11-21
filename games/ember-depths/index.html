@@ -53,6 +53,7 @@
     #sk-ember.burning { filter: none; border-color: #ffd84a; }
     @keyframes pulse { to { transform: scale(1.12); } }
     #emberBar { height: 6px; } #emberBar i { background: linear-gradient(90deg, #a03010, #ff8a3a); }
+    #torchBar { height: 5px; margin-top: 2px; } #torchBar i { background: linear-gradient(90deg, #6a4a20, #ffe0a0); } #torchBar.low i { background: #8060ff; animation: tblink 0.8s infinite alternate; } @keyframes tblink { to { opacity: 0.35; } }
     .card { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 10px; border-radius: 14px; border: 2px solid; background: #221a2e; color: #eee; font-family: inherit; cursor: pointer; text-align: center; }
     .card:active { transform: scale(.96); } .card i { font-style: normal; font-size: 40px; } .card b { font-size: 17px; } .card span { font-size: 13px; color: #cbb; line-height: 1.5; } .card small { font-size: 12px; letter-spacing: 2px; }
     #cardRow { display: flex; gap: 10px; margin-top: 12px; }
@@ -192,6 +193,7 @@
     <div class="bar" id="mpBar"><i></i><span></span></div>
     <div class="bar" id="xpBar"><i></i></div>
     <div class="bar" id="emberBar"><i></i></div>
+    <div class="bar" id="torchBar" title="火光"><i></i></div>
   </div>
 
   <div id="skills" class="hud">
