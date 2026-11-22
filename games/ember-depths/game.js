@@ -295,6 +295,7 @@ const runLen = t => t === 1 ? 2 : 3;
 // 危險度：每一級讓敵人 +2 級，掉寶與材料變好
 const effFloor = r => (r.tier - 1) * 4 + r.depth + (r.danger || 0) * 2;
 const recLv = (tier, dg = 0) => 1 + (tier - 1) * 4 + dg * 2;
+const overLv = () => p.run ? Math.max(0, p.lvl - (recLv(p.run.tier, p.run.danger || 0) + 2)) : 0; // 比建議高 2 級以上，每多 1 級怪 +10% 生命、+8% 傷害
 const mapName = t => PALS[(t - 1) % PALS.length].name;
 // ---------- 回訪內容 ----------
 // 以日期當種子，同一天每次打開都是同一組懸賞
@@ -510,6 +511,7 @@ function genCamp(keep) {
   blk = new Array(MW * MH).fill(null); decos = []; fluff = []; traps = []; shrine = null; booms = []; braziers = []; p.phoenixUsed = false; p.barbUsed = false;
   const put = (tx, ty, model, rr, sc = 1, rot = 0) => { const d = { x: (tx + 0.5) * T, y: (ty + 0.5) * T, r: rr, model, s: sc, rot }; blk[ty * MW + tx] = d; decos.push(d); return d; };
   campFire = put(r.cx, r.cy, null, 22);
+  if (p.inv.filter(it => it.rarity >= 3 && !it.set).length >= 3) setTimeout(() => tip('sacrifice', '背包裡的傳說用不到？到 🎒 背包或篝火「獻祭」換 💎 結晶，或把熱度傳給身上的裝備'), 1500);
   merchant = put(r.x + 2, r.y + 2, null, 10);
   board = put(r.x + r.w - 3, r.y + 1, 'table_medium', 14, 1.1);
   range = put(r.cx, r.y + r.h - 1, 'stool', 10, 1.3); fluff.push({ model: 'h_crossbow', x: range.x, y: range.y, h: 0.7, s: 1.4, rot: 0.4 });
@@ -573,9 +575,9 @@ const SETS = {
 const setCount = eq => { const c = {}; for (const k in eq) { const it = eq[k]; if (it && it.set) c[it.set] = (c[it.set] || 0) + 1; } return c; };
 const setN = k => (p.sets && p.sets[k]) || 0;
 const icol = it => it.set ? SETS[it.set].c : RAR[it.rarity].c;
-function makeSetItem(k, lvl) {
+function makeSetItem(k, lvl, want) {
   const S = SETS[k], have = sl => [p.equip[sl], ...p.inv].some(it => it && it.set === k && it.slot === sl), miss = S.slots.filter(sl => !have(sl));
-  const it = makeItem(lvl, 3, miss.length && Math.random() < 0.7 ? pick(miss) : pick(S.slots));
+  const it = makeItem(lvl, 3, want || (miss.length && Math.random() < 0.7 ? pick(miss) : pick(S.slots)));
   delete it.fx; delete it.fxq; it.set = k; it.name = `${S.n}・${it.kind}`; return it;
 }
 const STAT = {
@@ -584,8 +586,8 @@ const STAT = {
 };
 const AFF = {
   hp: l => 8 + l * 4, mp: l => 5 + l * 2, dmg: l => 1 + l * 0.8, armor: l => 3 + l * 1.5,
-  crit: l => 3 + Math.min(l, 10) * 0.4, aspd: l => 5 + Math.min(l, 10) * 0.6, move: l => 4 + Math.min(l, 8) * 0.4,
-  ls: l => 1 + Math.min(l, 8) * 0.25, hpr: l => 0.5 + l * 0.25, mpr: l => 0.5 + l * 0.15,
+  crit: l => 3 + Math.min(l, 10) * 0.4, aspd: l => 3 + Math.min(l, 10) * 0.4, move: l => 4 + Math.min(l, 8) * 0.4,
+  ls: l => 1 + Math.min(l, 8) * 0.25, hpr: l => 0.5 + l * 0.25, mpr: l => 0.4 + Math.min(l, 20) * 0.1,
 };
 // 武器類型決定普攻的打法
 const WT = {
@@ -655,7 +657,8 @@ function makeItem(lvl, rarity, slot, kind) {
 const HEAT = ['冷鐵', '暗紅', '赤紅', '橙熱', '金焰', '白熾'];
 const HEATC = [0x000000, 0x8a1a08, 0xd23010, 0xff6a10, 0xffb030, 0xfff0c8], HEATK = [0, 0.45, 0.8, 1.2, 1.6, 2.1];
 const HEATN = [90, 210, 420, 770, 1260]; // 升到下一級要的「戰鬥值」（一般擊殺 1、菁英 3、首領 15）
-const iv = (it, v) => Math.round(v * (1 + 0.12 * (it.heat || 0)) * 10) / 10;
+const PCTK = ['crit', 'aspd', 'move', 'ls', 'hpr', 'mpr']; // 熱度對百分比、回復類只放大一半
+const iv = (it, v, k) => Math.round(v * (1 + (PCTK.includes(k) ? 0.06 : 0.12) * (it.heat || 0)) * 10) / 10;
 const forgeCost = it => Math.ceil(((it.heat || 0) + 1) * 4 * (bl('smith') >= 3 ? 0.8 : 1)); // 熔鑄花 💎 結晶
 const forgeCap = () => [0, 2, 4, 5][bl('smith')];
 function heatUp(it, n) { // 回傳是否升級
@@ -685,7 +688,14 @@ function rollNC() { const k = pick(Object.keys(NC)); return { k, v: NC[k].v ? NC
 const ncv = k => (p.nc && p.nc[k]) || 0;
 const TRAIN = { hp: ['體魄', '生命 +12'], dmg: ['力量', '攻擊 +2'], mp: ['心智', '魔力 +10、每秒回魔 +0.3'] };
 const trainCost = k => Math.round(80 * Math.pow(1.3, p.train[k]));
-const boxCost = () => Math.round((80 + p.floor * 40) * shopK());
+const gLv = () => Math.max(p.floor, p.lvl);
+const boxCost = () => Math.round((150 + gLv() * 45) * shopK());
+function gambleItem(slot) {
+  const r = Math.random(), dg = p.danger || 0, sets = Object.keys(SETS).filter(k => SETS[k].boss < p.tier && SETS[k].slots.includes(slot));
+  if (r < 0.025 && sets.length) return makeSetItem(pick(sets), gLv(), slot);
+  const q = r < 0.025 + (dg >= 5 ? 0.015 : 0) ? 4 : r < 0.1 ? 3 : r < 0.45 ? 2 : 1;
+  return makeItem(gLv(), q, slot);
+}
 const respecCost = () => Math.round(40 * p.lvl * (bl('altar') >= 3 ? 0.5 : 1));
 const priceOf = it => Math.round(it.val * 5 * shopK());
 const sellOf = it => Math.max(1, Math.round(it.val * 0.4)); // 賣價只有買價的一小部分
@@ -693,7 +703,7 @@ function calcStats(eq) {
   eq = eq || p.equip; const L = p.lvl;
   const tr = p.train || { hp: 0, dmg: 0, mp: 0 };
   const s = { dmg: 10 + 2 * (L - 1) + tr.dmg * 2, hp: 120 + 12 * (L - 1) + tr.hp * 12, mp: 50 + 5 * (L - 1) + tr.mp * 10, armor: 0, crit: 5, aspd: 0, move: 0, ls: 0, hpr: 1, mpr: 3 + tr.mp * 0.3 };
-  for (const k in eq) { const it = eq[k]; if (!it) continue; for (const b in it.base) s[b] += iv(it, it.base[b]); for (const a of it.aff) s[a.k] += iv(it, a.v); }
+  for (const k in eq) { const it = eq[k]; if (!it) continue; for (const b in it.base) s[b] += iv(it, it.base[b], b); for (const a of it.aff) s[a.k] += iv(it, a.v, a.k); }
   { const sc = setCount(eq); if (sc.bog >= 2) s.ls += 3; if (sc.core >= 2) s.dmg *= 1.1; if (sc.frost >= 2) s.move += 8; if (sc.void >= 2) s.crit += 6; }
   if (p && p.cls) { clsOf().st(s); if (!inClass(eq.weapon)) s.dmg *= 0.7; }
   const pa = p.pas || {};
@@ -704,7 +714,7 @@ function calcStats(eq) {
   s.dmg *= 1 + (pa.power || 0) * 0.12; s.hp *= 1 + (pa.vigor || 0) * 0.15; s.mp *= 1 + (pa.mana || 0) * 0.25;
   for (const k of ['dmg', 'hp', 'mp', 'armor']) s[k] = Math.round(s[k]);
   for (const k of ['crit', 'aspd', 'move', 'ls', 'hpr', 'mpr']) s[k] = Math.round(s[k] * 10) / 10;
-  s.crit = Math.min(s.crit, 75); s.aspd = Math.min(s.aspd, 100); s.move = Math.min(s.move, 50); s.ls = Math.min(s.ls, 15);
+  s.crit = Math.min(s.crit, 75); s.aspd = Math.min(s.aspd, 60); s.mpr = Math.min(s.mpr, 12); s.hpr = Math.min(s.hpr, Math.round(s.hp * 0.015 * 10) / 10); s.move = Math.min(s.move, 50); s.ls = Math.min(s.ls, 15);
   if (p.buff && p.buff.k === 'rage') s.dmg = Math.round(s.dmg * 1.5);
   if (p.buff && p.buff.k === 'haste') { s.move += 35; s.aspd += 35; }
   return s;
@@ -762,6 +772,7 @@ function rollCards() {
   for (const m in MODS) { const sk = MODS[m][0]; if (!p.mods[m] && (sk === 'dash' || p.skl[sk])) pool.push({ t: 'mod', k: m, w: sk === 'dash' || p.slots.includes(sk) ? 3 : 0.7 }); }
   for (const k in PAS) if ((p.pas[k] || 0) < PAS[k][2] && (!PAS[k][3] || SKILLS.some(q => p.skl[q] && SKTAG[q] === PAS[k][3]))) pool.push({ t: 'pas', k, w: PAS[k][3] ? 2.6 : 1.8 });
   const out = [];
+  if (p.slots.includes(null)) { const ls = pool.filter(c => c.t === 'learn'); if (ls.length) { const c = pick(ls); out.push(c); pool.splice(pool.indexOf(c), 1); } } /* 技能欄有空位：一定有一張新技能 */
   while (out.length < 3 && pool.length) { let t = Math.random() * pool.reduce((a, c) => a + c.w, 0), i = 0; while ((t -= pool[i].w) > 0) i++; out.push(pool.splice(i, 1)[0]); }
   return out;
 }
@@ -848,7 +859,7 @@ function rollType(f) {
   return 'minion';
 }
 function spawnEnemy(type, x, y, elite) {
-  const d = ET[type], f = p.floor, hs = (1 + 0.42 * (f - 1)) * diff().hp, ds = (1.15 + 0.34 * (f - 1)) * diff().dmg * (1 + 0.08 * ((p.run && p.run.danger) || 0));
+  const d = ET[type], f = p.floor, ov = overLv(), hs = (1 + 0.42 * (f - 1)) * diff().hp * (1 + 0.1 * ov), ds = (1.15 + 0.34 * (f - 1)) * diff().dmg * (1 + 0.08 * ((p.run && p.run.danger) || 0)) * (1 + 0.08 * ov);
   const e = {
     type, x, y, r: d.r * (elite ? 1.25 : 1), hp: d.hp * hs * (elite ? 3.2 : 1), dmg: d.dmg * ds * (elite ? 1.4 : 1),
     spd: d.spd * rand(0.9, 1.1), xp: d.xp * (1 + 0.2 * (f - 1)) * (elite ? 4 : 1), elite: !!elite,
@@ -2145,8 +2156,8 @@ function itemHtml(it) {
   let h = `<b style="color:${icol(it)}">${it.name}</b> <span class="dim">${it.set ? '套裝' : RAR[it.rarity].n}${SLOTS[it.slot].n}・Lv ${it.lvl}</span><br>`;
   h += heatTag(it) + ((it.heat || 0) < 5 ? `<span class="dim">　再戰鬥 ${HEATN[it.heat || 0] - (it.hx || 0)} 點升溫</span>` : '<span class="dim">　已達白熾</span>') + '<br>';
   if (it.slot === 'weapon') { const w = wtOf(it); h += `<span style="color:#e9c14a">${w.n}：${w.desc}</span><br>` + (inClass(it) ? `<span class="good">✓ ${clsOf().n}的本職武器</span><br>` : `<span class="bad">⚠ ${clsOf().n}不擅長${w.n}：傷害 -30%</span><br>`); }
-  for (const k in it.base) h += fmt(k, iv(it, it.base[k])) + '<br>';
-  for (const a of it.aff) h += `<span style="color:${a.ember ? '#ffb040' : '#9cf'}">${a.ember ? '🔥 ' : ''}${fmt(a.k, iv(it, a.v))}</span><br>`;
+  for (const k in it.base) h += fmt(k, iv(it, it.base[k], k)) + '<br>';
+  for (const a of it.aff) h += `<span style="color:${a.ember ? '#ffb040' : '#9cf'}">${a.ember ? '🔥 ' : ''}${fmt(a.k, iv(it, a.v, a.k))}</span><br>`;
   if (it.nc && NC[it.nc.k]) h += `<span style="color:#7fe0c0">✦ ${NC[it.nc.k].n}：${NC[it.nc.k].d(it.nc.v)}</span><br>`;
   if (it.fx && LEGFX[it.fx]) h += `<span style="color:#ff8a3a">★ ${fxText(it)}</span><br>`;
   if (it.set) { const S = SETS[it.set], n = setN(it.set); h += `<span style="color:${S.c}">◆ ${S.n}（身上 ${n}/3）</span><br><span class="${n >= 2 ? 'good' : 'dim'}">　2 件：${S.b2}</span><br><span class="${n >= 3 ? 'good' : 'dim'}">　3 件：${S.b3}</span><br><span class="dim">　部位：${S.slots.map(q => SLOTS[q].n).join('、')}｜只有 ${BOSSN[S.boss]} 會掉</span><br>`; }
@@ -2159,6 +2170,7 @@ function drawPanel() {
   $('stats').innerHTML = Object.keys(STAT).map(k => `${STAT[k][0]}　<b>${Number.isInteger(st[k]) ? st[k] : st[k].toFixed(1)}${STAT[k][1] ? '%' : ''}</b>`).join('<br>') + Object.keys(p.sets || {}).map(k => `<br><span style="color:${SETS[k].c}">◆ ${SETS[k].n} ${p.sets[k]}/3</span>`).join('');
   const junk = p.inv.filter(it => upgradeOf(it) <= 0.5 && !it.fx && !it.set), sum = a => a.reduce((t, it) => t + sellOf(it), 0);
   $('sellJunk').textContent = p.run ? '回營地才能賣' : `賣掉用不到的（${junk.length} 件 +${sum(junk)} 金）`; $('sellJunk').disabled = !!p.run || !junk.length;
+  { const jl = p.inv.filter(junkLeg); $('sacJunk').textContent = p.run ? '回營地才能獻祭' : `🔥 獻祭用不到的傳說（${jl.length} 件 +💎${jl.reduce((t, it) => t + sacCry(it), 0)}）`; $('sacJunk').disabled = !!p.run || !jl.length; $('sacJunk').style.display = p.run ? 'none' : ''; $('sacJunk').dataset.ok = ''; }
   $('sellAll').textContent = `全部賣掉（+${sum(p.inv)} 金）`; $('sellAll').disabled = !!p.run || !p.inv.length; $('sellAll').style.display = p.run ? 'none' : '';
   $('spTxt').textContent = '點 Q／E／R 把技能放上對應的按鈕';
   $('skl').innerHTML = SKILLS.filter(k => p.skl[k]).map(k => `<div class="row"><span>${SK[k].i} <b>${SK[k].n}</b> Lv ${p.skl[k]}　<span class="dim">${SK[k].d(p.skl[k])}</span></span>${['Q', 'E', 'R'].map((q, i2) => `<button class="btn mini${p.slots[i2] === k ? ' on' : ''}" data-slot="${k}:${i2}">${q}</button>`).join('')}</div>`).join('')
@@ -2220,8 +2232,8 @@ function openBoard() {
   const bh = `<h2 style="margin-top:4px">📜 今日懸賞 <span class="dim">每天換一批・獎勵 💎 ${R0.cry}、🦴 ${R0.bone}、💰 ${R0.gold}</span></h2>` + p.daily.list.map((b, i) => `<div class="row"><span>${b.claimed ? '✅' : b.done ? '🎁' : '▫️'} ${BOUNTY[b.k].d(b)}　<span class="dim">${b.n} / ${b.need}</span></span>${b.done && !b.claimed ? `<button class="btn" data-claim="${i}">領獎</button>` : ''}</div>`).join('')
     + (p.clears ? `<h2>🌀 每週挑戰：${wr.n} <span class="dim">${wr.d}</span></h2><div class="row"><span>無盡往下，能走多深就走多深；倒下不扣金幣。每 3 層 💎 +2<br><span class="dim">本週最佳：完成 ${p.weekly.best} 層</span></span><button class="btn" data-week="1">挑戰</button></div>` : '') + '<h2>遠征</h2>';
   $('boardList').innerHTML = dh + bh + p.board.map((o, i) => {
-    const rec = recLv(o.tier, p.danger || 0), warn = p.lvl + 1 < rec ? ` <span class="bad">（建議 Lv ${rec}）</span>` : ` <span class="dim">建議 Lv ${rec}</span>`;
-    return `<div class="row"><span><b style="color:#ffcf6b">${mapName(o.tier)}</b> 等級 ${o.tier}${warn}<br>${o.goal === 'boss' ? `💀 獵首領：${BOSSN[(o.tier - 1) % BOSSN.length]}${(st => st ? `<span style="color:${st.c}">（掉◆${st.n}）</span>` : '')(Object.values(SETS).find(q => q.boss === (o.tier - 1) % BOSSN.length))}${o.tier === p.tier ? '　<span class="good">擊敗可解鎖下一區</span>' : ''}` : `⛓️ 救人：${o.who}（救回後會住進營地）`}　<span class="dim">${runLen(o.tier)} 層</span>${RUNMOD[o.mod][0] ? `<br><span style="color:#ff8a3a">◆ ${RUNMOD[o.mod][0]}：${RUNMOD[o.mod][1]}</span>` : ''}</span><button class="btn" data-run="${i}">出發</button></div>`;
+    const rec = recLv(o.tier, p.danger || 0), warn = p.lvl + 1 < rec ? ` <span class="bad">（建議 Lv ${rec}）</span>` : p.lvl > rec + 2 ? ` <span style="color:#ffb060">建議 Lv ${rec}・怪會跟你的等級變強</span>` : ` <span class="dim">建議 Lv ${rec}</span>`;
+    return `<div class="row"><span><b style="color:#ffcf6b">${mapName(o.tier)}</b> 等級 ${o.tier}${warn}<br>${o.goal === 'boss' ? `💀 獵首領：${BOSSN[(o.tier - 1) % BOSSN.length]}${(st => st ? `<span style="color:${st.c}">（掉◆${st.n}）</span>` : '')(Object.values(SETS).find(q => q.boss === (o.tier - 1) % BOSSN.length))}${o.tier === p.tier ? '　<span class="good">擊敗可解鎖下一區</span>' : ''}` : `⛓️ 救人：${o.who}${(rq => rq ? `<br><span class="good">救回後解鎖：${rq.b ? BLD[rq.b].i + ' ' + BLD[rq.b].n : '🧑 新角色「' + CLS[rq.cls].n + '」'}</span>` : '')(RESCUE.find(q => q.n === o.who))}`}　<span class="dim">${runLen(o.tier)} 層</span>${RUNMOD[o.mod][0] ? `<br><span style="color:#ff8a3a">◆ ${RUNMOD[o.mod][0]}：${RUNMOD[o.mod][1]}</span>` : ''}</span><button class="btn" data-run="${i}">出發</button></div>`;
   }).join('') + (bl('guild') ? `<div class="row"><span class="dim">🏹 獵人公會：換一批遠征</span><button class="btn" data-reroll="1" ${p.rerolls > 0 ? '' : 'disabled'}>🔄 重抽（剩 ${p.rerolls || 0} 次）</button></div>` : '');
   $('board').classList.add('on');
 }
@@ -2234,6 +2246,7 @@ let bldK = null;
 function openBld(k) { if (k === 'cos') { bldK = 'cos'; paused = true; joy.id = null; atkHeld = false; mouse.l = mouse.r = false; $('bld').classList.add('on'); return drawBld(); } if (state !== 'play') return; bldK = k; paused = true; joy.id = null; atkHeld = false; mouse.l = mouse.r = false; $('bld').classList.add('on'); drawBld(); }
 function closeBld() { $('bld').classList.remove('on'); paused = false; bldK = null; refresh(); heroLook(); save(); }
 let sacPend = null; // 點兩下才燒，避免誤燒傳說
+const junkLeg = it => it.rarity >= 3 && !it.set && upgradeOf(it) <= 0.5;
 const sacCry = it => [0, 0, 2, 8, 25][it.rarity] + 3 * (it.heat || 0);
 const sacHeat = it => Math.round((HEATN.slice(0, it.heat || 0).reduce((a, b) => a + b, 0) + (it.hx || 0)) * 0.7 + [0, 0, 30, 80, 200][it.rarity]);
 function sacrifice(i, mode) {
@@ -2303,7 +2316,7 @@ function drawStore() {
   const full = p.inv.length >= invCap();
   stock.forEach((it, i) => { h += it ? `<div class="row"><span>${SLOTS[it.slot].i} ${itemHtml(it)}${upgradeOf(it) > 0.5 ? '<span class="good">▲ 比身上的好</span>' : ''}</span>${btn(`data-item="${i}"`, priceOf(it), !full)}</div>` : ''; });
   if (!stock.some(x => x)) h += '<div class="row dim"><span>賣完了，下一層會進新貨</span></div>';
-  h += `<h2>神秘寶箱</h2><div class="row"><span>🎁 開出一件隨機裝備，有機會是傳說${boxMsg ? '<br>' + boxMsg : ''}</span>${btn('data-box="1"', boxCost(), !full)}</div>`;
+  h += `<h2>賭裝 <span class="dim">Lv ${gLv()}・稀有 35%・傳說 7.5%・套裝 2.5%${(p.danger || 0) >= 5 ? '・餘燼 1.5%' : ''}</span></h2><div class="row"><span>🎲 選一個部位，開出一件未知的裝備${boxMsg ? '<br>' + boxMsg : ''}</span></div><div class="row" style="flex-wrap:wrap;gap:6px">${Object.keys(SLOTS).map(q => btn(`data-box="${q}"`, boxCost(), !full, `${SLOTS[q].i} ${boxCost()}`)).join('')}</div>`;
   if (full) h += '<div class="row bad"><span>背包滿了，先到 🎒 賣掉一些</span></div>';
   h += '<div class="row dim" style="margin-top:10px"><span>強化、訓練、重選卡都搬到營地的建築裡了</span></div>';
   $('storeBody').innerHTML = h;
@@ -2316,8 +2329,8 @@ $('store').addEventListener('click', ev => {
   else if (ds.item !== undefined) { const it = stock[+ds.item]; if (it && p.inv.length < invCap() && pay(priceOf(it))) { p.inv.push(it); stock[+ds.item] = null; } }
   else if (ds.box) {
     if (p.inv.length < invCap() && pay(boxCost())) {
-      const r = Math.random(), it = makeItem(p.floor, r < 0.03 ? 3 : r < 0.3 ? 2 : r < 0.75 ? 1 : 0); p.inv.push(it);
-      boxMsg = `開出了：<b style="color:${RAR[it.rarity].c}">${it.name}</b>${upgradeOf(it) > 0.5 ? ' <span class="good">▲</span>' : ''}`; if (it.rarity >= 2) SND.level();
+      const it = gambleItem(SLOTS[ds.box] ? ds.box : pick(Object.keys(SLOTS))); p.inv.push(it); addCodex(it); p.stat.gamble = (p.stat.gamble || 0) + 1; if (it.rarity >= 3) { SND.legend(); burst(p.x, p.y, icol(it), 40, 160, 1, 1, 7); }
+      boxMsg = `開出了：<b style="color:${icol(it)}">${it.name}</b>${upgradeOf(it) > 0.5 ? ' <span class="good">▲</span>' : ''}`; if (it.rarity >= 2) SND.level();
     }
   }
   else if (ds.respec) { if (pay(respecCost())) { p.skl = { [clsOf().sk]: 1 }; p.slots = [clsOf().sk, null, null]; p.mods = {}; p.pas = {}; p.tal = {}; p.picks = p.lvl - 1; refresh(); closeStore(); return; } }
@@ -2340,7 +2353,7 @@ $('recBtn').onclick = openRec;
 function exportText(full) {
   const st = p.st, n1 = v => Number.isInteger(v) ? v : (+v).toFixed(1), L = [];
   const itemLine = it => it ? `${it.name}［${RAR[it.rarity].n}${it.slot === 'weapon' ? '・' + wtOf(it).n : ''}・Lv${it.lvl}・${HEAT[it.heat || 0]}${it.heat < 5 ? `(${it.hx || 0}/${HEATN[it.heat || 0]})` : ''}］ `
-    + [...Object.keys(it.base).map(k => fmt(k, iv(it, it.base[k]))), ...it.aff.map(a => (a.ember ? '🔥' : '') + fmt(a.k, iv(it, a.v)))].join('、')
+    + [...Object.keys(it.base).map(k => fmt(k, iv(it, it.base[k], k))), ...it.aff.map(a => (a.ember ? '🔥' : '') + fmt(a.k, iv(it, a.v, a.k)))].join('、')
     + (it.fx ? `　★${LEGFX[it.fx].n} ${Math.round((it.fxq === undefined ? 0.5 : it.fxq) * 100)}%` : '') + (it.nc ? `　✦${NC[it.nc.k].n}${it.nc.v ? ' ' + it.nc.v : ''}` : '') : '（空）';
   const rec = recLv(p.tier, p.danger || 0);
   L.push(`【餘燼地城 狀態匯出】${new Date().toLocaleString('zh-TW')}`);
@@ -2402,6 +2415,7 @@ $('expCopy').onclick = async () => {
   catch (e) { t.focus(); t.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (er) { /* 舊瀏覽器 */ } $('expMsg').textContent = ok ? '✅ 已複製' : '請長按文字框，選「全選」再「拷貝」'; }
 };
 $('exp').addEventListener('click', ev => { if (ev.target === $('exp') || ev.target.id === 'expClose') { $('exp').classList.remove('on'); paused = false; } });
+$('sacJunk').onclick = () => { if ($('sacJunk').dataset.ok !== '1') { $('sacJunk').dataset.ok = '1'; $('sacJunk').textContent = '再按一次確定獻祭'; return; } $('sacJunk').dataset.ok = ''; let c = 0, n = 0; for (let i = p.inv.length - 1; i >= 0; i--) if (junkLeg(p.inv[i])) { c += sacCry(p.inv[i]); p.inv.splice(i, 1); n++; } if (n) { p.mats.cry += c; p.stat.sac = (p.stat.sac || 0) + n; SND.burn(); floatText(p.x, p.y - 20, `獻祭 ${n} 件：💎 +${c}`, '#7ef', 18); burst(p.x, p.y, '#ff8a3a', 40, 160, 1, 1, 7); save(); } drawPanel(); };
 $('sellJunk').onclick = () => sellIf(it => upgradeOf(it) <= 0.5 && !it.fx && !it.set);
 $('sellAll').onclick = () => { if (confirm('背包裡的裝備全部賣掉？（身上穿的不會賣）')) sellIf(() => true); };
 $('cards').addEventListener('click', ev => {
@@ -2678,7 +2692,7 @@ loadAssets().then(() => {
 
 // 測試用
 window.__game = {
-  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get braziers() { return braziers; }, sacrifice, makeSetItem, SETS, get hero() { return hero; }, switchHero, get pools() { return pools; }, get holes() { return holes; }, refresh, heroLook, attack, cast, ignite, get merchant() { return merchant; }, talCan, talPts, openTal, tl, TALENTS, get pickNear() { return pickNear; }, clsOf, inClass, rollRarity, get renderer() { return renderer; }, exportText, openExport, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
+  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get braziers() { return braziers; }, sacrifice, makeSetItem, SETS, get hero() { return hero; }, switchHero, rollCards, gambleItem, boxCost, get pools() { return pools; }, get holes() { return holes; }, refresh, heroLook, attack, cast, ignite, get merchant() { return merchant; }, talCan, talPts, openTal, tl, TALENTS, get pickNear() { return pickNear; }, clsOf, inClass, rollRarity, get renderer() { return renderer; }, exportText, openExport, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
   get quality() { return quality; }, setQuality(v) { autoQ = false; quality = v; applyQuality(); },
   update, descend, cast, keys, mouse, spawnEnemy, hurtPlayer, dropItem, makeItem, genFloor, setCam(i) { camMode = i; camReady = false; }, info: () => renderer.info.render,
 };
