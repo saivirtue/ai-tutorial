@@ -361,7 +361,8 @@ function checkAch() {
     p.ach[id] = 1; p.mats.cry += cry; p.gold += g; const cu = COS_UNLOCK[id]; if (cu && !p.cosU.includes(cu)) p.cosU.push(cu); banner('🏆 成就', `${d}（💎 +${cry}、💰 +${g}${cu ? '、解鎖' + COS_NAME(cu) : ''}）`); SND.legend(); break; // 一次跳一個，避免橫幅互蓋
   }
 }
-function addCodex(it) { if (!it || !it.fx || p.codex[it.fx]) return; p.codex[it.fx] = 1; p.mats.cry += 1; floatText(p.x, p.y, '📖 圖鑑新增：' + LEGFX[it.fx].n, '#ff8a3a', 15); }
+function addCodex(it) { if (it && it.set) { const ck = 'set:' + it.set + ':' + it.slot; if (!p.codex[ck]) { p.codex[ck] = 1; p.mats.cry += 3; floatText(p.x, p.y, `📖 套裝收藏：${SETS[it.set].n}・${SLOTS[it.slot].n}（💎 +3）`, SETS[it.set].c, 15); } return; }
+  if (!it || !it.fx || p.codex[it.fx]) return; p.codex[it.fx] = 1; p.mats.cry += 1; floatText(p.x, p.y, '📖 圖鑑新增：' + LEGFX[it.fx].n, '#ff8a3a', 15); }
 function rollBoard() {
   const b = [], lo = Math.max(1, p.tier - 2), nn = RESCUE_ORDER.find(n => !p.rescued.includes(n)), next = nn && RESCUE.find(r => r.n === nn);
   for (let t = p.tier; t >= lo; t--) {
@@ -828,7 +829,7 @@ function load() {
     if (!p.rescued) p.rescued = [];
     if (!p.mats) p.mats = { bone: 0, cry: 0 }; if (!p.bld) p.bld = {}; if (!p.cls) p.cls = 'knight'; if (!p.heroes) p.heroes = {}; if (p.diff) { p.danger = Math.max(p.danger || 0, [0, 3, 6][p.diff] || 0); p.diff = 0; } /* 舊的困難／煉獄換成危險度 */
     if (!p.tal) p.tal = {}; for (const h of Object.values(p.heroes || {})) if (!h.tal) h.tal = {};
-    if (!p.codex) p.codex = {}; if (!p.cos) p.cos = { light: 'orange', trail: 'none' }; if (!p.cosU) p.cosU = [];
+    if (!p.codex) p.codex = {}; for (const it of [...(p.inv || []), ...Object.values(p.equip || {})]) if (it && it.set) p.codex['set:' + it.set + ':' + it.slot] = 1; if (!p.cos) p.cos = { light: 'orange', trail: 'none' }; if (!p.cosU) p.cosU = [];
     for (const it of [...p.inv, ...Object.values(p.equip), ...Object.values(p.heroes || {}).flatMap(h => Object.values(h.equip || {}))]) if (it && it.up) { it.heat = Math.min(5, Math.ceil(it.up * 0.6)); it.hx = 0; delete it.up; } /* 舊的 +N 強化換成熱度 */ if (!p.ach) p.ach = {}; if (!p.stat) p.stat = {};
     if (!p.slots) { p.slots = SKILLS.filter(k => p.skl[k]).slice(0, 3); while (p.slots.length < 3) p.slots.push(null); p.picks += p.sp || 0; p.sp = 0; } // 舊存檔：技能點換成升級卡
     resetRuntime();
@@ -2344,6 +2345,7 @@ function openRec() {
   const got = ACH.filter(a => p.ach[a[0]]).length, cx = Object.keys(LEGFX).filter(k => p.codex[k]).length;
   $('recBody').innerHTML = `<h2>🏆 成就 <span class="dim">${got} / ${ACH.length}</span></h2>` + ACH.map(([id, d, , cry, g]) => `<div class="row"><span>${p.ach[id] ? '✅' : '▫️'} ${d}</span><span class="dim" style="flex:none">💎${cry} 💰${g}${COS_UNLOCK[id] ? ' ✨' + COS_NAME(COS_UNLOCK[id]) : ''}</span></div>`).join('')
     + `<h2>📖 傳說圖鑑 <span class="dim">${cx} / ${Object.keys(LEGFX).length}・每收集一種 💎 +1</span></h2>` + Object.keys(LEGFX).map(k => `<div class="row"><span>${p.codex[k] ? `<b style="color:#ff8a3a">${LEGFX[k].n}</b>（${SLOTS[LEGFX[k].slot].n}）<span class="dim">${LEGFX[k].d((LEGFX[k].r[0] + LEGFX[k].r[1]) / 2) + '（數值有範圍）'}</span>` : `<span class="dim">？？？（${SLOTS[LEGFX[k].slot].n}）</span>`}</span></div>`).join('')
+    + `<h2>◆ 套裝收藏 <span class="dim">${Object.keys(p.codex).filter(k => k.startsWith('set:')).length} / 15・每收集一件 💎 +3</span></h2>` + Object.keys(SETS).map(k => { const S = SETS[k], got = S.slots.filter(q => p.codex['set:' + k + ':' + q]); return `<div class="row"><span><b style="color:${got.length ? S.c : '#777'}">${S.n}</b> ${S.slots.map(q => p.codex['set:' + k + ':' + q] ? SLOTS[q].i : '<span style="opacity:.25">' + SLOTS[q].i + '</span>').join(' ')}<br><span class="dim">${BOSSN[S.boss]}掉落・3 件：${S.b3}</span></span></div>`; }).join('')
     + `<h2>📊 紀錄</h2><div class="row dim"><span>擊殺 ${p.kills}・遠征完成 ${p.clears || 0} 趟・倒下 ${p.deaths} 次・懸賞 ${p.stat.bounty || 0} 個・本週挑戰完成 ${(p.weekly && p.weekly.best) || 0} 層</span></div>`;
   $('rec').classList.add('on');
 }
@@ -2378,7 +2380,7 @@ function exportText(full) {
   L.push(`\n■ 背包 ${p.inv.length}/${invCap()}（普通 ${rc[0]}・精良 ${rc[1]}・稀有 ${rc[2]}・傳說 ${rc[3]}・餘燼 ${rc[4]}）`);
   for (const it of p.inv.filter(it => it.rarity >= 2)) L.push('　' + itemLine(it));
   L.push(`\n■ 收集`);
-  L.push(`傳說圖鑑 ${Object.keys(p.codex).length}/${Object.keys(LEGFX).length}・成就 ${ACH.filter(a => p.ach[a[0]]).length}/${ACH.length}・引爆餘燼 ${p.stat.burn || 0} 次・懸賞完成 ${p.stat.bounty || 0}・本週挑戰 ${(p.weekly && p.weekly.best) || 0} 層・靶場最高 ${p.stat.range || 0}`);
+  L.push(`傳說圖鑑 ${Object.keys(LEGFX).filter(k => p.codex[k]).length}/${Object.keys(LEGFX).length}・套裝收藏 ${Object.keys(p.codex).filter(k => k.startsWith('set:')).length}/15・成就 ${ACH.filter(a => p.ach[a[0]]).length}/${ACH.length}・引爆餘燼 ${p.stat.burn || 0} 次・懸賞完成 ${p.stat.bounty || 0}・本週挑戰 ${(p.weekly && p.weekly.best) || 0} 層・靶場最高 ${p.stat.range || 0}`);
   L.push(`\n■ 最近的遠征（${(p.hist || []).length} 趟，最新在最下面）`);
   if (!(p.hist || []).length) L.push('（這個功能剛加上，之後的遠征才會記錄）');
   for (const h of p.hist || []) L.push(`${h.at}｜${CLS[h.cls] ? CLS[h.cls].n : h.cls} Lv${h.lvl}｜區${h.tier} 危${h.dg}｜${h.goal === 'boss' ? '首領' : h.goal === 'rescue' ? '救人' : h.goal === 'endless' ? '每週' : h.goal}${h.mod !== 'none' ? '◆' + h.mod : ''}｜${h.res}（第 ${h.depth} 層）｜${Math.floor(h.sec / 60)}分${h.sec % 60}秒｜擊殺 ${h.kills}｜受傷 ${h.taken}（生命 ${h.hp}）｜藥 ${h.pots}｜撿 ${h.items}｜金 ${h.gold >= 0 ? '+' : ''}${h.gold}`);
