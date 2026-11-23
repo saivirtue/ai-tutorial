@@ -7,6 +7,9 @@ const { GLTFLoader, cloneSkinned } = THREE;
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ov = $('ov'), octx = ov.getContext('2d');
 const mini = $('mini'), mctx = mini.getContext('2d');
+// ---------- 回報用：最近 30 秒的事件與效能 ----------
+const evlog = [], perfLog = []; let perfN = 0, perfWorst = 0, perfT = 0, perfKills = 0;
+function ev(t) { const now = performance.now(); evlog.push({ at: now, t }); while (evlog.length && (now - evlog[0].at > 30000 || evlog.length > 150)) evlog.shift(); }
 
 const T = 40, MW = 56, MH = 40, U = 0.1; // U：像素 → 世界單位
 const SAVE_KEY = 'ember-depths-save-v1';
@@ -810,7 +813,7 @@ const xpNeed = l => Math.round(40 * Math.pow(l, 1.7));
 function gainXp(v) {
   p.xp += v;
   while (p.xp >= xpNeed(p.lvl)) {
-    p.xp -= xpNeed(p.lvl); p.lvl++; p.picks++; refresh(); p.hp = p.st.hp; p.mp = p.st.mp; if (p.lvl % 5 === 0) { floatText(p.x, p.y - 20, '🌳 天賦點 +1', '#7dff8a', 18); tip('tal', '每 5 級得到 1 個天賦點：打開 🎒 背包按「🌳 天賦」來點'); }
+    p.xp -= xpNeed(p.lvl); p.lvl++; ev(`升到 Lv ${p.lvl + 0}`); p.picks++; refresh(); p.hp = p.st.hp; p.mp = p.st.mp; if (p.lvl % 5 === 0) { floatText(p.x, p.y - 20, '🌳 天賦點 +1', '#7dff8a', 18); tip('tal', '每 5 級得到 1 個天賦點：打開 🎒 背包按「🌳 天賦」來點'); }
     floatText(p.x, p.y, '升級！', '#ffcf6b', 24); 
     burst(p.x, p.y, '#ffcf6b', 40, 160, 1, 1, 6); fxRing(p.x, p.y, 90, 0xffcf6b, 0.6);
     SND.level();
@@ -1046,6 +1049,7 @@ function hitEnemy(e, mult, kb = 120, src, o = {}) {
   else if (e.type !== 'boss' && !e.ch && e.atkT <= 0 && e.v && e.v.lock <= 0) charOnce(e, 'Hit_A', 2, 0.2);
 }
 function killEnemy(e) {
+  perfKills++; if (e.elite || e.type === 'boss') ev(`擊殺${e.type === 'boss' ? '首領 ' + e.name : '菁英 ' + (ET[e.type] ? e.type : '')}`);
   e.dead = true; gainXp(Math.round(e.xp * (1 + Math.min(p.streak, 25) * 0.02)));
   if (!e.summoned) { let hu = null; for (const k in p.equip) if (heatUp(p.equip[k], e.type === 'boss' ? 15 : e.elite ? 3 : 1)) hu = p.equip[k]; if (hu) { refresh(); heroLook(); floatText(p.x, p.y, `🔥 ${hu.name} → ${HEAT[hu.heat]}`, '#' + HEATC[hu.heat].toString(16).padStart(6, '0'), 17); sfx(330, 0.4, 'sawtooth', 0.05, 330); burst(p.x, p.y, '#ffa040', 24, 120, 0.7, 1.2, 6); tip('heat', '裝備穿著戰鬥會越燒越熱：熱度越高數值越強、外觀越亮，燒到白熾會多一條詞綴'); } }
   if (setN('bog') >= 3 && e.type !== 'boss' && pools.length < 14) pools.push({ x: e.x, y: e.y, t: 3, tick: 0.2, R: 58, l: 2, bog: true });
@@ -1103,7 +1107,7 @@ function hurtPlayer(d) {
   d *= 1 + darkK() * 0.35;
   const raw0 = d; d = Math.max(1, Math.round(d * (60 + 12 * p.floor) / (60 + 12 * p.floor + p.st.armor) * rand(0.9, 1.1) * (p.buff && p.buff.k === 'ward' ? 0.5 : 1)));
   if (p.run) p.run.taken = (p.run.taken || 0) + d; const blocked = 1 - d / raw0; if (blocked > 0.12) { sfx(rand(1700, 2300), 0.12, 'triangle', 0.05 * blocked + 0.02); sfx(rand(900, 1100), 0.18, 'square', 0.02); for (let i = 0; i < 4 + blocked * 16; i++) { const b = rand(0, 6.28), v = rand(60, 200); parts.push(mkPart(p.x, p.y, 1.3, Math.cos(b) * v, Math.sin(b) * v, rand(1, 4), '#e8eef5', 0.3, 3, 8)); } }
-  p.hp -= d; p.hurtT = 0.25; p.inv_t = 0.25; shake = Math.max(shake, 5);
+  p.hp -= d; p.hurtT = 0.25; p.inv_t = 0.25; ev(`受傷 -${d}（生命 ${Math.max(0, Math.round(p.hp))}/${p.st.hp}）`); shake = Math.max(shake, 5);
   floatText(p.x, p.y, '-' + d, '#ff6a6a', 17); SND.hurt();
   burst(p.x, p.y, '#ff4444', 6, 90, 0.4, 1.4, 2);
   $('hurt').style.opacity = 1; setTimeout(() => $('hurt').style.opacity = 0, 120);
@@ -1166,7 +1170,7 @@ function useShrine() {
   fxRing(p.x, p.y, 110, b[3], 0.6); burst(shrine.x, shrine.y, '#' + b[3].toString(16).padStart(6, '0'), 40, 150, 1, 3, 6); SND.shrine();
 }
 function die() {
-  p.hp = 0; state = 'dead'; intensity = 0; logRun('倒下');
+  p.hp = 0; state = 'dead'; intensity = 0; ev('倒下'); logRun('倒下');
   const endless = p.run && p.run.goal === 'endless', lost = endless ? 0 : Math.floor(p.gold * 0.3); p.gold -= lost;
   if (endless) { weekCheck(); p.weekly.best = Math.max(p.weekly.best, p.run.depth - 1); }
   if (hero) hero.once('Death_A', 1, 99);
@@ -1302,6 +1306,7 @@ function cast(k) {
     for (const e of ts) { for (let i = 0; i < 12; i++) parts.push(mkPart(e.x + rand(-6, 6), e.y + rand(-6, 6), 0.5 + i * 0.75, 0, 0, 0, i % 2 ? '#ffffff' : '#9fd0ff', 0.25, 7)); fxFlash(e.x, e.y, 0x9fd0ff, 0.18); fxRing(e.x, e.y, 34, 0x9fd0ff, 0.25); hitEnemy(e, (1.3 + l * 0.3) * sm('bolt'), 40, e, { heavy: !!M['bolt.fork'] }); if ((M['bolt.fork'] || tl('mA3')) && !e.dead && e.type !== 'boss') e.stun = M['bolt.fork'] ? 1 : 0.8; }
     SND.zap(); sfx(90, 0.3, 'sawtooth', 0.1, -40); shake = 5; if (hero) hero.once('Spellcast_Raise', 2.4, 0.3);
   }
+  ev(`施放 ${s.n}`);
   p.mp -= cost; p.cd[k] = s.cd * ({ fire: tl('kC2') ? 0.75 : 1, dash: tl('rB2') ? 0.8 : 1, bolt: tl('mA2') ? 0.7 : 1, leap: tl('bB2') ? 0.7 : 1 }[k] || 1) * (k === 'dash' ? (p.fx.blink ? 0.5 : 1) * (setN('ash') >= 2 ? 0.75 : 1) * (p.cls === 'ranger' ? 0.7 : 1) : (wtOf(p.equip.weapon) === WT.sword ? 0.85 : 1) * (k === 'bolt' && p.pas.s_storm ? 0.5 : 1));
   if (k === 'fire') {
     const a = p.aim = aimAngle();
@@ -1339,11 +1344,12 @@ function cast(k) {
 function ignite() { // 餘燼爆燃
   if (p.ember < 100 || p.burnT > 0) return;
   bounty('burn'); p.stat.burn = (p.stat.burn || 0) + 1;
-  p.ember = 0; p.burnT = (p.pas.s_fire ? 11 : 8) + (setN('core') >= 3 ? 3 : 0); p.burnExt = 0.9; banner('爆燃', '繼續擊殺可以延長燃燒'); SND.burn(); hitStop = 0.12; shake = 10;
+  ev('引爆餘燼'); p.ember = 0; p.burnT = (p.pas.s_fire ? 11 : 8) + (setN('core') >= 3 ? 3 : 0); p.burnExt = 0.9; banner('爆燃', '繼續擊殺可以延長燃燒'); SND.burn(); hitStop = 0.12; shake = 10;
   blast(p.x, p.y, 160, 1.6, 0xff7a2a, 0.8, true); burst(p.x, p.y, '#ffb040', 60, 260, 1, 1, 9);
 }
 function potion(k) {
   if (p.potCd > 0) return;
+  ev(k === 'hp' ? '喝生命藥水' : '喝魔力藥水');
   if (k === 'hp') { if (p.hpPot <= 0 || p.hp >= p.st.hp) return; p.hpPot--; const v = Math.round(p.st.hp * 0.45); p.hp = Math.min(p.st.hp, p.hp + v); floatText(p.x, p.y, '+' + v, '#6e6'); burst(p.x, p.y, '#55ee66', 16, 50, 0.8, 0.3, 5); }
   else { if (p.mpPot <= 0 || p.mp >= p.st.mp) return; p.mpPot--; const v = Math.round(p.st.mp * 0.6); p.mp = Math.min(p.st.mp, p.mp + v); floatText(p.x, p.y, '+' + v, '#6bf'); burst(p.x, p.y, '#55aaff', 16, 50, 0.8, 0.3, 5); }
   p.potCd = 0.8; if (p.run) p.run.pots++; sfx(600, 0.15, 'sine', 0.05, 300);
@@ -1473,7 +1479,7 @@ function update(dt) {
     else if (d.kind === 'bone' || d.kind === 'cry') { p.mats[d.kind] += d.amt; if (p.run) p.run[d.kind] = (p.run[d.kind] || 0) + d.amt; d.dead = true; sfx(d.kind === 'cry' ? 1500 : 700, 0.06, 'triangle', 0.03); floatText(p.x, p.y, `+${d.amt} ${d.kind === 'cry' ? '💎' : '🦴'}`, d.kind === 'cry' ? '#ff9a5a' : '#e8e2d0', 13); if (d.kind === 'cry') tip('mats', '💎 餘燼結晶和 🦴 骨片是蓋營地建築的材料'); }
     else if (d.kind === 'hp') { if (p.hpPot < 9) { p.hpPot++; d.dead = true; sfx(800, 0.08, 'sine', 0.04); } }
     else if (d.kind === 'mp') { if (p.mpPot < 9) { p.mpPot++; d.dead = true; sfx(800, 0.08, 'sine', 0.04); } }
-    else if (p.inv.length < invCap()) { p.inv.push(d.it); d.dead = true; if (p.run) p.run.items++; addCodex(d.it); if (d.it.rarity >= 3) { SND.shrine(); burst(p.x, p.y, '#ff9a3a', 30, 140, 0.8, 1, 6); } floatText(p.x, p.y, d.it.name, RAR[d.it.rarity].c, 14); tip('item', '撿到裝備了！點 🎒 打開背包，有 ▲ 的比身上的好'); sfx(700, 0.1, 'triangle', 0.05, 200); }
+    else if (p.inv.length < invCap()) { p.inv.push(d.it); d.dead = true; if (p.run) p.run.items++; if (d.it.rarity >= 2) ev(`撿到 ${d.it.name}（${d.it.set ? '套裝' : RAR[d.it.rarity].n}）`); addCodex(d.it); if (d.it.rarity >= 3) { SND.shrine(); burst(p.x, p.y, '#ff9a3a', 30, 140, 0.8, 1, 6); } floatText(p.x, p.y, d.it.name, RAR[d.it.rarity].c, 14); tip('item', '撿到裝備了！點 🎒 打開背包，有 ▲ 的比身上的好'); sfx(700, 0.1, 'triangle', 0.05, 200); }
     else if (fullMsgT <= 0) { fullMsgT = 1.5; floatText(p.x, p.y, '背包滿了', '#f77', 13); tip('full', '背包滿了：遠征中不能賣，可以在背包把用不到的「丟掉」，或回營地賣掉；倉庫能擴充背包'); }
   }
   drops = drops.filter(d => { if (d.dead) killVis(d); return !d.dead; });
@@ -1552,7 +1558,7 @@ function update(dt) {
 }
 function descend() {
   if (state !== 'play' || !stairs.open || stairs.portal || !p.run || dist(stairs, p) > 44) return;
-  p.run.depth++; sfx(300, 0.3, 'triangle', 0.06, -150);
+  p.run.depth++; ev(`下樓 → 第 ${p.run.depth} 層`); sfx(300, 0.3, 'triangle', 0.06, -150);
   p.hp = Math.min(p.st.hp, p.hp + p.st.hp * 0.25); p.mp = p.st.mp;
   genFloor();
 }
@@ -2384,15 +2390,34 @@ function exportText(full) {
   L.push(`\n■ 最近的遠征（${(p.hist || []).length} 趟，最新在最下面）`);
   if (!(p.hist || []).length) L.push('（這個功能剛加上，之後的遠征才會記錄）');
   for (const h of p.hist || []) L.push(`${h.at}｜${CLS[h.cls] ? CLS[h.cls].n : h.cls} Lv${h.lvl}｜區${h.tier} 危${h.dg}｜${h.goal === 'boss' ? '首領' : h.goal === 'rescue' ? '救人' : h.goal === 'endless' ? '每週' : h.goal}${h.mod !== 'none' ? '◆' + h.mod : ''}｜${h.res}（第 ${h.depth} 層）｜${Math.floor(h.sec / 60)}分${h.sec % 60}秒｜擊殺 ${h.kills}｜受傷 ${h.taken}（生命 ${h.hp}）｜藥 ${h.pots}｜撿 ${h.items}｜金 ${h.gold >= 0 ? '+' : ''}${h.gold}`);
+  { const now = performance.now(), ago = at => `-${Math.round((now - at) / 1000)}s`;
+    const ua = navigator.userAgent, os = (ua.match(/OS (\d+[_\d]*) like Mac/) || [])[1], dev = /iPhone/.test(ua) ? `iPhone iOS ${(os || '?').replace(/_/g, '.')}` : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Mac/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : '其他';
+    const ri = renderer.info.render, where = !p.run ? '營地' : `${mapName(p.run.tier)} 第 ${p.run.depth}/${p.run.len} 層${boss ? '（首領戰）' : ''}${fps ? '（第一人稱）' : ''}`;
+    L.push(`\n■ 回報：最近 30 秒（最新在最下面）`);
+    L.push(`裝置 ${dev}・螢幕 ${innerWidth}×${innerHeight}@${devicePixelRatio}x・畫質 ${quality}${autoQ ? '（自動）' : ''}・繪製 ${ri.calls} 次／${Math.round(ri.triangles / 1000)}k 三角形・著色器 ${renderer.info.programs ? renderer.info.programs.length : '?'}`);
+    L.push(`位置：${where}・場上敵人 ${enemies.filter(e => !e.dead).length}・生命 ${Math.round(p.hp)}/${p.st.hp}・魔力 ${Math.round(p.mp)}/${p.st.mp}・餘燼 ${Math.round(p.ember)}${p.run && p.run.torch !== undefined ? '・火光 ' + Math.round(p.run.torch) : ''}`);
+    L.push('效能（每 2 秒）：' + (perfLog.filter(q => now - q.at < 31000).map(q => `${ago(q.at)} ${q.fps}fps 最慢${q.worst}ms 敵${q.en} 殺${q.k} 血${q.hp}%`).join('｜') || '（還沒有資料，先玩一下再回報）'));
+    const evs = evlog.filter(q => now - q.at < 30000); const merged = []; for (const q of evs) { const lst = merged[merged.length - 1]; if (lst && lst.t === q.t) { lst.n++; lst.at = q.at; } else merged.push({ ...q, n: 1 }); }
+    L.push(merged.length ? merged.map(q => `${ago(q.at)} ${q.t}${q.n > 1 ? ' ×' + q.n : ''}`).join('\n') : '（最近 30 秒沒有事件）'); }
   if (full) { const o = {}; for (const k in p) if (!['st', 'fx', 'nc', 'cd'].includes(k) && typeof p[k] !== 'function') o[k] = p[k]; L.push(`\n■ 完整存檔（JSON）\n${JSON.stringify(o)}`); }
   return L.join('\n');
 }
 function openExport() {
   togglePanel(false); paused = true;
-  $('expFull').checked = false; $('expText').value = exportText(false); $('expMsg').textContent = '';
+  $('expFull').checked = false; $('expText').value = exportText(false); $('expMsg').textContent = ''; $('expImg').style.display = 'none'; $('expShare').style.display = 'none';
   $('exp').classList.add('on');
 }
 $('expBtn').onclick = openExport;
+let shotURL = null;
+function snapShot() { // 重畫一格後立刻抓圖，把 3D 畫面和名字／血條那層疊在一起
+  render3d(0); const w = Math.min(960, cv.width), hh = Math.round(cv.height * w / cv.width), c = document.createElement('canvas'); c.width = w; c.height = hh;
+  const x = c.getContext('2d'); x.drawImage(cv, 0, 0, w, hh); x.drawImage(ov, 0, 0, w, hh); return c;
+}
+$('expShot').onclick = () => {
+  const c = snapShot(); shotURL = c.toDataURL('image/jpeg', 0.8); $('expImg').src = shotURL; $('expImg').style.display = 'block';
+  $('expMsg').textContent = '📷 已截圖（這是打開背包前的畫面）。長按圖片可以存到相簿，再跟文字一起傳給 Claude';
+  c.toBlob(b => { if (!b) return; const f = new File([b], 'ember-report.jpg', { type: 'image/jpeg' }); $('expShare').style.display = navigator.canShare && navigator.canShare({ files: [f] }) ? '' : 'none'; $('expShare').onclick = () => navigator.share({ files: [f], text: $('expText').value }).catch(() => {}); }, 'image/jpeg', 0.8);
+};
 function openTal() { togglePanel(false); paused = true; drawTal(); $('tal').classList.add('on'); }
 function drawTal() {
   const pts = talPts(), next = (Math.floor(p.lvl / 5) + 1) * 5;
@@ -2620,6 +2645,7 @@ addEventListener('keydown', e => {
   if (fps) { if (e.code === 'Escape') endRange(true); else if (e.code === 'Space' || e.code === 'KeyJ') fpsFire(); e.preventDefault(); return; }
   if (e.repeat) return; keys[e.code] = true;
   if (e.code === 'KeyI' || e.code === 'Tab' || e.code === 'KeyC' || e.code === 'KeyB') togglePanel();
+  if (e.code === 'F8' && state === 'play') openExport();
   else if (e.code === 'Escape') { if (storeOpen) closeStore(); else if (paused) togglePanel(false); }
   else if (e.code === 'KeyQ') cast(p && p.slots[0]); else if (e.code === 'KeyE') cast(p && p.slots[1]); else if (e.code === 'KeyR') cast(p && p.slots[2]); else if (e.code === 'KeyG') cast('ember');
   else if (e.code === 'Space') cast('dash'); else if (e.code === 'Digit1') cast('hp'); else if (e.code === 'Digit2') cast('mpp');
@@ -2680,6 +2706,8 @@ function frame(now) {
     else if (hitStop > 0) hitStop -= dt;
     else if (state === 'play' && !paused) { if (p.picks > 0) openCards(); else update(dt); }
     render3d(paused ? 0 : hitStop > 0 ? dt * 0.15 : dt); hud();
+    if (state === 'play' && !paused && raw < 2) { perfN++; perfT += raw; perfWorst = Math.max(perfWorst, raw); if (raw > 0.1 && time > 3) ev(`⚠ 卡頓 ${Math.round(raw * 1000)}ms`);
+      if (perfT >= 2) { perfLog.push({ at: performance.now(), fps: Math.round(perfN / perfT), worst: Math.round(perfWorst * 1000), en: enemies.filter(e => !e.dead).length, k: perfKills, hp: Math.round(p.hp / p.st.hp * 100), torch: p.run && p.run.torch !== undefined ? Math.round(p.run.torch) : null, dc: renderer.info.render.calls }); if (perfLog.length > 15) perfLog.shift(); perfN = perfT = perfWorst = perfKills = 0; } }
     // 太慢就自動降畫質
     if (autoQ && !paused && raw < 0.5) { fpsAcc += raw; fpsN++; fpsT += raw; if (fpsT > 3) { if (fpsAcc / fpsN > 0.03 && quality > 0 && time > 4) { quality--; applyQuality(); } fpsAcc = fpsN = fpsT = 0; } }
   }
