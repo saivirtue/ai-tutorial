@@ -469,11 +469,12 @@ function genFloor() {
       for (let i = 0; i < 7; i++) { const a = i / 7 * 6.283 + rand(-0.3, 0.3), rr = rand(38, 72); fluff.push({ model: pick(['coin_stack_large', 'coin_stack_medium', 'coin_stack_small']), x: vx + Math.cos(a) * rr, y: vy + Math.sin(a) * rr, s: 1.2, rot: rand(0, 6) }); }
       continue;
     }
-    const n = Math.round((2.5 + r.w * r.h / 18 + Math.min(5, f * 0.6)) * diff().cnt);
+    const n = Math.round((2.5 + r.w * r.h / 18 + Math.min(5, f * 0.6)) * diff().cnt * (p.clears ? 1.7 : 1.3)); /* 成群：數量多、單隻脆 */
     for (let i = 0; i < n; i++) {
-      const s = freeSpot(r, 18), elite = Math.random() < (f >= 2 ? 0.12 : 0.05) * (rmod('elite') ? 2 : 1);
-      spawnEnemy(rollType(f), s.x, s.y, elite);
+      const s = freeSpot(r, 18), elite = Math.random() < (f >= 2 ? 0.08 : 0.04) * (rmod('elite') ? 2 : 1);
+      const e = spawnEnemy(rollType(f), s.x, s.y, elite); if (!elite) hordeOf(e);
     }
+    r.wave = r !== far && r !== vault && f >= 2 && Math.random() < 0.3; /* 怪潮房（要是封門房才會觸發） */
     if (Math.random() < 0.45) { const s = freeSpot(r, 16); props.push({ kind: 'chest', x: s.x, y: s.y, r: 15, open: false, gold: Math.random() < 0.15 }); }
     const nb = irand(1, 4);
     for (let i = 0; i < nb; i++) { const s = freeSpot(r, 12); props.push({ kind: 'barrel', x: s.x, y: s.y, r: 11, skin: Math.random() < 0.6 ? 'barrel_large' : 'box_large', rot: rand(0, 6.28) }); }
@@ -862,6 +863,8 @@ function rollType(f) {
   for (const x of w) { if ((t -= x[1]) < 0) return x[0]; }
   return 'minion';
 }
+const hordeOf = e => { e.horde = true; e.hp = e.maxHp = e.hp * 0.6; e.dmg *= 0.75; e.xp *= 0.45; return e; };
+let chainCtx = false; // 正在處理連鎖爆炸
 function spawnEnemy(type, x, y, elite) {
   const d = ET[type], f = p.floor, ov = overLv(), hs = (1 + 0.42 * (f - 1)) * diff().hp * (1 + 0.1 * ov), ds = (1.15 + 0.34 * (f - 1)) * diff().dmg * (1 + 0.08 * ((p.run && p.run.danger) || 0)) * (1 + 0.08 * ov);
   const e = {
@@ -1049,9 +1052,11 @@ function hitEnemy(e, mult, kb = 120, src, o = {}) {
   else if (e.type !== 'boss' && !e.ch && e.atkT <= 0 && e.v && e.v.lock <= 0) charOnce(e, 'Hit_A', 2, 0.2);
 }
 function killEnemy(e) {
-  perfKills++; if (e.elite || e.type === 'boss') ev(`擊殺${e.type === 'boss' ? '首領 ' + e.name : '菁英 ' + (ET[e.type] ? e.type : '')}`);
+  perfKills++;
+  if (chainCtx) { p.chainN = (p.chainN || 0) + 1; p.chainT = 0.9; if ([4, 8, 15, 25].includes(p.chainN)) { floatText(p.x, p.y - 34, `連鎖 ×${p.chainN}！`, '#ffb040', 18 + Math.min(10, p.chainN / 2)); SND.level(); shake = Math.max(shake, 7); } }
+  if (!e.summoned && e.type !== 'boss' && booms.length < 10 && Math.random() < (p.burnT > 0 ? 0.32 : 0.13) * (chainCtx ? 0.8 : 1)) booms.push({ x: e.x, y: e.y, t: 0.13, R: 72, mult: 0.7, color: 0xff9a3a, chain: true }); if (e.elite || e.type === 'boss') ev(`擊殺${e.type === 'boss' ? '首領 ' + e.name : '菁英 ' + (ET[e.type] ? e.type : '')}`);
   e.dead = true; gainXp(Math.round(e.xp * (1 + Math.min(p.streak, 25) * 0.02)));
-  if (!e.summoned) { let hu = null; for (const k in p.equip) if (heatUp(p.equip[k], e.type === 'boss' ? 15 : e.elite ? 3 : 1)) hu = p.equip[k]; if (hu) { refresh(); heroLook(); floatText(p.x, p.y, `🔥 ${hu.name} → ${HEAT[hu.heat]}`, '#' + HEATC[hu.heat].toString(16).padStart(6, '0'), 17); sfx(330, 0.4, 'sawtooth', 0.05, 330); burst(p.x, p.y, '#ffa040', 24, 120, 0.7, 1.2, 6); tip('heat', '裝備穿著戰鬥會越燒越熱：熱度越高數值越強、外觀越亮，燒到白熾會多一條詞綴'); } }
+  if (!e.summoned) { let hu = null; for (const k in p.equip) if (heatUp(p.equip[k], e.type === 'boss' ? 15 : e.elite ? 3 : e.horde && Math.random() < 0.45 ? 0 : 1)) hu = p.equip[k]; if (hu) { refresh(); heroLook(); floatText(p.x, p.y, `🔥 ${hu.name} → ${HEAT[hu.heat]}`, '#' + HEATC[hu.heat].toString(16).padStart(6, '0'), 17); sfx(330, 0.4, 'sawtooth', 0.05, 330); burst(p.x, p.y, '#ffa040', 24, 120, 0.7, 1.2, 6); tip('heat', '裝備穿著戰鬥會越燒越熱：熱度越高數值越強、外觀越亮，燒到白熾會多一條詞綴'); } }
   if (setN('bog') >= 3 && e.type !== 'boss' && pools.length < 14) pools.push({ x: e.x, y: e.y, t: 3, tick: 0.2, R: 58, l: 2, bog: true });
   if (p.fx.boom && e.type !== 'boss') booms.push({ x: e.x, y: e.y, t: 0.16, mult: p.fx.boom }); SND.bones();
   if (e.freeze > 0 && p.mx['nova.shatter']) booms.push({ x: e.x, y: e.y, t: 0.05, R: 78, mult: 0.9, color: 0x88ddff });
@@ -1079,14 +1084,15 @@ function killEnemy(e) {
   }
   if (e.key) { dropMat('cry', e.x, e.y); for (let i = 0; i < 3; i++) dropMat('bone', e.x, e.y); stairs.open = true; banner('封印解除', '樓梯打開了'); SND.shrine(); dropItem(e.x, e.y + 20, makeItem(f, rollRarity(2))); for (let i = 0; i < 5; i++) dropGold(e.x + rand(-25, 25), e.y + rand(-25, 25), irand(6, 12) * (1 + f * 0.1)); }
   if (e.summoned) return;
-  torchAdd(e.elite ? 10 : 2, e.x, e.y);
+  torchAdd(e.elite ? 10 : e.horde ? 1.2 : 2, e.x, e.y);
   p.kills++; if (p.run) p.run.kills++; bounty('kill'); if (e.elite) bounty('elite'); p.streak++; p.streakT = 3.5;
   if ([5, 10, 25, 50, 100, 200].includes(p.streak)) { /* 連殺里程碑 */ floatText(p.x, p.y, `連殺 ×${p.streak}！`, '#ff9a3a', 20); dropGold(e.x, e.y, Math.min(p.streak, 50) * 1.5 * (1 + f * 0.1)); SND.level(); } // 連殺獎金有上限
-  if (e.elite) { for (let i = 0; i < 3; i++) dropMat('bone', e.x, e.y); if (Math.random() < 0.35) dropMat('cry', e.x, e.y); } else if (Math.random() < 0.1 * (1 + ((p.run && p.run.danger) || 0) * 0.15)) dropMat('bone', e.x, e.y);
-  if (Math.random() < 0.45) dropGold(e.x, e.y, irand(2, 6) * (1 + f * 0.1) * (e.elite ? 4 : 1));
+  if (e.elite) { for (let i = 0; i < 3; i++) dropMat('bone', e.x, e.y); if (Math.random() < 0.35) dropMat('cry', e.x, e.y); } else if (!e.waveSpawn && Math.random() < (e.horde ? 0.05 : 0.1) * (1 + ((p.run && p.run.danger) || 0) * 0.15)) dropMat('bone', e.x, e.y);
+  if (e.waveSpawn) return; /* 怪潮的怪不掉東西，獎勵是最後的金寶箱 */
+  if (Math.random() < (e.horde ? 0.17 : 0.45)) dropGold(e.x, e.y, irand(2, 6) * (1 + f * 0.1) * (e.elite ? 4 : 1));
   const r = Math.random();
-  if (r < 0.07) drops.push(mk('hp', e.x, e.y)); else if (r < 0.11) drops.push(mk('mp', e.x, e.y));
-  if (e.elite || Math.random() < 0.045) dropItem(e.x, e.y, makeItem(f, rollRarity(e.elite ? 1 : 0)));
+  if (r < (e.horde ? 0.045 : 0.07)) drops.push(mk('hp', e.x, e.y)); else if (r < (e.horde ? 0.07 : 0.11)) drops.push(mk('mp', e.x, e.y));
+  if (e.elite || Math.random() < (e.horde ? 0.02 : 0.045)) dropItem(e.x, e.y, makeItem(f, rollRarity(e.elite ? 1 : 0)));
 }
 const mk = (kind, x, y, extra) => Object.assign({ kind, x: x + rand(-14, 14), y: y + rand(-14, 14), t: 0, v: null }, extra);
 function dropMat(kind, x, y) { drops.push(mk(kind, x, y, { amt: kind === 'bone' ? irand(1, 2) : 1 })); }
@@ -1499,14 +1505,19 @@ function update(dt) {
   if (!lockRoom) {
     for (const r of rooms) if (r.arena && !r.cleared && r.gates.length && inRect(r, p.x, p.y, 1.2)) {
       let n = 0, bossIn = false; for (const e of enemies) if (inRect(r, e.x, e.y, 0)) { n++; if (e.type === 'boss' || e.key) bossIn = true; }
-      if (n >= 3 || bossIn) { lockRoom = r; for (const g of r.gates) gate[g] = 1; gateFx(r, true); banner('', '⚔️ 門被封住了，清光這個房間'); sfx(110, 0.5, 'sawtooth', 0.09, -50); noise(0.4, 0.1, 600); shake = 6; tip('arena', '有些房間會封門：打倒裡面所有敵人才會打開，清完有獎勵'); }
+      if (n >= 3 || bossIn) { lockRoom = r; for (const g of r.gates) gate[g] = 1; gateFx(r, true); if (r.wave && !bossIn) { r.waveT = 20; r.waveCd = 1; r.waveSay = 20; } banner(r.waveT ? '怪潮' : '', r.waveT ? '撐過 20 秒，再清光房間' : '⚔️ 門被封住了，清光這個房間'); sfx(110, 0.5, 'sawtooth', 0.09, -50); noise(0.4, 0.1, 600); shake = 6; tip('arena', '有些房間會封門：打倒裡面所有敵人才會打開，清完有獎勵'); }
       else if (n === 0 && !props.some(o => o.vault && !o.open && inRect(r, o.x, o.y, 0))) r.cleared = true;
     }
   } else {
+    const lr = lockRoom;
+    if (lr.waveT > 0) { lr.waveT -= dt;
+      if ((lr.waveCd -= dt) <= 0) { lr.waveCd = 1.15; for (let i = 0, m = 3 + Math.min(3, Math.floor(p.floor / 5)); i < m; i++) { const tx = irand(lr.x + 1, lr.x + lr.w - 2), ty = irand(lr.y + 1, lr.y + lr.h - 2), x = (tx + 0.5) * T, y = (ty + 0.5) * T; if (map[ty * MW + tx] !== 0 || blk[ty * MW + tx] || Math.hypot(x - p.x, y - p.y) < 110) continue; const e = hordeOf(spawnEnemy(Math.random() < 0.3 ? 'imp' : 'minion', x, y)); e.awake = true; e.rise = true; e.riseT = 0.9; e.atkCd = 0.6; e.face = Math.atan2(p.y - y, p.x - x); e.waveSpawn = true; e.xp *= 0.5; } }
+      const sec = Math.ceil(lr.waveT); if (sec < lr.waveSay && [15, 10, 5, 3, 2, 1].includes(sec)) { lr.waveSay = sec; floatText(p.x, p.y - 40, `怪潮 ${sec}`, '#ff8a5a', 18); sfx(200 + (20 - sec) * 20, 0.15, 'square', 0.04); }
+      if (lr.waveT <= 0) { banner('', '怪潮結束：清光剩下的！'); SND.shrine(); lr.waveDone = true; } }
     let n = 0; for (const e of enemies) if (inRect(lockRoom, e.x, e.y, 0)) n++;
-    if (n === 0 || !inRect(lockRoom, p.x, p.y, -0.5)) {
+    if ((n === 0 && !(lr.waveT > 0)) || !inRect(lockRoom, p.x, p.y, -0.5)) {
       const r = lockRoom; for (const g of r.gates) gate[g] = 0; gateFx(r, false); r.cleared = true; lockRoom = null;
-      if (n === 0) { const cx = (r.x + r.w / 2) * T, cy = (r.y + r.h / 2) * T; banner('', '✅ 房間淨空'); SND.shrine(); fxRing(p.x, p.y, 130, 0xffe080, 0.6); drops.push(mk('hp', cx, cy)); for (let i = 0; i < 4; i++) dropGold(cx + rand(-30, 30), cy + rand(-30, 30), irand(5, 10) * (1 + p.floor * 0.1)); if (p.burnT <= 0) p.ember = Math.min(100, p.ember + 20); }
+      if (n === 0) { const cx = (r.x + r.w / 2) * T, cy = (r.y + r.h / 2) * T; banner('', '✅ 房間淨空'); SND.shrine(); fxRing(p.x, p.y, 130, 0xffe080, 0.6); drops.push(mk('hp', cx, cy)); for (let i = 0; i < 4; i++) dropGold(cx + rand(-30, 30), cy + rand(-30, 30), irand(5, 10) * (1 + p.floor * 0.1)); if (p.burnT <= 0) p.ember = Math.min(100, p.ember + 20); if (r.waveDone) { props.push({ kind: 'chest', x: cx, y: cy + 30, r: 15, open: false, gold: true }); banner('撐過怪潮', '房間中央出現了金寶箱'); torchAdd(30, cx, cy); } }
     }
   }
   if (p.run && !stairs.open && !boss && !prisoner && dist(stairs, p) < 120) tip('key', '樓梯被封印了：打倒 🔑 鑰匙守衛（小地圖上的紫點）才能往下');
@@ -1542,7 +1553,8 @@ function update(dt) {
   if (p.run && !fps && !cine) torchTick(dt);
   if (shrine && !shrine.used && dist(shrine, p) < 220) tip('shrine', '碰一下發光的祭壇，可以得到 45 秒祝福');
   if (shrine && !shrine.used && dist(shrine, p) < 48) useShrine();
-  for (let i = booms.length - 1; i >= 0; i--) { const b = booms[i]; if ((b.t -= dt) <= 0) { booms.splice(i, 1); blast(b.x, b.y, b.R || 85, b.mult || 0.8, b.color || 0x9955ff, 0.35, true); } }
+  for (let i = booms.length - 1; i >= 0; i--) { const b = booms[i]; if ((b.t -= dt) <= 0) { booms.splice(i, 1); chainCtx = !!b.chain; blast(b.x, b.y, b.R || 85, b.mult || 0.8, b.color || 0x9955ff, b.chain ? 0.22 : 0.35, true); chainCtx = false; } }
+  if (p.chainT > 0 && (p.chainT -= dt) <= 0) p.chainN = 0;
   const ptx = Math.floor(p.x / T), pty = Math.floor(p.y / T);
   for (const t of traps) {
     const up = (time + t.ph) % 2.6 > 1.75;
@@ -1647,7 +1659,7 @@ class Char {
 }
 let hero = null, npc = null;
 const ents = new THREE.Group(); scene.add(ents);
-let lvl = new THREE.Group(); scene.add(lvl);
+let lvl = new THREE.Group(); scene.add(lvl); let visN = 0;
 let torchSpots = [], flames = null, stairFx = null, shrineFx = null, trapFx = null;
 
 const VIS = {
@@ -1978,10 +1990,11 @@ function render3d(dt) {
   whirlFx.forEach((w, i) => { w.visible = p.whirlT > 0; if (w.visible) { w.position.set(p.x * U, 1.2, p.y * U); w.rotation.y = -time * 20 + i * Math.PI; w.material.uniforms.k.value = 0.5; } });
 
   // --- 敵人 ---
+  const heavy = visN > 24; visN = 0;
   for (const e of enemies) {
     const d = Math.hypot(e.x - camTgt.x / U, e.y - camTgt.z / U);
     if (d > 420) { if (e.v) e.v.root.visible = false; continue; }
-    const c = ensureVis(e); c.root.visible = true;
+    const c = ensureVis(e); c.root.visible = true; visN++;
     if (c.gem) { c.gem.rotation.y += dt * 2; c.gem.position.y = 1.7 + Math.sin(time * 3 + e.ph) * 0.25; continue; }
     if (e.type === 'boss') { if (!c.bubble) { c.bubble = new THREE.Mesh(bubbleGeo, bubbleMat); c.bubble.position.y = 1.4; c.bubble.scale.setScalar(1.6); c.root.add(c.bubble); } c.bubble.visible = !!e.shield; if (e.shield) c.bubble.scale.setScalar(1.6 + Math.sin(time * 6) * 0.05); }
     const sp = Math.hypot(e.x - c.px, e.y - c.py) / Math.max(dt, 0.001); c.px = e.x; c.py = e.y;
@@ -1995,7 +2008,7 @@ function render3d(dt) {
         else if (sp > 18 && e.awake) c.play('Running_A', true, clamp(sp / 75, 0.7, 1.9));
         else c.play(e.awake ? 'Idle_Combat' : 'Idle');
       }
-      c.mixer.update(dt);
+      if (heavy && d > 230) { c.acc = (c.acc || 0) + dt; if (c.acc > 0.06) { c.mixer.update(c.acc); c.acc = 0; } } else c.mixer.update(dt);
     }
     if (c.ring) c.ring.rotation.y += dt;
     if (e.ch && e.ch.wind) { // 衝撞預警
@@ -2722,7 +2735,7 @@ loadAssets().then(() => {
 
 // 測試用
 window.__game = {
-  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get braziers() { return braziers; }, sacrifice, makeSetItem, SETS, get hero() { return hero; }, switchHero, rollCards, gambleItem, boxCost, get pools() { return pools; }, get holes() { return holes; }, refresh, heroLook, attack, cast, ignite, get merchant() { return merchant; }, talCan, talPts, openTal, tl, TALENTS, get pickNear() { return pickNear; }, clsOf, inClass, rollRarity, get renderer() { return renderer; }, exportText, openExport, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
+  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get braziers() { return braziers; }, sacrifice, makeSetItem, SETS, get hero() { return hero; }, switchHero, rollCards, gambleItem, boxCost, hitEnemy, get pools() { return pools; }, get holes() { return holes; }, refresh, heroLook, attack, cast, ignite, get merchant() { return merchant; }, talCan, talPts, openTal, tl, TALENTS, get pickNear() { return pickNear; }, clsOf, inClass, rollRarity, get renderer() { return renderer; }, exportText, openExport, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
   get quality() { return quality; }, setQuality(v) { autoQ = false; quality = v; applyQuality(); },
   update, descend, cast, keys, mouse, spawnEnemy, hurtPlayer, dropItem, makeItem, genFloor, setCam(i) { camMode = i; camReady = false; }, info: () => renderer.info.render,
 };
