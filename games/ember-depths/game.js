@@ -118,7 +118,7 @@ let map, explored, flow, rooms, stairs, pal;
 let enemies = [], shots = [], drops = [], props = [], parts = [], texts = [], corpses = [];
 let blk = [], decos = [], fluff = [], traps = [], booms = [], shrine = null, hitBlk = null, braziers = [];
 let merchant = null, stock = [], boxMsg = '', actMode = null, storeOpen = false;
-let totems = [], pools = [], dangers = [], cards = null, lockRoom = null, holes = [];
+let totems = [], pools = [], dangers = [], cards = null, lockRoom = null, holes = [], curse = null;
 let range = null, prisoner = null, campFire = null, board = null, extraChars = [], campBlds = [];
 let p = null, boss = null, shake = 0, miniT = 0, flowT = 0, itemId = 1, fullMsgT = 0, hitStop = 0;
 let W = 0, H = 0, dpr = 1;
@@ -393,7 +393,7 @@ function genFloor() {
   explored = new Uint8Array(MW * MH);
   flow = new Int16Array(MW * MH);
   gate = new Uint8Array(MW * MH); lockRoom = null;
-  rooms = []; enemies = []; shots = []; drops = []; props = []; parts = []; texts = []; boss = null; pools = []; dangers = []; holes = [];
+  rooms = []; enemies = []; shots = []; drops = []; props = []; parts = []; texts = []; boss = null; pools = []; dangers = []; holes = []; curse = null;
   pal = PALS[(R.tier - 1 + (R.goal === 'endless' ? Math.floor((R.depth - 1) / 3) : 0)) % PALS.length];
 
   for (let i = 0; i < 200 && rooms.length < 11; i++) {
@@ -471,18 +471,19 @@ function genFloor() {
     }
     const n = Math.round((2.5 + r.w * r.h / 18 + Math.min(5, f * 0.6)) * diff().cnt * (p.clears ? 1.7 : 1.3)); /* 成群：數量多、單隻脆 */
     for (let i = 0; i < n; i++) {
-      const s = freeSpot(r, 18), elite = Math.random() < (f >= 2 ? 0.08 : 0.04) * (rmod('elite') ? 2 : 1);
+      const s = freeSpot(r, 18), elite = Math.random() < (f >= 2 ? 0.08 : 0.04) * (rmod('elite') ? 2 : 1) * (R.door === 'risk' ? 2 : 1);
       const e = spawnEnemy(rollType(f), s.x, s.y, elite); if (!elite) hordeOf(e);
     }
     r.wave = r !== far && r !== vault && f >= 2 && Math.random() < 0.3; /* 怪潮房（要是封門房才會觸發） */
-    if (Math.random() < 0.45) { const s = freeSpot(r, 16); props.push({ kind: 'chest', x: s.x, y: s.y, r: 15, open: false, gold: Math.random() < 0.15 }); }
+    if (Math.random() < 0.45) { const s = freeSpot(r, 16), cur = p.clears && f >= 2 && Math.random() < 0.18; props.push({ kind: 'chest', x: s.x, y: s.y, r: 15, open: false, gold: cur || Math.random() < 0.15, cursed: cur }); }
     const nb = irand(1, 4);
     for (let i = 0; i < nb; i++) { const s = freeSpot(r, 12); props.push({ kind: 'barrel', x: s.x, y: s.y, r: 11, skin: Math.random() < 0.6 ? 'barrel_large' : 'box_large', rot: rand(0, 6.28) }); }
   }
   if (!p.clears && R.depth === 1) for (let i = 0; i < 3; i++) { const e = spawnEnemy('minion', (start.cx + 0.5) * T + Math.cos(i * 2.1 + 0.5) * 150, (start.cy + 0.5) * T + Math.sin(i * 2.1 + 0.5) * 110); e.hp = e.maxHp = e.hp * 0.6; if (circleHits(e.x, e.y, e.r)) { e.x = (start.cx + 0.5) * T + 70 * (i - 1); e.y = (start.cy + 0.5) * T - 60; } }
+  if (p.clears && !bossF && Math.random() < 0.35) { const tr = pick(others.filter(r => r !== vault)); if (tr) { const s = freeSpot(tr, 18); spawnEnemy('thief', s.x, s.y); } }
   // 樓梯封印：要先打倒這一層的鑰匙守衛
   const kr = others.filter(r => r !== vault);
-  if (!last && kr.length) { const r = kr[kr.length - 1], s = freeSpot(r, 18), e = spawnEnemy(rollType(f), s.x, s.y, true); e.key = true; e.hp = e.maxHp = e.hp * 1.3; e.xp *= 1.5; stairs.open = false; }
+  if (!last && kr.length) { const r = kr[kr.length - 1], s = freeSpot(r, 18), e = spawnEnemy(rollType(f), s.x, s.y, true); e.key = true; if (R.door === 'leg') e.legDrop = true; e.hp = e.maxHp = e.hp * 1.3; e.xp *= 1.5; stairs.open = false; }
   // 競技場：走進去門會封住，清光才開
   for (const r of rooms) {
     r.arena = r !== start && (r === vault || (r === far && last) || Math.random() < (f <= 2 ? 0.25 : 0.4)); r.gates = [];
@@ -508,7 +509,7 @@ function genCamp(keep) {
   p.floor = (p.tier - 1) * 3 + 2; p.run = null;
   clearEntities(); prisoner = null;
   map = new Uint8Array(MW * MH).fill(1); explored = new Uint8Array(MW * MH); flow = new Int16Array(MW * MH); gate = new Uint8Array(MW * MH); lockRoom = null;
-  enemies = []; shots = []; drops = []; props = []; parts = []; texts = []; boss = null; pools = []; dangers = []; holes = [];
+  enemies = []; shots = []; drops = []; props = []; parts = []; texts = []; boss = null; pools = []; dangers = []; holes = []; curse = null;
   pal = { name: '營地', tint: 0xffe2c8, hemi: 0xa08868, torch: 0xffa050 };
   const r = { x: 18, y: 13, w: 21, h: 13, cx: 28, cy: 19 }; rooms = [r];
   for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) { map[y * MW + x] = 0; explored[y * MW + x] = 1; }
@@ -626,7 +627,7 @@ const fmt = (k, v) => `${STAT[k][0]} ${v > 0 ? '+' : ''}${Number.isInteger(v) ? 
 // 稀有度機率：傳說約 0.5～2%；危險度 5 起才有機會掉「餘燼」
 function rollRarity(min = 0) {
   const dg = (p.run && p.run.danger) || 0, f = p.floor, r = Math.random();
-  const leg = (0.004 + Math.min(0.006, f * 0.0003) + dg * 0.0015) * (1 + darkK() * 0.8);
+  const leg = (0.004 + Math.min(0.006, f * 0.0003) + dg * 0.0015) * (1 + darkK() * 0.8) * (p.run && p.run.door === 'risk' ? 1.5 : 1);
   const ember = dg >= 5 ? leg * (0.15 + (dg - 5) * 0.05) : 0;
   const rare = Math.min(0.25, (0.05 + f * 0.002 + dg * 0.01) * (1 + darkK() * 0.5)), magic = 0.3;
   const q = r < ember ? 4 : r < ember + leg ? 3 : r < ember + leg + rare ? 2 : r < ember + leg + rare + magic ? 1 : 0;
@@ -851,6 +852,7 @@ const ET = {
   archer: { n: '骸骨弩手', hp: 24, spd: 85, dmg: 12, r: 12, xp: 11, ranged: 1 },
   brute: { n: '骸骨戰將', hp: 110, spd: 62, dmg: 24, r: 16, xp: 22, charger: 1 },
   shaman: { n: '亡靈咒術師', hp: 44, spd: 62, dmg: 13, r: 12, xp: 18, ranged: 1 },
+  thief: { n: '偷寶骷髏', hp: 240, spd: 150, dmg: 0, r: 12, xp: 40 },
   boss: { n: '守關者', hp: 1500, spd: 76, dmg: 28, r: 30, xp: 300, charger: 1 },
 };
 const TRAITN = { split: '分裂', bomb: '自爆', haste: '疾走', ward: '護盾' };
@@ -881,6 +883,17 @@ function spawnEnemy(type, x, y, elite) {
 function enemyShot(e, ang, spd, dmg, col, r = 6, arrow = false) {
   shots.push({ x: e.x + Math.cos(ang) * e.r, y: e.y + Math.sin(ang) * e.r, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, r, dmg, from: 'e', life: 4, col, arrow });
 }
+function thiefAI(e, dt, d, sm) { // 偷寶骷髏：看到你就跑，跑太遠會停下來喘氣，時間到就鑽進地底
+  if (!e.awake) { if (d < 300 && los(e, p)) { e.awake = true; e.fleeT = 14; banner('偷寶骷髏！', '牠背著一袋寶物在逃跑，14 秒內打倒牠'); sfx(1200, 0.15, 'triangle', 0.05); sfx(1500, 0.15, 'triangle', 0.05, 0, 0.08); ev('發現偷寶骷髏'); } return; }
+  if (e.fleeT === undefined) e.fleeT = 14;
+  if ((e.fleeT -= dt) <= 0) { e.dead = true; e.escaped = true; burst(e.x, e.y, '#b070ff', 40, 160, 0.8, 1, 6); fxRing(e.x, e.y, 90, 0xa060ff, 0.5); floatText(e.x, e.y, '偷寶骷髏鑽進地底逃走了⋯', '#c9a0ff', 16); sfx(300, 0.6, 'sine', 0.06, -250); ev('偷寶骷髏逃走'); killVis(e); return; }
+  if (Math.random() < dt * 6) parts.push(mkPart(e.x + rand(-6, 6), e.y + rand(-6, 6), rand(0.5, 1.5), rand(-10, 10), rand(-10, 10), rand(2, 5), '#ffd040', 0.5, rand(3, 6), 8));
+  const tx = Math.floor(e.x / T), ty = Math.floor(e.y / T); let bd = flow[ty * MW + tx], bx = 0, by = 0;
+  for (const [i, j] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) { if (solid(tx + i, ty + j) || (i && j && (solid(tx + i, ty) || solid(tx, ty + j)))) continue; const v = flow[(ty + j) * MW + tx + i]; if (v > bd) { bd = v; bx = i; by = j; } }
+  let ax = 0, ay = 0; if (bx || by) { const gx = (tx + bx + 0.5) * T - e.x, gy = (ty + by + 0.5) * T - e.y, g = Math.hypot(gx, gy) || 1; ax = gx / g; ay = gy / g; } else { ax = (e.x - p.x) / (d || 1); ay = (e.y - p.y) / (d || 1); }
+  const spd = e.spd * sm * (d > 380 ? 0.35 : 1);
+  if (ax || ay) { moveEnt(e, ax * spd * dt, ay * spd * dt); e.face = Math.atan2(ay, ax); }
+}
 function updateEnemy(e, dt) {
   e.flash -= dt; e.atkCd -= dt; e.ph += dt * 6;
   if (e.type === 'crystal') { // 餘燼水晶：不會動，定時放一圈彈幕，有光束連到首領
@@ -896,6 +909,7 @@ function updateEnemy(e, dt) {
   if (e.stun > 0) { e.stun -= dt; return; } // 被打到會踉蹌一下
   const sm = e.slow > 0 ? 0.45 : 1; e.slow -= dt;
   const d = dist(e, p);
+  if (e.type === 'thief') return thiefAI(e, dt, d, sm);
   if (!e.awake) { if (d < 340 && los(e, p)) { e.awake = true; tip('dash', touchMode ? '敵人舉手要打你時，按 💨 閃避，閃避中不會受傷' : '敵人舉手要打你時，按空白鍵閃避，閃避中不會受傷'); if (e === boss) { bossIntro(e); e.act = 1.2; } } else return; }
   // 近戰出手：先有揮擊的前搖，躲得開
   if (e.atkT > 0) {
@@ -1037,6 +1051,7 @@ function hitEnemy(e, mult, kb = 120, src, o = {}) {
   if (crit) dmg *= tl('rA4') ? 3 : wtOf(p.equip.weapon) === WT.dagger ? 2.6 : 2;
   dmg = Math.max(1, Math.round(dmg));
   e.hp -= dmg; e.flash = 0.12; e.awake = true;
+  if (e.type === 'thief') { if (e.fleeT === undefined) e.fleeT = 14; if (Math.random() < 0.3) dropGold(e.x, e.y, irand(3, 6) * (1 + p.floor * 0.1)); }
   if (e.broken > 0) { dmg = Math.round(dmg * 1.5); e.hp -= Math.round(dmg / 3); }
   const s0 = src || p, a = Math.atan2(e.y - s0.y, e.x - s0.x), k = e.fixed ? 0 : e.type === 'boss' ? 0.1 : e.type === 'brute' ? 0.4 : 1;
   e.kx += Math.cos(a) * kb * k * 3; e.ky += Math.sin(a) * kb * k * 3;
@@ -1082,8 +1097,13 @@ function killEnemy(e) {
     for (const o of enemies) if (o !== e && !o.dead) { o.hp = 0; o.dead = true; toCorpse(o); }
     return;
   }
+  if (e.legDrop || (e.type === 'boss' && p.run && p.run.door === 'leg')) dropItem(e.x - 30, e.y + 20, makeItem(f, 3));
   if (e.key) { dropMat('cry', e.x, e.y); for (let i = 0; i < 3; i++) dropMat('bone', e.x, e.y); stairs.open = true; banner('封印解除', '樓梯打開了'); SND.shrine(); dropItem(e.x, e.y + 20, makeItem(f, rollRarity(2))); for (let i = 0; i < 5; i++) dropGold(e.x + rand(-25, 25), e.y + rand(-25, 25), irand(6, 12) * (1 + f * 0.1)); }
   if (e.summoned) return;
+  if (e.type === 'thief') { banner('抓到了！', '偷寶骷髏的袋子破了'); SND.legend(); shake = 10; hitStop = 0.15; fxRing(e.x, e.y, 160, 0xffd040, 0.8); burst(e.x, e.y, '#ffd040', 70, 240, 1.2, 1, 8); p.stat.thief = (p.stat.thief || 0) + 1; ev('打倒偷寶骷髏');
+    for (let i = 0; i < 18; i++) dropGold(e.x + rand(-60, 60), e.y + rand(-60, 60), irand(8, 14) * (1 + p.floor * 0.1));
+    for (let i = 0; i < 3; i++) dropItem(e.x + rand(-50, 50), e.y + rand(-50, 50), makeItem(p.floor, i === 0 && Math.random() < 0.35 ? 3 : rollRarity(2)));
+    for (let i = 0; i < 3; i++) dropMat('cry', e.x, e.y); }
   torchAdd(e.elite ? 10 : e.horde ? 1.2 : 2, e.x, e.y);
   p.kills++; if (p.run) p.run.kills++; bounty('kill'); if (e.elite) bounty('elite'); p.streak++; p.streakT = 3.5;
   if ([5, 10, 25, 50, 100, 200].includes(p.streak)) { /* 連殺里程碑 */ floatText(p.x, p.y, `連殺 ×${p.streak}！`, '#ff9a3a', 20); dropGold(e.x, e.y, Math.min(p.streak, 50) * 1.5 * (1 + f * 0.1)); SND.level(); } // 連殺獎金有上限
@@ -1096,7 +1116,7 @@ function killEnemy(e) {
 }
 const mk = (kind, x, y, extra) => Object.assign({ kind, x: x + rand(-14, 14), y: y + rand(-14, 14), t: 0, v: null }, extra);
 function dropMat(kind, x, y) { drops.push(mk(kind, x, y, { amt: kind === 'bone' ? irand(1, 2) : 1 })); }
-function dropGold(x, y, v) { drops.push(mk('gold', x, y, { amt: Math.max(1, Math.round(v * diff().gold * (rmod('dark') ? 1.5 : 1) * (1 + darkK() * 0.5))) })); }
+function dropGold(x, y, v) { drops.push(mk('gold', x, y, { amt: Math.max(1, Math.round(v * diff().gold * (rmod('dark') ? 1.5 : 1) * (1 + darkK() * 0.5) * (p.run && p.run.door === 'gold' ? 2 : 1))) })); }
 function dropItem(x, y, it) {
   drops.push(mk('item', x, y, { it }));
   if (it.rarity >= 4) { floatText(x, y + 10, '🔥 餘燼裝備', '#ff4a3a', 22); fxRing(x, y, 170, 0xff3a20, 1); }
@@ -1469,6 +1489,7 @@ function update(dt) {
   props = props.filter(o => { if (o.dead) killVis(o); return !o.dead; });
 
   for (const o of props) if (o.kind === 'chest' && !o.open && dist(o, p) < o.r + p.r + 10) {
+    if (o.cursed) { o.open = true; o.cursed = false; curse = { x: o.x, y: o.y, t: 20, cd: 0.5, say: 20 }; banner('詛咒寶箱', '撐過 20 秒的怪潮，再清光，寶物翻倍'); SND.boom(1); shake = 8; fxRing(o.x, o.y, 200, 0xa040ff, 0.8); ev('打開詛咒寶箱'); continue; }
     o.open = true; bounty('chest'); if (o.vault) { ambush(o); dropMat('cry', o.x, o.y + 20); } else if (Math.random() < 0.5) dropMat('bone', o.x, o.y + 20); sfx(660, 0.2, 'triangle', 0.06, 300); burst(o.x, o.y, '#ffd84a', 24, 110, 0.9, 1, 6);
     for (let i = 0; i < irand(3, 6) * (o.gold ? 2 : 1); i++) dropGold(o.x + rand(-20, 20), o.y + 26, irand(4, 9) * (1 + p.floor * 0.1));
     dropItem(o.x, o.y + 30, makeItem(p.floor, rollRarity(o.gold ? 2 : Math.random() < 0.35 ? 1 : 0)));
@@ -1551,6 +1572,14 @@ function update(dt) {
   if (p.streakT > 0 && (p.streakT -= dt) <= 0) p.streak = 0;
   if (p.buff && (p.buff.t -= dt) <= 0) { p.buff = null; refresh(); floatText(p.x, p.y, '祝福消失了', '#aaa', 13); }
   if (p.run && !fps && !cine) torchTick(dt);
+  if (curse) { const cu = curse;
+    if (cu.t > 0) { cu.t -= dt; if (Math.random() < dt * 20) { const b = rand(0, 6.283); parts.push(mkPart(cu.x + Math.cos(b) * 30, cu.y + Math.sin(b) * 30, rand(0.3, 2), 0, 0, rand(4, 8), '#a050ff', 0.6, rand(4, 8), -2)); }
+      if ((cu.cd -= dt) <= 0) { cu.cd = 1.2; for (let i = 0, m = 3 + Math.min(3, Math.floor(p.floor / 5)); i < m; i++) { const b = rand(0, 6.283), rr = rand(110, 190), x = cu.x + Math.cos(b) * rr, y = cu.y + Math.sin(b) * rr; if (circleHits(x, y, 14) || Math.hypot(x - p.x, y - p.y) < 90) continue; const e = hordeOf(spawnEnemy(Math.random() < 0.3 ? 'imp' : 'minion', x, y)); e.awake = true; e.rise = true; e.riseT = 0.9; e.atkCd = 0.6; e.waveSpawn = true; e.curse = true; e.xp *= 0.5; } }
+      const sec = Math.ceil(cu.t); if (sec < cu.say && [15, 10, 5, 3, 2, 1].includes(sec)) { cu.say = sec; floatText(p.x, p.y - 40, `詛咒 ${sec}`, '#c070ff', 18); } }
+    else if (!enemies.some(e => e.curse && !e.dead)) { banner('詛咒解除', '寶物翻倍！'); SND.legend(); fxRing(cu.x, cu.y, 160, 0xffd040, 0.8); ev('詛咒寶箱完成');
+      for (let i = 0; i < 12; i++) dropGold(cu.x + rand(-40, 40), cu.y + 26 + rand(-20, 20), irand(6, 12) * (1 + p.floor * 0.1));
+      for (let i = 0; i < 3; i++) dropItem(cu.x + rand(-40, 40), cu.y + 30, makeItem(p.floor, i === 0 && Math.random() < 0.3 ? 3 : rollRarity(2)));
+      dropMat('cry', cu.x, cu.y + 20); dropMat('cry', cu.x, cu.y + 20); curse = null; } }
   if (shrine && !shrine.used && dist(shrine, p) < 220) tip('shrine', '碰一下發光的祭壇，可以得到 45 秒祝福');
   if (shrine && !shrine.used && dist(shrine, p) < 48) useShrine();
   for (let i = booms.length - 1; i >= 0; i--) { const b = booms[i]; if ((b.t -= dt) <= 0) { booms.splice(i, 1); chainCtx = !!b.chain; blast(b.x, b.y, b.R || 85, b.mult || 0.8, b.color || 0x9955ff, b.chain ? 0.22 : 0.35, true); chainCtx = false; } }
@@ -1568,12 +1597,34 @@ function update(dt) {
   musicTarget = (boss && boss.awake) || p.burnT > 0 ? 1 : Math.min(0.8, near * 0.2);
   intensity += (musicTarget - intensity) * Math.min(1, dt * 0.9);
 }
+const DOORS = {
+  gold: ['💰', '黃金之門', '下一層金幣 ×2'],
+  leg: ['★', '傳說之門', '下一層的鑰匙守衛（或首領）保底掉一件傳說'],
+  heal: ['🧪', '泉水之門', '補滿生命與魔力，生命藥水 +2'],
+  torch: ['🔥', '火焰之門', '火光與餘燼全滿'],
+  risk: ['💀', '血戰之門', '下一層菁英 ×2，傳說機率 ×1.5'],
+};
+let doorOpts = null;
 function descend() {
-  if (state !== 'play' || !stairs.open || stairs.portal || !p.run || dist(stairs, p) > 44) return;
+  if (state !== 'play' || !stairs.open || stairs.portal || !p.run || dist(stairs, p) > 44 || doorOpts) return;
+  const ks = Object.keys(DOORS).filter(k => !(k === 'heal' && p.hp > p.st.hp * 0.8 && p.hpPot >= 5)).sort(() => Math.random() - 0.5).slice(0, 2);
+  doorOpts = ks; paused = true; joy.id = null; atkHeld = false; mouse.l = mouse.r = false;
+  $('doorBody').innerHTML = ks.map((k, i) => `<button class="btn door" data-door="${i}"><b style="font-size:30px">${DOORS[k][0]}</b><br><b>${DOORS[k][1]}</b><br><span class="dim">${DOORS[k][2]}</span></button>`).join('');
+  $('door').classList.add('on'); SND.card();
+}
+function takeDoor(i) {
+  const k = doorOpts && doorOpts[i]; if (!k) return; doorOpts = null; $('door').classList.remove('on'); paused = false;
+  p.run.door = k; ev(`選了${DOORS[k][1]}`); doDescend();
+  if (k === 'heal') { p.hp = p.st.hp; p.mp = p.st.mp; p.hpPot = Math.min(9, p.hpPot + 2); floatText(p.x, p.y, '泉水：補滿！', '#6e6', 18); }
+  if (k === 'torch') { p.ember = 100; if (p.run.torch !== undefined) p.run.torch = 100; floatText(p.x, p.y, '火焰：全滿！', '#ffb040', 18); }
+  banner(DOORS[k][1], DOORS[k][2]);
+}
+function doDescend() {
   p.run.depth++; ev(`下樓 → 第 ${p.run.depth} 層`); sfx(300, 0.3, 'triangle', 0.06, -150);
   p.hp = Math.min(p.st.hp, p.hp + p.st.hp * 0.25); p.mp = p.st.mp;
   genFloor();
 }
+$('door').addEventListener('click', ev2 => { const b = ev2.target.closest('[data-door]'); if (b) takeDoor(+b.dataset.door); });
 
 // ======================================================================
 // 3D 繪圖
@@ -1664,7 +1715,7 @@ let torchSpots = [], flames = null, stairFx = null, shrineFx = null, trapFx = nu
 
 const VIS = {
   minion: ['skel_minion', 1], imp: ['skel_minion', 0.68, 0x8fe07a], archer: ['skel_rogue', 1, 0xffa890], brute: ['skel_warrior', 1.22, 0x9fb4e0],
-  shaman: ['skel_mage', 1, 0xc49cff], boss: ['skel_warrior', 2.0, 0xff9a80],
+  shaman: ['skel_mage', 1, 0xc49cff], thief: ['skel_rogue', 0.85, 0xffd060], boss: ['skel_warrior', 2.0, 0xff9a80],
 };
 function ensureVis(e) {
   if (e.v) return e.v;
@@ -1680,6 +1731,7 @@ function ensureVis(e) {
   c.root.scale.setScalar(sc * (e.elite ? 1.22 : 1));
   if (e.type === 'archer') c.hold('handslotr', 'w_crossbow');
   if (e.type === 'shaman') c.hold('handslotr', 'w_staff');
+  if (e.type === 'thief') { c.hold('handslotl', 'coin_stack_large', 1.3); c.base = 0x664400; c.baseK = 0.9; }
   if (e.type === 'brute') { c.hold('handslotr', 'w_axe'); c.hold('handslotl', 'w_shield_large_a'); }
   if (e.type === 'boss') { c.hold('handslotr', 'w_blade', 1.2); c.hold('handslotl', 'w_shield_large_a', 1.1); }
   c.emissive(c.base, c.baseK);
@@ -2045,6 +2097,7 @@ function render3d(dt) {
   for (const o of props) {
     if (!o.v) {
       if (o.kind === 'barrel') { o.v = kitClone(o.skin, o.skin === 'barrel_large' ? 0.72 : 0.8); o.v.rotation.y = o.rot; }
+      else if (o.cursed) { o.v = tintClone('chest_gold', 1.15, 0x8a30ff, 0.9); o.v.traverse(c => { if (/lid/i.test(c.name) && !o.lid) o.lid = c; }); }
       else { o.v = kitClone(o.gold ? 'chest_gold' : 'chest', 1.05); o.v.traverse(c => { if (/lid/i.test(c.name) && !o.lid) o.lid = c; }); }
       o.v.position.set(o.x * U, 0, o.y * U); lvl.add(o.v);
     }
@@ -2091,11 +2144,12 @@ function drawOverlay() {
   const c = octx, k = ov.width / W;
   c.setTransform(k, 0, 0, k, 0, 0); c.clearRect(0, 0, W, H); c.textAlign = 'center';
   for (const e of enemies) {
-    if (!e.v || !e.v.root.visible || e.type === 'boss' || (e.hp >= e.maxHp && !e.elite)) continue;
+    if (!e.v || !e.v.root.visible || e.type === 'boss' || (e.hp >= e.maxHp && !e.elite && e.type !== 'thief')) continue;
     const [x, y, ok] = project(e.x, (e.type === 'brute' ? 3.4 : e.type === 'imp' ? 2 : 2.9) * (e.elite ? 1.2 : 1), e.y); if (!ok) continue;
     const w = e.elite ? 46 : 34;
     c.fillStyle = 'rgba(0,0,0,.65)'; c.fillRect(x - w / 2 - 1, y - 1, w + 2, 6);
     c.fillStyle = e.elite ? '#ffd84a' : '#e44'; c.fillRect(x - w / 2, y, w * Math.max(0, e.hp / e.maxHp), 4);
+    if (e.type === 'thief') { c.font = '12px sans-serif'; c.fillStyle = '#ffd040'; c.strokeStyle = '#000'; c.lineWidth = 3; const nm = `💰 偷寶骷髏${e.fleeT !== undefined ? ' ' + Math.max(0, Math.ceil(e.fleeT)) + 's' : ''}`; c.strokeText(nm, x, y - 5); c.fillText(nm, x, y - 5); }
     if (e.elite) { c.font = '12px sans-serif'; c.fillStyle = '#ffd84a'; c.strokeStyle = '#000'; c.lineWidth = 3; const nm = `${e.key ? '🔑 鑰匙守衛' : '菁英 ' + ET[e.type].n}〔${TRAITN[e.trait] || ''}〕`; c.strokeText(nm, x, y - 5); c.fillText(nm, x, y - 5); }
   }
   const label = (x0, y0, h, txt, col) => { if (fps) return; const [x, y, ok] = project(x0, h, y0); if (ok && x > -60 && x < W + 60) { c.font = '13px sans-serif'; c.lineWidth = 3; c.strokeStyle = '#000'; c.strokeText(txt, x, y); c.fillStyle = col; c.fillText(txt, x, y); } };
@@ -2125,9 +2179,11 @@ function drawOverlay() {
 function drawMini() {
   mctx.clearRect(0, 0, MW, MH);
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (explored[y * MW + x] && map[y * MW + x] === 0) { mctx.fillStyle = 'rgba(200,190,220,.55)'; mctx.fillRect(x, y, 1, 1); }
+  for (const o of props) if (o.cursed && !o.open && explored[Math.floor(o.y / T) * MW + Math.floor(o.x / T)]) { mctx.fillStyle = '#b6f'; mctx.fillRect(Math.floor(o.x / T), Math.floor(o.y / T), 2, 2); }
   if (ncv('seek')) for (const o of props) if (o.kind === 'chest' && !o.open) { mctx.fillStyle = o.vault ? '#fd4' : '#e9b040'; mctx.fillRect(Math.floor(o.x / T), Math.floor(o.y / T), 2, 2); }
   if (prisoner && !prisoner.freed) { mctx.fillStyle = '#ffe080'; mctx.fillRect(Math.floor(prisoner.x / T) - 1, Math.floor(prisoner.y / T) - 1, 3, 3); }
   if (stairs.open && explored[stairs.ty * MW + stairs.tx]) { mctx.fillStyle = '#ffcf6b'; mctx.fillRect(stairs.tx - 1, stairs.ty - 1, 2, 2); }
+  for (const e of enemies) if (e.type === 'thief' && !e.dead) { mctx.fillStyle = '#fd4'; mctx.fillRect(Math.floor(e.x / T) - 1, Math.floor(e.y / T) - 1, 3, 3); }
   for (const e of enemies) if (e.key) { mctx.fillStyle = '#f5e'; mctx.fillRect(Math.floor(e.x / T) - 1, Math.floor(e.y / T) - 1, 3, 3); }
   if (boss) { mctx.fillStyle = '#f44'; mctx.fillRect(Math.floor(boss.x / T) - 1, Math.floor(boss.y / T) - 1, 2, 2); }
   for (const b of braziers) if (explored[Math.floor(b.y / T) * MW + Math.floor(b.x / T)]) { mctx.fillStyle = b.lit ? '#a64' : '#fa3'; mctx.fillRect(Math.floor(b.x / T), Math.floor(b.y / T), 2, 2); }
@@ -2737,5 +2793,5 @@ loadAssets().then(() => {
 window.__game = {
   get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get braziers() { return braziers; }, sacrifice, makeSetItem, SETS, get hero() { return hero; }, switchHero, rollCards, gambleItem, boxCost, hitEnemy, get pools() { return pools; }, get holes() { return holes; }, refresh, heroLook, attack, cast, ignite, get merchant() { return merchant; }, talCan, talPts, openTal, tl, TALENTS, get pickNear() { return pickNear; }, clsOf, inClass, rollRarity, get renderer() { return renderer; }, exportText, openExport, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
   get quality() { return quality; }, setQuality(v) { autoQ = false; quality = v; applyQuality(); },
-  update, descend, cast, keys, mouse, spawnEnemy, hurtPlayer, dropItem, makeItem, genFloor, setCam(i) { camMode = i; camReady = false; }, info: () => renderer.info.render,
+  update, descend, takeDoor, get doorOpts() { return doorOpts; }, cast, keys, mouse, spawnEnemy, hurtPlayer, dropItem, makeItem, genFloor, setCam(i) { camMode = i; camReady = false; }, info: () => renderer.info.render,
 };
