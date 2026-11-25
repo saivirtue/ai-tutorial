@@ -5,6 +5,9 @@ import * as THREE from './vendor/three.bundle.js';
 const { GLTFLoader, cloneSkinned } = THREE;
 
 const $ = id => document.getElementById(id);
+// 版本：寫在 index.html 載入 game.js 的網址上（?v=版本&d=日期），同時也讓瀏覽器一定抓到新版的 game.js
+const VQ = new URL(import.meta.url).searchParams, VERSION = VQ.get('v') || '開發版', BUILD = VQ.get('d') || '';
+const verTxt = () => `v${VERSION}${BUILD ? '・' + BUILD : ''}`;
 const cv = $('cv'), ov = $('ov'), octx = ov.getContext('2d');
 const mini = $('mini'), mctx = mini.getContext('2d');
 // ---------- 回報用：最近 30 秒的事件與效能 ----------
@@ -407,7 +410,7 @@ function rollBoard() {
   p.board = b;
 }
 function startRun(i) {
-  const o = p.board[i]; if (!o) return;
+  const o = p.board[i]; if (!o) return; if (newVer) $('upd').style.display = 'none';
   $('board').classList.remove('on'); paused = false;
   if (o.goal === 'endless') p.board.pop();
   p.run = { torch: 100, danger: p.danger || 0, glass: o.glass, pots: 0, tier: o.tier, goal: o.goal, who: o.who, mod: o.mod, len: o.goal === 'endless' ? 999 : runLen(o.tier), depth: 1, kills: 0, gold0: p.gold, items: 0, t0: Date.now(), first: o.goal === 'boss' && o.tier === p.tier };
@@ -548,7 +551,7 @@ function genCamp(keep) {
   stairs = { x: -1e5, y: -1e5, tx: -1, ty: -1, open: false };
   blk = new Array(MW * MH).fill(null); decos = []; fluff = []; traps = []; shrine = null; booms = []; braziers = []; p.phoenixUsed = false; p.barbUsed = false;
   const put = (tx, ty, model, rr, sc = 1, rot = 0) => { const d = { x: (tx + 0.5) * T, y: (ty + 0.5) * T, r: rr, model, s: sc, rot }; blk[ty * MW + tx] = d; decos.push(d); return d; };
-  campFire = put(r.cx, r.cy, null, 22);
+  campFire = put(r.cx, r.cy, null, 22); if (newVer) setTimeout(showUpd, 0);
   if (p.inv.filter(it => it.rarity >= 3 && !it.set).length >= 3) setTimeout(() => tip('sacrifice', '背包裡的傳說用不到？到 🎒 背包或篝火「獻祭」換 💎 結晶，或把熱度傳給身上的裝備'), 1500);
   merchant = put(r.x + 2, r.y + 2, null, 10);
   board = put(r.x + r.w - 3, r.y + 1, 'table_medium', 14, 1.1);
@@ -2495,7 +2498,7 @@ function exportText(full) {
     + [...Object.keys(it.base).map(k => fmt(k, iv(it, it.base[k], k))), ...it.aff.map(a => (a.ember ? '🔥' : '') + fmt(a.k, iv(it, a.v, a.k)))].join('、')
     + (it.fx ? `　★${LEGFX[it.fx].n} ${Math.round((it.fxq === undefined ? 0.5 : it.fxq) * 100)}%` : '') + (it.nc ? `　✦${NC[it.nc.k].n}${it.nc.v ? ' ' + it.nc.v : ''}` : '') : '（空）';
   const rec = recLv(p.tier, p.danger || 0);
-  L.push(`【餘燼地城 狀態匯出】${new Date().toLocaleString('zh-TW')}`);
+  L.push(`【餘燼地城 狀態匯出】${new Date().toLocaleString('zh-TW')}・版本 ${verTxt()}`);
   L.push(`裝置：${touchMode ? '觸控' : '滑鼠鍵盤'} ${W}×${H}・畫質 ${quality}・總遊玩 ${Math.round((p.stat.play || 0) / 60)} 分鐘`);
   L.push(`\n■ 進度`);
   L.push(`角色：${clsOf().n} Lv ${p.lvl}（經驗 ${p.xp}/${xpNeed(p.lvl)}）・其他角色：${Object.keys(p.heroes).map(c => `${CLS[c].n} Lv${p.heroes[c].lvl}`).join('、') || '無'}`);
@@ -2853,8 +2856,15 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+// 有新版本時提示更新（只在選單和營地顯示，不打斷戰鬥）
+let newVer = null;
+function checkVersion() { fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => { if (j && j.v && j.v !== VERSION && VERSION !== '開發版') { newVer = j; showUpd(); } }).catch(() => {}); }
+function showUpd() { if (!newVer) return; const ok = state === 'menu' || (state === 'play' && !p.run); $('upd').style.display = ok ? '' : 'none'; $('upd').textContent = `🔄 新版本 v${newVer.v}・點我更新`; }
+$('upd').onclick = () => { try { if (state !== 'menu') save(); } catch (e) { /* 沒差 */ } location.reload(); };
+setInterval(() => { if (newVer) showUpd(); else if (state === 'menu' || (state === 'play' && !p.run)) checkVersion(); }, 5 * 60 * 1000);
+$('ver').textContent = verTxt(); $('panelVer').textContent = verTxt();
 loadAssets().then(() => {
-  makeIcons();
+  makeIcons(); checkVersion();
   $('loading').style.display = 'none'; $('startBtns').style.display = 'block';
   if (!hasSave()) $('contBtn').style.display = 'none';
   requestAnimationFrame(frame);

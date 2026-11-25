@@ -229,6 +229,7 @@
   <div id="tip" class="hud"></div>
 
   <!-- 主選單 -->
+  <button id="upd" class="btn" style="display:none;position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:40;font-size:14px;padding:6px 14px;white-space:nowrap;background:#3a2410;border-color:#ffb040"></button>
   <div id="menu" class="overlay on"><div class="box" style="max-width:560px">
     <h1>餘燼地城</h1>
     <p class="center">舉著火把往下走。每五層有一位守關者。</p>
@@ -240,6 +241,7 @@
       <button class="btn big" id="contBtn">繼續冒險</button>
       <button class="btn big" id="newBtn" data-diff="0">新的冒險</button>
       <p class="dim" style="font-size:13px;margin-top:6px">難度在營地的告示板上用「危險度」隨時調整</p>
+      <p class="dim" id="ver" style="font-size:12px;margin-top:4px"></p>
     </div>
     <h2>操作</h2>
     <div class="keys">
@@ -273,7 +275,7 @@
         <div id="detail"></div>
         <div style="margin-top:8px">
           <button class="btn" id="talBtn">🌳 天賦</button><button class="btn" id="recBtn">📖 紀錄</button><button class="btn" id="expBtn">📋 回報／匯出</button><button class="btn" id="pickBtn">🧲 自動撿：全部</button><button class="btn" id="sellJunk">賣掉用不到的</button><button class="btn" id="sellAll">全部賣掉</button><button class="btn" id="sacJunk">🔥 獻祭用不到的傳說</button>
-          <button class="btn" id="quitRun">🔥 放棄遠征</button><button class="btn" id="closeBtn" style="float:right">關閉</button>
+          <button class="btn" id="quitRun">🔥 放棄遠征</button><button class="btn" id="closeBtn" style="float:right">關閉</button><span class="dim" id="panelVer" style="float:right;font-size:11px;margin:12px 8px 0 0"></span>
         </div>
       </div>
     </div>
@@ -356,6 +358,6 @@
     <button class="btn big" id="reviveBtn">重新點燃</button>
   </div></div>
 
-  <script type="module" src="game.js"></script>
+  <script type="module" src="game.js?v=0.8.6&d=2026-11-25"></script>
 </body>
 </html>
