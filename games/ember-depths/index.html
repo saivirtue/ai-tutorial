@@ -164,6 +164,15 @@
     .slot.sel { outline: 2px solid #fff; }
     .slot img.ico { width: 78%; height: 78%; object-fit: contain; filter: drop-shadow(0 1px 2px #000); pointer-events: none; }
     .slot .mk { position: absolute; left: 3px; top: 1px; font-size: 11px; font-style: normal; }
+    .slot .hm { position: absolute; right: 2px; bottom: 0; font-size: 10px; font-style: normal; font-weight: 700; text-shadow: 0 0 3px #000; }
+    .slot .si { position: absolute; inset: -2px; border-radius: 8px; pointer-events: none; }
+    .slot .si.lg { box-shadow: 0 0 8px var(--gc), inset 0 0 6px var(--gc); animation: lgglow 1.6s ease-in-out infinite alternate; }
+    @keyframes lgglow { to { box-shadow: 0 0 14px var(--gc), inset 0 0 10px var(--gc); } }
+    .slot:has(.si.off) img, .slot:has(.si.off) { opacity: .55; }
+    #lootToast { top: 13%; left: 50%; transform: translate(-50%, -20px); display: flex; gap: 10px; align-items: center; width: min(90vw, 400px); box-sizing: border-box; padding: 10px 14px; border-radius: 12px;
+      background: #140c08ee; border: 2px solid var(--gc, #ff8a3a); box-shadow: 0 0 24px var(--gc, #ff8a3a); opacity: 0; transition: opacity .3s, transform .3s; font-size: 15px; line-height: 1.4; }
+    #lootToast.on { opacity: 1; transform: translate(-50%, 0); }
+    #lootToast .lt-ico { font-size: 34px; width: 52px; height: 52px; display: flex; align-items: center; justify-content: center; } #lootToast .lt-ico img.ico { width: 52px; height: 52px; }
     .loot img.ico, .row img.ico { width: 26px; height: 26px; vertical-align: middle; }
     .slot.up::after { content: "▲"; position: absolute; right: 2px; top: 0; font-size: 11px; color: #5f5; }
     .eq { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -224,6 +233,7 @@
   <div id="boss" class="hud"><span id="bossName"></span><div class="bar"><i></i></div></div>
   <button id="act" class="hud">⬇️ 往下一層</button>
   <div id="banner" class="hud"></div>
+  <div id="lootToast" class="hud"></div>
   <div id="cine"><div id="cineTitle"></div></div>
   <div id="fpsHud"><div class="cross"></div><div id="fpsInfo"></div><button class="btn" id="fpsQuit">離開靶場</button><button id="fpsFire">🎯</button></div>
   <div id="buff" class="hud"></div>
@@ -373,6 +383,6 @@
     <button class="btn big" id="reviveBtn">重新點燃</button>
   </div></div>
 
-  <script type="module" src="game.js?v=0.8.9&d=2026-11-25"></script>
+  <script type="module" src="game.js?v=0.9.0&d=2026-11-25"></script>
 </body>
 </html>

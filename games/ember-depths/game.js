@@ -867,7 +867,8 @@ function gainXp(v) {
 let noSave = false; // 還原存檔、重新載入前不要再寫回舊進度
 function save() {
   if (!p || noSave) return;
-  const o = {}; for (const k of ['lvl', 'xp', 'gold', 'floor', 'best', 'hpPot', 'mpPot', 'sp', 'skl', 'equip', 'inv', 'kills', 'deaths', 'won', 'train', 'slots', 'mods', 'pas', 'picks', 'diff', 'tier', 'run', 'rescued', 'clears', 'board', 'mats', 'bld', 'cls', 'heroes', 'daily', 'weekly', 'codex', 'ach', 'stat', 'danger', 'cos', 'cosU', 'hist', 'pick', 'tal', 'setPity']) o[k] = p[k];
+  const o = {}; for (const k of ['pendingChest', 'lvl', 'xp', 'gold', 'floor', 'best', 'hpPot', 'mpPot', 'sp', 'skl', 'equip', 'inv', 'kills', 'deaths', 'won', 'train', 'slots', 'mods', 'pas', 'picks', 'diff', 'tier', 'run', 'rescued', 'clears', 'board', 'mats', 'bld', 'cls', 'heroes', 'daily', 'weekly', 'codex', 'ach', 'stat', 'danger', 'cos', 'cosU', 'hist', 'pick', 'tal', 'setPity']) o[k] = p[k];
+  if (o.run && o.run.settled) o.run = null;
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(o)); } catch (e) { /* 無痕模式存不了就算了 */ }
 }
 function load() {
@@ -881,6 +882,7 @@ function load() {
     if (!p.codex) p.codex = {}; for (const it of [...(p.inv || []), ...Object.values(p.equip || {})]) if (it && it.set) p.codex['set:' + it.set + ':' + it.slot] = 1; if (!p.cos) p.cos = { light: 'orange', trail: 'none' }; if (!p.cosU) p.cosU = [];
     for (const it of [...p.inv, ...Object.values(p.equip), ...Object.values(p.heroes || {}).flatMap(h => Object.values(h.equip || {}))]) if (it && it.up) { it.heat = Math.min(5, Math.ceil(it.up * 0.6)); it.hx = 0; delete it.up; } /* 舊的 +N 強化換成熱度 */ if (!p.ach) p.ach = {}; if (!p.stat) p.stat = {};
     if (!p.slots) { p.slots = SKILLS.filter(k => p.skl[k]).slice(0, 3); while (p.slots.length < 3) p.slots.push(null); p.picks += p.sp || 0; p.sp = 0; } // 舊存檔：技能點換成升級卡
+    if (p.pendingChest && p.pendingChest.length) { for (const it of p.pendingChest) { if (p.inv.length < invCap()) p.inv.push(it); else p.gold += it.val || 0; } p.loadMsg = `上次的獎勵箱還沒翻開：${p.pendingChest.length} 件已放進背包`; } p.pendingChest = null;
     resetRuntime();
     for (const it of [...p.inv, ...Object.values(p.equip)]) if (it) itemId = Math.max(itemId, it.id + 1);
     refresh(); p.hp = p.st.hp; p.mp = p.st.mp; return true;
@@ -1100,7 +1102,7 @@ function hitEnemy(e, mult, kb = 120, src, o = {}) {
   const s0 = src || p, a = Math.atan2(e.y - s0.y, e.x - s0.x), k = e.fixed ? 0 : e.type === 'boss' ? 0.1 : e.type === 'brute' ? 0.4 : 1;
   e.kx += Math.cos(a) * kb * k * 3; e.ky += Math.sin(a) * kb * k * 3;
   if (e.type !== 'boss' && !e.fixed && !e.ch && kb > 0 && (o.heavy || time > (e.stunAt || 0))) { e.stun = Math.max(e.stun, o.heavy ? 0.4 : 0.15); e.stunAt = time + 1.1; if (o.heavy) e.atkT = 0; } // 踉蹌後有一小段抗性，不會被連打鎖死
-  floatText(e.x, e.y, crit ? dmg + '!' : '' + dmg, crit ? '#ffd84a' : '#fff', crit ? 24 : o.heavy ? 18 : 15);
+  { const rr = dmg / Math.max(1, p.st.dmg), big = crit && rr > 4; floatText(e.x, e.y, crit ? dmg + '!' : '' + dmg, crit ? (big ? '#ff7a2a' : '#ffd84a') : o.noProc ? '#c8bfae' : '#fff', crit ? Math.min(34, 20 + rr * 2.5) : o.noProc ? 11 : Math.min(22, (o.heavy ? 16 : 13) + rr * 2)); if (crit) texts[texts.length - 1].pop = 1; if (big) { shake = Math.max(shake, 5); hitStop = Math.max(hitStop, 0.05); } } /* 大小跟傷害成正比；暴擊放大彈出 */
   // 火花往被打的方向噴
   const chunk = Math.min(1, dmg / e.maxHp);
   for (let i = 0, n = Math.round((crit ? 10 : o.heavy ? 8 : 4) + chunk * 14); i < n; i++) { const b = a + rand(-0.6, 0.6), v = rand(80, 260) * (1 + chunk); parts.push(mkPart(e.x, e.y, 1.4, Math.cos(b) * v, Math.sin(b) * v, rand(0, 3), crit ? '#ffd84a' : '#f4eedc', rand(0.2, 0.4), rand(2.5, 5), 7)); }
@@ -1286,13 +1288,14 @@ function finishRun() {
     + `帶回 🦴 ${(R.bone || 0) + mb}・💎 ${(R.cry || 0) + mc}（含完成獎勵 🦴 ${mb}・💎 ${mc}）<br>`
     + `<b style="color:#ffcf6b">完成獎勵 +${g} 金</b>` + (unlock ? `<br><b class="good">解鎖了新區域：${mapName(p.tier)}（等級 ${p.tier}）</b>` : '');
   $('chestBtn').style.display = 'inline-block'; $('chestOut').innerHTML = ''; $('sumBack').style.display = 'none';
+  R.settled = true; p.pendingChest = chestItems.slice(); save(); /* 存成「已回營地」：重新整理不會回到最後一層 */
   $('summary').classList.add('on'); SND.level();
 }
 $('chestBtn').onclick = () => {
   $('chestBtn').style.display = 'none'; let i = 0;
   const show = () => { // 一件一件翻開，稀有度越高越大聲
     const it = chestItems[i++]; if (!it) { $('sumBack').style.display = 'inline-block'; return; }
-    if (p.inv.length < invCap()) p.inv.push(it); else p.gold += it.val; addCodex(it);
+    if (p.inv.length < invCap()) p.inv.push(it); else p.gold += it.val; addCodex(it); if (p.pendingChest) { p.pendingChest.shift(); if (!p.pendingChest.length) p.pendingChest = null; } save();
     $('chestOut').insertAdjacentHTML('beforeend', `<div class="loot r${it.rarity}">${itIcon(it)} <b style="color:${RAR[it.rarity].c}">${it.name}</b>${upgradeOf(it) > 0.5 ? ' <span class="good">▲</span>' : ''}${it.fx ? `<br><small style="color:#ff8a3a">★ ${fxText(it)}</small>` : ''}</div>`);
     if (it.rarity >= 3) SND.legend(); else if (it.rarity === 2) SND.level(); else SND.coin();
     setTimeout(show, it.rarity >= 3 ? 900 : 450);
@@ -1553,7 +1556,7 @@ function update(dt) {
       if ((hp ? p.hpPot : p.mpPot) < 9) { if (hp) p.hpPot++; else p.mpPot++; }
       else if (hp ? p.hp < p.st.hp : p.mp < p.st.mp) { const v = Math.round((hp ? p.st.hp : p.st.mp) * 0.15); if (hp) p.hp = Math.min(p.st.hp, p.hp + v); else p.mp = Math.min(p.st.mp, p.mp + v); floatText(p.x, p.y - 16, `藥水滿了，直接喝掉 +${v}`, hp ? '#6e6' : '#6bf', 13); } /* 藥水滿了不再留在地上 */
       else { const g = Math.max(1, Math.round(potCost() * 0.3)); p.gold += g; floatText(p.x, p.y - 16, `藥水滿了 → 💰 +${g}`, '#ffd84a', 13); } }
-    else if (p.inv.length < invCap()) { p.inv.push(d.it); d.dead = true; if (p.run) p.run.items++; if (d.it.rarity >= 2) ev(`撿到 ${d.it.name}（${d.it.set ? '套裝' : RAR[d.it.rarity].n}）`); addCodex(d.it); if (d.it.rarity >= 3) { SND.shrine(); burst(p.x, p.y, '#ff9a3a', 30, 140, 0.8, 1, 6); } floatText(p.x, p.y, d.it.name, RAR[d.it.rarity].c, 14); tip('item', '撿到裝備了！點 🎒 打開背包，有 ▲ 的比身上的好'); sfx(700, 0.1, 'triangle', 0.05, 200); }
+    else if (p.inv.length < invCap()) { p.inv.push(d.it); d.dead = true; if (p.run) p.run.items++; if (d.it.rarity >= 2) ev(`撿到 ${d.it.name}（${d.it.set ? '套裝' : RAR[d.it.rarity].n}）`); addCodex(d.it); if (d.it.rarity >= 3) { SND.shrine(); burst(p.x, p.y, '#ff9a3a', 30, 140, 0.8, 1, 6); lootToast(d.it); } floatText(p.x, p.y, d.it.name, RAR[d.it.rarity].c, 14); tip('item', '撿到裝備了！點 🎒 打開背包，有 ▲ 的比身上的好'); sfx(700, 0.1, 'triangle', 0.05, 200); }
     else if (fullMsgT <= 0) { fullMsgT = 1.5; floatText(p.x, p.y, '背包滿了', '#f77', 13); tip('full', '背包滿了：遠征中不能賣，可以在背包把用不到的「丟掉」，或回營地賣掉；倉庫能擴充背包'); }
   }
   drops = drops.filter(d => { if (d.dead) killVis(d); return !d.dead; });
@@ -1808,6 +1811,7 @@ function makeIcons() { // 開另一個小畫布把武器模型各拍一張，拍
 }
 const itIcon = it => ICON[it.kind] ? `<img class="ico" src="${ICON[it.kind]}" alt="">` : (KINDI[it.kind] || SLOTS[it.slot].i);
 const slotBg = it => it.rarity >= 1 ? `;background:radial-gradient(circle at 50% 55%, ${icol(it)}${it.rarity >= 3 ? '55' : '30'}, #0e0b14 72%)` : '';
+const heatMark = it => it.heat ? `<i class="hm" style="color:#${HEATC[it.heat].toString(16).padStart(6, '0')}">🔥${it.heat}</i>` : '';
 const slotMark = it => it.set ? `<i class="mk" style="color:${icol(it)}">◆</i>` : it.rarity >= 3 ? `<i class="mk" style="color:${icol(it)}">★</i>` : '';
 const WMODEL = { '手弩': 'h_crossbow', '法杖': 'h_staff', '短劍': 'h_dagger', '戰斧': 'h_axe_1handed', '巨劍': 'h_sword_2handed', '釘錘': 'h_axe_1handed', '彎刀': 'w_blade' };
 const SHIELDS = ['h_shield_round', null, 'h_shield_square', 'h_shield_spikes', 'h_shield_spikes'];
@@ -2236,7 +2240,7 @@ function drawOverlay() {
   for (const t of texts) {
     const [x, y, ok] = project(t.x, 2.9, t.y); if (!ok) continue;
     const age = 0.9 - t.t, yy = y - age * 46 - (age < 0.12 ? Math.sin(age / 0.12 * Math.PI) * 8 : 0);
-    c.globalAlpha = clamp(t.t * 2.5, 0, 1); c.font = `bold ${t.size}px sans-serif`; c.lineWidth = 3.5; c.strokeStyle = '#000'; c.strokeText(t.s, x, yy); c.fillStyle = t.c; c.fillText(t.s, x, yy);
+    c.globalAlpha = clamp(t.t * 2.5, 0, 1); c.font = `bold ${Math.round(t.size * (t.pop && age < 0.16 ? 1.8 - age / 0.16 * 0.8 : 1))}px sans-serif`; c.lineWidth = 3.5; c.strokeStyle = '#000'; c.strokeText(t.s, x, yy); c.fillStyle = t.c; c.fillText(t.s, x, yy);
   }
   c.globalAlpha = 1;
   if (joy.id !== null) {
@@ -2303,10 +2307,14 @@ let sel = null;
 const shopK = () => 1 - Math.min(40, ncv('haggle')) / 100;
 const potCost = () => Math.round((20 + p.floor * 5) * shopK());
 const heatTag = it => { const k = it.heat || 0, col = '#' + (k ? HEATC[k] : 0x9a9aa8).toString(16).padStart(6, '0'); return `<span style="color:${col}">🔥${HEAT[k]} ${'▰'.repeat(k)}${'▱'.repeat(5 - k)}</span>`; };
+function lootToast(it) { // 撿到傳說：畫面上方的特寫卡片，3 秒後淡出，不擋操作
+  const el = $('lootToast'); el.innerHTML = `<div class="lt-ico">${itIcon(it)}</div><div><b style="color:${icol(it)}">${it.name}</b><br><small>${it.set ? '◆ ' + SETS[it.set].n + '：' + SETS[it.set].b3 : it.fx && LEGFX[it.fx] ? '★ ' + fxText(it) : ''}</small>${upgradeOf(it) > 0.5 ? '<br><small class="good">▲ 比身上的好，打開 🎒 換上</small>' : ''}</div>`;
+  el.style.setProperty('--gc', icol(it)); el.classList.remove('on'); void el.offsetWidth; el.classList.add('on'); clearTimeout(lootToast.t); lootToast.t = setTimeout(() => el.classList.remove('on'), 3200);
+}
 function itemHtml(it) {
   let h = `<b style="color:${icol(it)}">${it.name}</b> <span class="dim">${it.set ? '套裝' : RAR[it.rarity].n}${SLOTS[it.slot].n}・Lv ${it.lvl}</span><br>`;
   h += heatTag(it) + ((it.heat || 0) < 5 ? `<span class="dim">　再戰鬥 ${HEATN[it.heat || 0] - (it.hx || 0)} 點升溫</span>` : '<span class="dim">　已達白熾</span>') + '<br>';
-  if (it.slot === 'weapon') { const w = wtOf(it); h += `<span style="color:#e9c14a">${w.n}：${w.desc}</span><br>` + (inClass(it) ? `<span class="good">✓ ${clsOf().n}的本職武器</span><br>` : `<span class="bad">⚠ ${clsOf().n}不擅長${w.n}：傷害 -30%</span><br>`); }
+  if (it.slot === 'weapon') { const w = wtOf(it); h += `<span style="color:#e9c14a">${w.n}：${w.desc}</span><br>` + (inClass(it) ? `<span class="good">✓ ${clsOf().n}的本職武器</span><br>` : `<span class="bad">⚠ ${clsOf().n}不擅長${w.n}：傷害 -30%</span><br>`) + `<span class="dim">適合：${Object.keys(CLS).filter(c => CLS[c].wts.includes(wtKey(it))).map(c => CLS[c].n.split(' ').pop()).join('、') || '—'}</span><br>`; }
   for (const k in it.base) h += fmt(k, iv(it, it.base[k], k)) + '<br>';
   for (const a of it.aff) h += `<span style="color:${a.ember ? '#ffb040' : '#9cf'}">${a.ember ? '🔥 ' : ''}${fmt(a.k, iv(it, a.v, a.k))}</span><br>`;
   if (it.nc && NC[it.nc.k]) h += `<span style="color:#7fe0c0">✦ ${NC[it.nc.k].n}：${NC[it.nc.k].d(it.nc.v)}</span><br>`;
@@ -2317,7 +2325,7 @@ function itemHtml(it) {
 function upgradeOf(it) { const eq = Object.assign({}, p.equip), cur = p.equip[it.slot]; eq[it.slot] = inheritView(it); return power(calcStats(eq)) - power(p.st) + (it.fx || it.set ? 60 : 0) - (cur && (cur.fx || cur.set) ? 60 : 0); }
 function drawPanel() {
   const st = p.st;
-  $('eq').innerHTML = Object.keys(SLOTS).map(s => { const it = p.equip[s]; return `<div class="slot${sel && sel.it === it && it ? ' sel' : ''}" data-eq="${s}" style="border-color:${it ? icol(it) : '#443a55'}${it ? slotBg(it) : ''}">${it ? itIcon(it) + slotMark(it) : ''}<small>${SLOTS[s].n}</small></div>`; }).join('');
+  $('eq').innerHTML = Object.keys(SLOTS).map(s => { const it = p.equip[s]; return `<div class="slot${sel && sel.it === it && it ? ' sel' : ''}" data-eq="${s}" style="border-color:${it ? icol(it) : '#443a55'}${it ? slotBg(it) : ''}">${it ? itIcon(it) + slotMark(it) + heatMark(it) : ''}<small>${SLOTS[s].n}</small></div>`; }).join('');
   $('stats').innerHTML = Object.keys(STAT).map(k => `${STAT[k][0]}　<b>${Number.isInteger(st[k]) ? st[k] : st[k].toFixed(1)}${STAT[k][1] ? '%' : ''}</b>`).join('<br>') + Object.keys(p.sets || {}).map(k => `<br><span style="color:${SETS[k].c}">◆ ${SETS[k].n} ${p.sets[k]}/3</span>`).join('');
   const junk = p.inv.filter(it => upgradeOf(it) <= 0.5 && !it.fx && !it.set), sum = a => a.reduce((t, it) => t + sellOf(it), 0);
   $('sellJunk').textContent = p.run ? '回營地才能賣' : `賣掉用不到的（${junk.length} 件 +${sum(junk)} 金）`; $('sellJunk').disabled = !!p.run || !junk.length;
@@ -2332,7 +2340,7 @@ function drawPanel() {
   $('quitRun').style.display = p.run ? '' : 'none'; $('recBtn').textContent = `📖 紀錄（${ACH.filter(a => p.ach[a[0]]).length}/${ACH.length}）`;
   $('invTxt').textContent = `${p.inv.length} / ${invCap()}`;
   let h = '';
-  for (let i = 0; i < invCap(); i++) { const it = p.inv[i]; h += it ? `<div class="slot${sel && sel.it === it ? ' sel' : ''}${upgradeOf(it) > 0.5 ? ' up' : ''}" data-inv="${i}" style="border-color:${icol(it)}${slotBg(it)}">${itIcon(it)}${slotMark(it)}</div>` : '<div class="slot"></div>'; }
+  for (let i = 0; i < invCap(); i++) { const it = p.inv[i]; h += it ? `<div class="slot${sel && sel.it === it ? ' sel' : ''}${upgradeOf(it) > 0.5 ? ' up' : ''}" data-inv="${i}" style="border-color:${icol(it)}${slotBg(it)}"><span class="si${it.rarity >= 3 ? ' lg' : ''}${it.slot === 'weapon' && !inClass(it) ? ' off' : ''}" style="--gc:${icol(it)}"></span>${itIcon(it)}${slotMark(it)}${heatMark(it)}</div>` : '<div class="slot"></div>'; }
   $('inv').innerHTML = h;
   const d = $('detail');
   if (!sel) { d.innerHTML = '<span class="dim">點選物品查看內容。右上角有 ▲ 的是比身上更好的裝備。</span>'; return; }
@@ -2617,7 +2625,7 @@ function startGame(fresh, df = 0) {
   if (fresh || !load()) { newPlayer(); p.diff = df; }
   state = 'play'; paused = false; $('menu').classList.remove('on'); audioInit();
   if (fresh) { p.board = [{ tier: 1, goal: 'boss', mod: 'none' }]; startRun(0); } else genFloor(); // 新玩家直接進第一趟遠征，營地等回來再介紹
-  heroLook();
+  heroLook(); if (p.loadMsg) { const m = p.loadMsg; delete p.loadMsg; setTimeout(() => banner('獎勵已領取', m), 1200); }
   if (fresh) { dropItem(p.x - 55, p.y + 45, makeItem(1, 0, 'weapon', '手弩')); dropItem(p.x + 55, p.y + 45, makeItem(1, 0, 'weapon', '法杖')); setTimeout(() => tip('weap', '地上有手弩和法杖：撿起來到 🎒 換上，普攻的打法會跟著武器變'), 5000); }
   if (p.floor === 1 && p.lvl === 1) { tip('move', touchMode ? '左半邊螢幕拖曳移動，右下 ⚔️ 按住就會自動瞄準攻擊' : 'WASD 移動，按住滑鼠左鍵朝游標攻擊，Q／E／R 是技能'); }
 }
@@ -2918,7 +2926,7 @@ loadAssets().then(() => {
 
 // 測試用
 window.__game = {
-  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get braziers() { return braziers; }, sacrifice, makeSetItem, SETS, get hero() { return hero; }, switchHero, rollCards, gambleItem, boxCost, hitEnemy, get pools() { return pools; }, get holes() { return holes; }, refresh, heroLook, attack, cast, ignite, get merchant() { return merchant; }, talCan, talPts, openTal, tl, TALENTS, get pickNear() { return pickNear; }, clsOf, inClass, rollRarity, get renderer() { return renderer; }, exportText, openExport, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
+  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get braziers() { return braziers; }, sacrifice, makeSetItem, SETS, get hero() { return hero; }, switchHero, rollCards, gambleItem, boxCost, hitEnemy, finishRun, startRun, get paused() { return paused; }, get hitStop() { return hitStop; }, get pools() { return pools; }, get holes() { return holes; }, refresh, heroLook, attack, cast, ignite, get merchant() { return merchant; }, talCan, talPts, openTal, tl, TALENTS, get pickNear() { return pickNear; }, clsOf, inClass, rollRarity, get renderer() { return renderer; }, exportText, openExport, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
   get quality() { return quality; }, setQuality(v) { autoQ = false; quality = v; applyQuality(); },
   update, isSolid: (x, y) => solid(x, y), upgradeOf, inheritView, drawPanel, get drops() { return drops; }, dropPot(k) { drops.push(mk(k, p.x, p.y)); }, audioState: () => actx ? actx.state + (musicBossOn ? '+boss' : '') : 'none', isBlk: (x, y) => !!(blk[y * MW + x]), joyWorld(dx, dy) { const c = Math.cos(CAMS[camMode].yaw), n = Math.sin(CAMS[camMode].yaw); joy.id = 99; joy.x = dx * c - dy * n; joy.y = dx * n + dy * c; }, joySet(x, y) { if (x === null) { joy.id = null; joy.x = joy.y = joy.sx = joy.sy = 0; } else { joy.id = 99; joy.x = x; joy.y = y; } }, descend, takeDoor, get doorOpts() { return doorOpts; }, cast, keys, mouse, spawnEnemy, hurtPlayer, dropItem, makeItem, genFloor, setCam(i) { camMode = i; camReady = false; }, info: () => renderer.info.render,
 };
