@@ -46,5 +46,8 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: .
+      # 上傳完立刻部署，GitHub 有時還查不到剛上傳的網頁包（"No artifacts named github-pages"），
+      # 2026-11-25 連續失敗兩次；先等一下再部署。
+      - run: sleep 20
       - id: deployment
         uses: actions/deploy-pages@v5
