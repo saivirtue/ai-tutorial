@@ -197,6 +197,22 @@
 
     .tile.used { visibility: hidden; }
 
+    /* 拼拼看的前兩個階梯：已經給的字母是白色，要他補的那一格底線變黃色 */
+    .slot.given { color: rgba(255, 255, 255, 0.85); }
+    .slot.blank { border-bottom-color: var(--star); }
+
+    /* 拼完一起念「B—I—R—D」：念到哪個字母，那一格就亮起來 */
+    .slot.chant { color: var(--good); }
+
+    /* 用方向鍵選的時候，現在選到哪一個（白色粗框） */
+    .kb-focus { outline: 6px solid #fff; outline-offset: 3px; }
+
+    #kb-hint {
+      font-size: 16px;
+      color: rgba(255, 255, 255, 0.6);
+      text-align: center;
+    }
+
     .link-btn {
       background: none;
       border: none;
@@ -232,9 +248,10 @@
       </div>
     </div>
     <div id="message"></div>
-    <div id="choices"></div>
     <div id="slots" class="hidden"></div>
+    <div id="choices"></div>
     <div id="tiles" class="hidden"></div>
+    <div id="kb-hint" class="hidden">⌨️ ← → 選　Enter 確定　空白鍵 再聽一次</div>
     <button id="back-btn" class="link-btn zy" onclick="backToMenu()"></button>
   </div>
 
@@ -433,8 +450,13 @@
       numbers:  { label: "數[ㄕㄨˋ]字[ㄗˋ]", icon: "🔢", make: makeNumber, idOf: numberId, items: EXAM_NUMBERS, trophy: "exam-numbers" },
       phrases:  { label: "對[ㄉㄨㄟˋ]話[ㄏㄨㄚˋ]", icon: "💬", make: makePhrase, idOf: phraseId, items: EXAM_PHRASES, trophy: "exam-phrases" },
       words:    { label: "單[ㄉㄢ]字[ㄗˋ]", icon: "🐱", make: makeWord, idOf: wordId, items: EXAM_LETTERS, trophy: "exam-words" },
-      spelling: { label: "拼[ㄆㄧㄣ]拼[ㄆㄧㄣ]看[ㄎㄢˋ]", icon: "✏️", spelling: true, idOf: wordId, items: EXAM_LETTERS, trophy: "exam-spelling" },
+      spelling: { label: "拼[ㄆㄧㄣ]拼[ㄆㄧㄣ]看[ㄎㄢˋ]", icon: "✏️", spelling: true, idOf: wordId, items: EXAM_LETTERS, trophy: "exam-spelling",
+                  round: 5, pass: 3 },   // 拼字比較累：一輪 5 個字就好，3 個第一次就對算過關
     };
+
+    // 這種練習一輪幾題、幾題第一次就對算過關（沒特別設定就用預設的 8 題／5 題）
+    function roundSize() { return MODES[currentKey].round || ROUND_SIZE; }
+    function passCount() { return MODES[currentKey].pass || PASS_FIRST_TRY; }
 
     /* ===== 選單 ===== */
 
@@ -476,13 +498,14 @@
       menuEl.classList.remove("hidden");
       document.getElementById("menu-note").classList.remove("hidden");
       q = null;
+      resetKeyboardFocus();
       drawMenu();
     }
 
     function startMode(key) {
       currentKey = key;
       locked = false;
-      session = { results: [], redo: [], recent: [], asked: 0, lastKind: null };
+      session = { results: [], redo: [], recent: [], asked: 0, lastKind: null, words: [], spoken: {} };
       setZy(document.getElementById("back-btn"), "⬅ 選[ㄒㄩㄢˇ]別[ㄅㄧㄝˊ]的[˙ㄉㄜ]練[ㄌㄧㄢˋ]習[ㄒㄧˊ]");
       menuEl.classList.add("hidden");
       document.getElementById("menu-note").classList.add("hidden");
@@ -494,7 +517,7 @@
     // 8 顆星星：金色＝第一次就按對、銀色＝看了提示才對、暗的＝還沒到
     function renderProgress() {
       starsEl.innerHTML = "";
-      for (var i = 0; i < ROUND_SIZE; i++) {
+      for (var i = 0; i < roundSize(); i++) {
         var star = document.createElement("span");
         star.textContent = "⭐";
         star.className = i >= session.results.length ? "off" : (session.results[i] ? "on" : "half");
@@ -534,6 +557,7 @@
       tilesEl.classList.add("hidden");
       document.getElementById("replay-btn").classList.remove("hidden");
 
+      resetKeyboardFocus();
       q = mode.make(takeRedo());
       q.tries = 0;
       session.asked++;
@@ -619,14 +643,33 @@
 
       setTimeout(function () {
         locked = false;
-        if (session.results.length >= ROUND_SIZE) roundDone();
+        if (session.results.length >= roundSize()) roundDone();
         else nextQuestion();
       }, firstTry ? 900 : 1500);
     }
 
     function roundDone() {
       var good = session.results.filter(Boolean).length;
-      if (good >= PASS_FIRST_TRY) {
+
+      // 拼拼看一輪結束就停：不出「再玩一輪」，請他離開螢幕去找爸媽
+      // （拼字比選擇題累，也不希望變成一直盯著螢幕刷下去）
+      if (MODES[currentKey].spelling) {
+        var passed = good >= passCount();
+        var html = (passed ? "🎉 拼完 5 個字！得到貼紙 " + awardSticker() : "👏 拼完 5 個字了！") +
+          "<br>去拼給爸爸媽媽聽：" + session.words.filter(function (w, i, all) {
+          return all.indexOf(w) === i;   // 答錯會回來再問一次，同一個字只列一次
+        }).join("、");
+        if (passed) {
+          awardTrophy(MODES[currentKey].trophy);
+          notifyMilestone();
+          playSound("win");
+        }
+        say(passed ? "過關囉！去拼給爸爸媽媽聽！" : "拼完了！去拼給爸爸媽媽聽！");
+        softOverlay(html, "完成", backToMenu);
+        return;
+      }
+
+      if (good >= passCount()) {
         var sticker = awardSticker();
         var trophy = awardTrophy(MODES[currentKey].trophy);
         var msg = "🎉 過關！得到貼紙 " + sticker + (trophy ? "\n" + trophy : "");
@@ -657,57 +700,184 @@
     }
 
     /* ===== 拼拼看（Part 4 單字） =====
-       上面一排是空格，下面是打亂的字母。按「下一個該放的字母」就會
-       放進去；按錯會抖一下，連錯兩次那個字母會一閃一閃。
-       不用打字，一年級小孩用手指就能玩。 */
+       小孩從沒練過拼字，所以不是一開始就整個字打亂讓他排，而是分階梯：
+         1. 補第一個字母：_at 🐱（他已經會「C 開頭是 cat」，幾乎是複習）
+         2. 補中間的字母：c_t（母音最難，一次只補一個）
+         3. 把整個字排好：t、c、a 照順序挑出來
+       某個字第一次就拼對過（熟練度到第 2 格）之後，下次就直接跳第 3 步。
+       拼完會「B—I—R—D，bird！」一個一個念出來——跟他拼注音
+       「ㄋ—ㄧ—ˇ—你」是同一個習慣，只是換成英文。
+       不用打字：用手指點、或用方向鍵選都可以。 */
 
-    var spellFilled = 0;
-    var spellMisses = 0;      // 這一格已經按錯幾次
+    // 由簡單到難：先三個字母、照字面念的字，熟了才放出下一組
+    var SPELL_TIERS = [
+      ["ant", "cat", "dog", "egg", "hat", "jet"],
+      ["fish", "kite", "lion", "bird", "girl"],   // bird、girl 的 ir 不照字面念，放這組
+      ["insect", "monkey"],
+    ];
+    var SPELL_SKIP_LADDER_BOX = 2;   // 熟練度到這一格，就不用前兩個階梯了
+    var VOWELS = "aeiou";
+
+    var spellStep = 0;         // 這個字現在在第幾階（steps 的位置）
+    var spellFilled = 0;       // 第 3 步：排到第幾個字母
+    var spellMisses = 0;       // 這一格已經按錯幾次
     var spellAnyMiss = false;  // 這個字有沒有按錯過（決定「第一次就對」）
 
+    // 可以出題的字：還沒熟的那一組（含之前的組，順便複習）
+    function spellPool() {
+      var words = [];
+      for (var t = 0; t < SPELL_TIERS.length; t++) {
+        words = words.concat(SPELL_TIERS[t]);
+        var allKnown = SPELL_TIERS[t].every(function (w) { return boxOf("word:" + w) >= 3; });
+        if (!allKnown) break;
+      }
+      return EXAM_LETTERS.filter(function (item) { return words.indexOf(item.word) >= 0; });
+    }
+
+    // 第 2 步要他補哪一格：第一個「不是開頭」的母音，沒有就補第二個字母
+    function middleIndex(word) {
+      for (var i = 1; i < word.length; i++) if (VOWELS.indexOf(word.charAt(i)) >= 0) return i;
+      return 1;
+    }
+
+    // 補空格的三個選項：正確的＋長得像的（b/d）或其他母音，再隨機補滿
+    function blankOptions(answer) {
+      var pool = (VOWELS.indexOf(answer) >= 0 ? VOWELS : "bcdfghjklmnprstw").split("");
+      var wrongs = shuffle(pool.filter(function (c) { return c !== answer; }));
+      var twin = CONFUSABLE[answer];
+      if (twin) wrongs = [twin].concat(wrongs.filter(function (c) { return c !== twin; }));
+      return [answer].concat(wrongs.slice(0, 2));
+    }
+
+    function letterItem(c) { return { upper: c.toUpperCase(), lower: c }; }
+
     function nextSpelling() {
-      var target = chooseTarget(EXAM_LETTERS, wordId, takeRedo());
+      var target = chooseTarget(spellPool(), wordId, takeRedo());
+      var ladder = boxOf(wordId(target)) < SPELL_SKIP_LADDER_BOX;
       q = {
         id: wordId(target), item: target, kind: "spell", tries: 0,
-        instr: "把[ㄅㄚˇ]字[ㄗˋ]母[ㄇㄨˇ]排[ㄆㄞˊ]好[ㄏㄠˇ]，拼[ㄆㄧㄣ]出[ㄔㄨ]" + target.zh,
         prompt: target.emoji,
         say: function (done) { sayWord(target, done); },
         answerText: target.word,
         word: target.word,
+        steps: ladder ? ["first", "middle", "arrange"] : ["arrange"],
       };
       session.asked++;
-      spellFilled = 0;
-      spellMisses = 0;
+      session.words.push(target.word);
+      spellStep = 0;
       spellAnyMiss = false;
 
       choicesEl.classList.add("hidden");
       slotsEl.classList.remove("hidden");
-      tilesEl.classList.remove("hidden");
-      showQuestion();
-
-      slotsEl.innerHTML = "";
-      tilesEl.innerHTML = "";
-      target.word.split("").forEach(function () {
-        var slot = document.createElement("div");
-        slot.className = "slot abc";
-        slotsEl.appendChild(slot);
-      });
-      shuffle(target.word.split("")).forEach(function (letter) {
-        var tile = document.createElement("button");
-        tile.className = "big-btn tile abc";
-        tile.textContent = letter;
-        tile.onclick = function () { pickTile(tile, letter); };
-        tilesEl.appendChild(tile);
-      });
-
-      // 拼字題換題型的指示只在第一題唸；之後唸單字給他聽
-      var changed = q.kind !== session.lastKind;
-      session.lastKind = q.kind;
-      var cur = q;
-      if (changed) sayInstruction(function () { if (cur === q) q.say(); });
-      else q.say();
+      document.getElementById("replay-btn").classList.remove("hidden");
+      showSpellStep();
     }
 
+    // 每一階要念的中文指示：同一種指示這一輪只念第一次，之後只念單字，不囉嗦
+    var SPELL_INSTR = {
+      first: "第[ㄉㄧˋ]一[ㄧ]個[˙ㄍㄜ]字[ㄗˋ]母[ㄇㄨˇ]是[ㄕˋ]什[ㄕㄣˊ]麼[˙ㄇㄜ]？",
+      middle: "黃[ㄏㄨㄤˊ]色[ㄙㄜˋ]的[˙ㄉㄜ]空[ㄎㄨㄥ]格[ㄍㄜˊ]要[ㄧㄠˋ]放[ㄈㄤˋ]哪[ㄋㄚˇ]個[˙ㄍㄜ]字[ㄗˋ]母[ㄇㄨˇ]？",
+      arrange: "把[ㄅㄚˇ]字[ㄗˋ]母[ㄇㄨˇ]排[ㄆㄞˊ]好[ㄏㄠˇ]",
+    };
+
+    function showSpellStep() {
+      var step = q.steps[spellStep];
+      var word = q.word;
+      q.step = step;
+      q.instr = "拼[ㄆㄧㄣ]出[ㄔㄨ]" + q.item.zh + "：" + SPELL_INSTR[step];
+      spellMisses = 0;
+      showQuestion();
+      resetKeyboardFocus();
+
+      slotsEl.innerHTML = "";
+      var blank = step === "first" ? 0 : (step === "middle" ? middleIndex(word) : -1);
+      q.blank = blank;
+      word.split("").forEach(function (c, i) {
+        var slot = document.createElement("div");
+        slot.className = "slot abc";
+        if (step !== "arrange") {
+          if (i === blank) slot.classList.add("blank");
+          else { slot.textContent = c; slot.classList.add("given"); }
+        }
+        slotsEl.appendChild(slot);
+      });
+
+      if (step === "arrange") {
+        choicesEl.classList.add("hidden");
+        tilesEl.classList.remove("hidden");
+        spellFilled = 0;
+        tilesEl.innerHTML = "";
+        shuffle(word.split("")).forEach(function (letter) {
+          var tile = document.createElement("button");
+          tile.className = "big-btn tile abc";
+          tile.textContent = letter;
+          tile.onclick = function () { pickTile(tile, letter); };
+          tilesEl.appendChild(tile);
+        });
+      } else {
+        tilesEl.classList.add("hidden");
+        choicesEl.classList.remove("hidden");
+        choicesEl.className = "";
+        choicesEl.innerHTML = "";
+        var answer = word.charAt(blank);
+        shuffle(blankOptions(answer)).forEach(function (c) {
+          var btn = document.createElement("button");
+          btn.className = "big-btn abc";
+          btn.textContent = c;
+          btn.dataset.correct = c === answer ? "1" : "0";   // 測試用
+          btn.onclick = function () { pickBlank(btn, c, answer); };
+          choicesEl.appendChild(btn);
+        });
+      }
+
+      var cur = q;
+      if (!session.spoken[step]) {
+        session.spoken[step] = true;
+        sayInstruction(function () { if (cur === q) q.say(); });
+      } else {
+        q.say();
+      }
+    }
+
+    // 第 1、2 步：從三個字母裡選一個補進黃色空格
+    function pickBlank(btn, c, answer) {
+      if (locked || btn.disabled) return;
+      if (c === answer) {
+        locked = true;
+        playSound("pop");
+        var slot = slotsEl.children[q.blank];
+        slot.textContent = c;
+        slot.classList.remove("blank");
+        btn.style.background = "var(--good)";
+        btn.classList.remove("reveal");
+        var cur = q;
+        // 念一次這個字母，再上下一階
+        sayLetter(letterItem(c), function () {
+          setTimeout(function () {
+            if (cur !== q) return;
+            locked = false;
+            spellStep++;
+            showSpellStep();
+          }, 400);
+        });
+      } else {
+        spellAnyMiss = true;
+        spellMisses++;
+        playSound("wrong");
+        btn.disabled = true;
+        btn.classList.add("shake");
+        if (spellMisses >= REVEAL_AFTER) {
+          var right = choicesEl.querySelector('button[data-correct="1"]');
+          if (right) right.classList.add("reveal");
+          say("是這個喔！", function () { sayLetter(letterItem(answer)); });
+        } else {
+          encourage();
+          setTimeout(function () { if (q) q.say(); }, 900);
+        }
+      }
+    }
+
+    // 第 3 步：照順序點字母
     function pickTile(tile, letter) {
       if (locked || tile.classList.contains("used")) return;
       var need = q.word.charAt(spellFilled);
@@ -722,8 +892,8 @@
           locked = true;
           playSound("pop");
           messageEl.textContent = q.word;
-          q.say();
-          finishQuestion(!spellAnyMiss);
+          var firstTry = !spellAnyMiss;
+          chantSpelling(q, function () { finishQuestion(firstTry); });
         }
       } else {
         playSound("wrong");
@@ -739,6 +909,92 @@
           }
         }
       }
+    }
+
+    // 「B—I—R—D，bird！」：念到哪個字母，那一格就亮起來。
+    // 沒開聲音時 sayLetter 會馬上回來，所以每格至少亮 CHANT_MIN_MS，畫面還是看得到在拼。
+    var CHANT_MIN_MS = 450;
+    function chantSpelling(cur, onDone) {
+      var slots = slotsEl.children;
+      var i = 0;
+      function nextLetter() {
+        if (cur !== q) return;   // 中途回選單了
+        for (var k = 0; k < slots.length; k++) slots[k].classList.remove("chant");
+        if (i >= cur.word.length) {
+          sayWord(cur.item, onDone);
+          return;
+        }
+        slots[i].classList.add("chant");
+        var started = Date.now();
+        var c = cur.word.charAt(i);
+        i++;
+        sayLetter(letterItem(c), function () {
+          setTimeout(nextLetter, Math.max(150, CHANT_MIN_MS - (Date.now() - started)));
+        });
+      }
+      nextLetter();
+    }
+
+    /* ===== 方向鍵操作（筆電上不用滑鼠也能玩） =====
+       ← → ↑ ↓：在按鈕之間移動（白色粗框）　Enter：按下去　空白鍵：再聽一次
+       故意不用滑鼠：滑鼠會讓他在畫面上晃來晃去亂點，方向鍵只能做「選一個」。 */
+    var kbIndex = -1;
+
+    function resetKeyboardFocus() {
+      kbIndex = -1;
+      document.querySelectorAll(".kb-focus").forEach(function (b) { b.classList.remove("kb-focus"); });
+    }
+
+    // 現在畫面上可以選的按鈕
+    function keyboardTargets() {
+      var overlay = document.getElementById("celebrate-overlay");
+      if (overlay) return Array.prototype.slice.call(overlay.querySelectorAll("button"));
+      if (!menuEl.classList.contains("hidden")) {
+        return Array.prototype.slice.call(menuEl.querySelectorAll("button"));
+      }
+      var area = !choicesEl.classList.contains("hidden") ? choicesEl : tilesEl;
+      return Array.prototype.slice.call(area.querySelectorAll("button")).filter(function (b) {
+        return !b.disabled && !b.classList.contains("used");
+      });
+    }
+
+    document.addEventListener("keydown", function (e) {
+      var moves = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 };
+      var targets = keyboardTargets();
+      if (e.key in moves) {
+        e.preventDefault();
+        if (!targets.length) return;
+        var current = targets.indexOf(document.querySelector(".kb-focus"));
+        var next = current < 0 ? 0 : (current + moves[e.key] + targets.length) % targets.length;
+        resetKeyboardFocus();
+        kbIndex = next;
+        targets[kbIndex].classList.add("kb-focus");
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        var focused = document.querySelector(".kb-focus");
+        if (focused && targets.indexOf(focused) >= 0) {
+          focused.classList.remove("kb-focus");
+          var before = q;
+          focused.click();
+          // 按錯了、還留在同一題：框框移到旁邊還能按的那個，不用重新找
+          // （換題、換階梯、回選單的時候不要自動框，讓他自己按方向鍵開始）
+          setTimeout(function () {
+            if (q !== before || !q || kbIndex < 0) return;
+            var left = keyboardTargets();
+            if (left.length && !document.querySelector(".kb-focus") && quizEl.contains(left[0])) {
+              left[Math.min(kbIndex, left.length - 1)].classList.add("kb-focus");
+            }
+          }, 0);
+        }
+      } else if (e.key === " " && !quizEl.classList.contains("hidden")) {
+        e.preventDefault();
+        replay();
+      }
+    });
+
+    // 有實體滑鼠／鍵盤的裝置（筆電）才顯示方向鍵說明，電視和手機不用看到
+    if (window.matchMedia && window.matchMedia("(pointer: fine)").matches) {
+      document.getElementById("kb-hint").classList.remove("hidden");
     }
 
     refreshStickers();   // 開場先跟伺服器對一下貼紙，免得用到過期的本機資料
