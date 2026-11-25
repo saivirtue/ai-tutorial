@@ -242,6 +242,7 @@
       <button class="btn big" id="contBtn">繼續冒險</button>
       <button class="btn big" id="newBtn" data-diff="0">新的冒險</button>
       <p class="dim" style="font-size:13px;margin-top:6px">難度在營地的告示板上用「危險度」隨時調整</p>
+      <button class="btn" id="saveIoBtn" style="margin-top:8px">💾 存檔備份／還原</button>
       <p class="dim" id="ver" style="font-size:12px;margin-top:4px"></p>
     </div>
     <h2>操作</h2>
@@ -275,7 +276,7 @@
         <div class="grid" id="inv"></div>
         <div id="detail"></div>
         <div style="margin-top:8px">
-          <button class="btn" id="talBtn">🌳 天賦</button><button class="btn" id="recBtn">📖 紀錄</button><button class="btn" id="expBtn">📋 回報／匯出</button><button class="btn" id="pickBtn">🧲 自動撿：全部</button><button class="btn" id="sellJunk">賣掉用不到的</button><button class="btn" id="sellAll">全部賣掉</button><button class="btn" id="sacJunk">🔥 獻祭用不到的傳說</button>
+          <button class="btn" id="talBtn">🌳 天賦</button><button class="btn" id="recBtn">📖 紀錄</button><button class="btn" id="expBtn">📋 回報／匯出</button><button class="btn" id="saveIoBtn2">💾 存檔備份</button><button class="btn" id="pickBtn">🧲 自動撿：全部</button><button class="btn" id="sellJunk">賣掉用不到的</button><button class="btn" id="sellAll">全部賣掉</button><button class="btn" id="sacJunk">🔥 獻祭用不到的傳說</button>
           <button class="btn" id="quitRun">🔥 放棄遠征</button><button class="btn" id="closeBtn" style="float:right">關閉</button><span class="dim" id="panelVer" style="float:right;font-size:11px;margin:12px 8px 0 0"></span>
         </div>
       </div>
@@ -315,6 +316,19 @@
   <div id="door" class="overlay"><div class="box" style="max-width:560px;text-align:center">
     <h1 style="font-size:26px;letter-spacing:4px">選一扇門</h1><p class="dim" style="margin:4px 0 10px">下一層會帶著你選的祝福</p>
     <div id="doorBody" style="display:flex;gap:10px;justify-content:center"></div>
+  </div></div>
+
+  <!-- 存檔備份／還原 -->
+  <div id="saveio" class="overlay" style="z-index:20"><div class="box" style="max-width:600px">
+    <div style="display:flex;align-items:center;gap:10px"><h1 style="font-size:24px;letter-spacing:3px;text-align:left;flex:1">💾 存檔備份／還原</h1><button class="btn" id="sioClose" style="margin:0">關閉</button></div>
+    <p class="dim" style="margin:4px 0 6px">存檔只放在這個瀏覽器裡。清掉瀏覽器資料、換手機前，先把代碼存起來。</p>
+    <h2>備份</h2><p class="dim" id="sioInfo" style="font-size:13px"></p>
+    <textarea id="sioOut" readonly style="width:100%;height:80px;background:#0e0b14;color:#dcd;border:1px solid #443a55;border-radius:8px;padding:8px;font-size:11px;line-height:1.4;font-family:ui-monospace,Menlo,monospace;word-break:break-all;user-select:text;-webkit-user-select:text;touch-action:auto"></textarea>
+    <div class="row" style="flex-wrap:wrap;gap:6px"><button class="btn" id="sioCopy">📋 複製代碼</button><button class="btn" id="sioFile">⬇️ 下載檔案</button><button class="btn" id="sioShare" style="display:none">📤 分享</button></div>
+    <h2>還原</h2><p class="dim" style="font-size:13px">貼上 EMBER 開頭的代碼，或選擇備份檔。會覆蓋目前的存檔。</p>
+    <textarea id="sioIn" placeholder="貼上備份代碼" style="width:100%;height:70px;background:#0e0b14;color:#dcd;border:1px solid #443a55;border-radius:8px;padding:8px;font-size:11px;line-height:1.4;font-family:ui-monospace,Menlo,monospace;word-break:break-all;user-select:text;-webkit-user-select:text;touch-action:auto"></textarea>
+    <div class="row" style="flex-wrap:wrap;gap:6px"><label class="btn" style="cursor:pointer">📂 選擇檔案<input type="file" id="sioPick" accept=".txt,.json,text/plain,application/json" style="display:none"></label><button class="btn" id="sioLoad">♻️ 還原存檔</button></div>
+    <p id="sioMsg" class="good" style="font-size:14px"></p>
   </div></div>
 
   <!-- 遊戲內確認框 -->
@@ -359,6 +373,6 @@
     <button class="btn big" id="reviveBtn">重新點燃</button>
   </div></div>
 
-  <script type="module" src="game.js?v=0.8.7&d=2026-11-25"></script>
+  <script type="module" src="game.js?v=0.8.8&d=2026-11-25"></script>
 </body>
 </html>

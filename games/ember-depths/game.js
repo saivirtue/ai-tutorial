@@ -509,7 +509,7 @@ function genFloor() {
       const s = freeSpot(r, 18), elite = Math.random() < (f >= 2 ? 0.08 : 0.04) * (rmod('elite') ? 2 : 1) * (R.door === 'risk' ? 2 : 1);
       const e = spawnEnemy(rollType(f), s.x, s.y, elite); if (!elite) hordeOf(e);
     }
-    r.wave = r !== far && r !== vault && f >= 2 && Math.random() < 0.3; /* 怪潮房（要是封門房才會觸發） */
+    r.wave = r !== far && r !== vault && f >= 2 && Math.random() < 0.55; /* 怪潮房（要是封門房才會觸發） */
     if (Math.random() < 0.45) { const s = freeSpot(r, 16), cur = p.clears && f >= 2 && Math.random() < 0.18; props.push({ kind: 'chest', x: s.x, y: s.y, r: 15, open: false, gold: cur || Math.random() < 0.15, cursed: cur }); }
     const nb = irand(1, 4);
     for (let i = 0; i < nb; i++) { const s = freeSpot(r, 12); props.push({ kind: 'barrel', x: s.x, y: s.y, r: 11, skin: Math.random() < 0.6 ? 'barrel_large' : 'box_large', rot: rand(0, 6.28) }); }
@@ -521,7 +521,7 @@ function genFloor() {
   if (!last && kr.length) { const r = kr[kr.length - 1], s = freeSpot(r, 18), e = spawnEnemy(rollType(f), s.x, s.y, true); e.key = true; if (R.door === 'leg') e.legDrop = true; e.hp = e.maxHp = e.hp * 1.3; e.xp *= 1.5; stairs.open = false; }
   // 競技場：走進去門會封住，清光才開
   for (const r of rooms) {
-    r.arena = r !== start && (r === vault || (r === far && last) || Math.random() < (f <= 2 ? 0.25 : 0.4)); r.gates = [];
+    r.arena = r !== start && (r === vault || (r === far && last) || Math.random() < (f <= 2 ? 0.25 : 0.5)); r.gates = [];
     if (!r.arena) continue;
     for (let x = r.x - 1; x <= r.x + r.w; x++) for (let y = r.y - 1; y <= r.y + r.h; y++) { const edge = x === r.x - 1 || x === r.x + r.w || y === r.y - 1 || y === r.y + r.h; if (edge && x > 0 && y > 0 && x < MW - 1 && y < MH - 1 && map[y * MW + x] === 0 && !blk[y * MW + x]) r.gates.push(y * MW + x); }
   }
@@ -612,7 +612,7 @@ const SETS = {
   bog: { n: '腐骨王冠', c: '#7adf5a', boss: 1, slots: ['weapon', 'armor', 'ring'], b2: '吸血 +3%', b3: '敵人倒下會留下毒沼：毒傷並緩速敵人；你站在毒沼裡每秒回 3% 生命' },
   core: { n: '熔核之心', c: '#ff5a3a', boss: 2, slots: ['weapon', 'helm', 'ring'], b2: '攻擊 +10%', b3: '爆燃多燒 3 秒，期間每 0.6 秒自動向四周噴發火焰' },
   frost: { n: '霜冠之誓', c: '#8adcff', boss: 3, slots: ['helm', 'ring', 'boots'], b2: '移速 +8%', b3: '每第 4 次普攻放出冰環冰凍周圍；對冰凍的敵人傷害 +40%' },
-  void: { n: '虛空行旅', c: '#c080ff', boss: 4, slots: ['weapon', 'armor', 'boots'], b2: '暴擊 +6%', b3: '暴擊時 15% 機率撕開黑洞，把附近敵人吸在一起 2 秒並持續傷害' },
+  void: { n: '虛空行旅', c: '#c080ff', boss: 4, slots: ['weapon', 'armor', 'boots'], b2: '暴擊 +4%', b3: '暴擊時 15% 機率撕開黑洞，把附近敵人吸在一起 2 秒並持續傷害' },
 };
 const setCount = eq => { const c = {}; for (const k in eq) { const it = eq[k]; if (it && it.set) c[it.set] = (c[it.set] || 0) + 1; } return c; };
 const setN = k => (p.sets && p.sets[k]) || 0;
@@ -628,7 +628,7 @@ const STAT = {
 };
 const AFF = {
   hp: l => 8 + l * 4, mp: l => 5 + l * 2, dmg: l => 1 + l * 0.8, armor: l => 3 + l * 1.5,
-  crit: l => 3 + Math.min(l, 10) * 0.4, aspd: l => 3 + Math.min(l, 10) * 0.4, move: l => 4 + Math.min(l, 8) * 0.4,
+  crit: l => 2 + Math.min(l, 10) * 0.3, aspd: l => 3 + Math.min(l, 10) * 0.4, move: l => 4 + Math.min(l, 8) * 0.4,
   ls: l => 1 + Math.min(l, 8) * 0.25, hpr: l => 0.5 + l * 0.25, mpr: l => 0.4 + Math.min(l, 20) * 0.1,
 };
 // 武器類型決定普攻的打法
@@ -753,17 +753,17 @@ function calcStats(eq) {
   const tr = p.train || { hp: 0, dmg: 0, mp: 0 };
   const s = { dmg: 10 + 2 * (L - 1) + tr.dmg * 2, hp: 120 + 12 * (L - 1) + tr.hp * 12, mp: 50 + 5 * (L - 1) + tr.mp * 10, armor: 0, crit: 5, aspd: 0, move: 0, ls: 0, hpr: 1, mpr: 3 + tr.mp * 0.3 };
   for (const k in eq) { const it = eq[k]; if (!it) continue; for (const b in it.base) s[b] += iv(it, it.base[b], b); for (const a of it.aff) s[a.k] += iv(it, a.v, a.k); }
-  { const sc = setCount(eq); if (sc.bog >= 2) s.ls += 3; if (sc.core >= 2) s.dmg *= 1.1; if (sc.frost >= 2) s.move += 8; if (sc.void >= 2) s.crit += 6; }
+  { const sc = setCount(eq); if (sc.bog >= 2) s.ls += 3; if (sc.core >= 2) s.dmg *= 1.1; if (sc.frost >= 2) s.move += 8; if (sc.void >= 2) s.crit += 4; }
   if (p && p.cls) { clsOf().st(s); if (!inClass(eq.weapon)) s.dmg *= 0.7; }
   const pa = p.pas || {};
-  s.crit += (wtOf(eq.weapon).crit || 0) + (pa.critboom || 0) * 8; s.aspd += (pa.haste || 0) * 12; s.mpr += (pa.mana || 0);
+  s.crit += (wtOf(eq.weapon).crit || 0) + (pa.critboom || 0) * 5; s.aspd += (pa.haste || 0) * 12; s.mpr += (pa.mana || 0);
   if (p.run && p.run.glass) { s.dmg *= 2; s.hp *= 0.5; }
   if (tl('kA1')) s.armor *= 1.15; if (tl('kA2')) s.hp *= 1.1; if (tl('kB1')) s.dmg *= 1.08; if (tl('kB2')) s.crit += 6; if (tl('rB1')) s.move += 10;
   if (tl('mC1')) s.mp *= 1.2; if (tl('mC2')) s.mpr += 2; if (tl('bA1')) s.aspd += 10; if (tl('bC1')) s.hp *= 1.15; if (tl('bC2')) s.armor *= 1.2;
   s.dmg *= 1 + (pa.power || 0) * 0.12; s.hp *= 1 + (pa.vigor || 0) * 0.15; s.mp *= 1 + (pa.mana || 0) * 0.25;
   for (const k of ['dmg', 'hp', 'mp', 'armor']) s[k] = Math.round(s[k]);
   for (const k of ['crit', 'aspd', 'move', 'ls', 'hpr', 'mpr']) s[k] = Math.round(s[k] * 10) / 10;
-  s.crit = Math.min(s.crit, 75); s.aspd = Math.min(s.aspd, 60); s.mpr = Math.min(s.mpr, 12); s.hpr = Math.min(s.hpr, Math.round(s.hp * 0.015 * 10) / 10); s.move = Math.min(s.move, 50); s.ls = Math.min(s.ls, 15);
+  s.crit = Math.min(s.crit, 60); s.aspd = Math.min(s.aspd, 60); s.mpr = Math.min(s.mpr, 12); s.hpr = Math.min(s.hpr, Math.round(s.hp * 0.015 * 10) / 10); s.move = Math.min(s.move, 50); s.ls = Math.min(s.ls, 15);
   if (p.buff && p.buff.k === 'rage') s.dmg = Math.round(s.dmg * 1.5);
   if (p.buff && p.buff.k === 'haste') { s.move += 35; s.aspd += 35; }
   return s;
@@ -800,7 +800,7 @@ const MODS = {
 // 被動：[名稱, 說明, 最多幾層]
 const PAS = {
   power: ['蠻力', '所有傷害 +12%', 5], haste: ['迅擊', '攻擊速度 +12%', 5], vigor: ['強健', '最大生命 +15%', 5], mana: ['泉湧', '最大魔力 +25%，每秒回魔 +1', 4],
-  blood: ['嗜血', '每次擊殺回復 4% 生命', 3], critboom: ['爆裂暴擊', '暴擊 +8%，暴擊會引發小爆炸', 3], mastery: ['武器精通', '近戰範圍 +25%；遠程多射一發', 2], ember: ['薪火', '餘燼累積速度 +40%', 3],
+  blood: ['嗜血', '每次擊殺回復 4% 生命', 3], critboom: ['爆裂暴擊', '暴擊 +5%，暴擊會引發小爆炸', 3], mastery: ['武器精通', '近戰範圍 +25%；遠程多射一發', 2], ember: ['薪火', '餘燼累積速度 +40%', 3],
   s_fire: ['烈焰流', '火球、圖騰傷害 +35%；爆燃多燒 3 秒', 1, 'fire'], s_frost: ['寒冰流', '冰霜新星傷害 +35%，冰凍多 1 秒', 1, 'frost'],
   s_storm: ['雷電流', '落雷傷害 +35%，冷卻減半', 1, 'storm'], s_blade: ['刀鋒流', '旋風斬、躍擊、彈幕傷害 +35%', 1, 'blade'],
 };
@@ -864,8 +864,9 @@ function gainXp(v) {
     SND.level();
   }
 }
+let noSave = false; // 還原存檔、重新載入前不要再寫回舊進度
 function save() {
-  if (!p) return;
+  if (!p || noSave) return;
   const o = {}; for (const k of ['lvl', 'xp', 'gold', 'floor', 'best', 'hpPot', 'mpPot', 'sp', 'skl', 'equip', 'inv', 'kills', 'deaths', 'won', 'train', 'slots', 'mods', 'pas', 'picks', 'diff', 'tier', 'run', 'rescued', 'clears', 'board', 'mats', 'bld', 'cls', 'heroes', 'daily', 'weekly', 'codex', 'ach', 'stat', 'danger', 'cos', 'cosU', 'hist', 'pick', 'tal', 'setPity']) o[k] = p[k];
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(o)); } catch (e) { /* 無痕模式存不了就算了 */ }
 }
@@ -2619,6 +2620,41 @@ function startGame(fresh, df = 0) {
   if (fresh) { dropItem(p.x - 55, p.y + 45, makeItem(1, 0, 'weapon', '手弩')); dropItem(p.x + 55, p.y + 45, makeItem(1, 0, 'weapon', '法杖')); setTimeout(() => tip('weap', '地上有手弩和法杖：撿起來到 🎒 換上，普攻的打法會跟著武器變'), 5000); }
   if (p.floor === 1 && p.lvl === 1) { tip('move', touchMode ? '左半邊螢幕拖曳移動，右下 ⚔️ 按住就會自動瞄準攻擊' : 'WASD 移動，按住滑鼠左鍵朝游標攻擊，Q／E／R 是技能'); }
 }
+// ---------- 存檔備份／還原：壓縮成一段 EMBER 開頭的代碼，可複製、下載成檔、分享 ----------
+const b64 = u8 => { let t = ''; for (let i = 0; i < u8.length; i += 0x8000) t += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(t); };
+const unb64 = t => Uint8Array.from(atob(t), c => c.charCodeAt(0));
+async function packSave() {
+  if (state === 'play') save(); let raw = null; try { raw = localStorage.getItem(SAVE_KEY); } catch (e) { /* 沒差 */ } if (!raw) return '';
+  try { if (window.CompressionStream) { const st = new Blob([raw]).stream().pipeThrough(new CompressionStream('gzip')); return 'EMBER1:' + b64(new Uint8Array(await new Response(st).arrayBuffer())); } } catch (e) { /* 舊瀏覽器 */ }
+  return 'EMBER0:' + b64(new TextEncoder().encode(raw));
+}
+async function unpackSave(txt) {
+  txt = (txt || '').trim(); const j = txt.indexOf('{'), m = txt.replace(/\s+/g, '').match(/EMBER([01]):([A-Za-z0-9+/=]+)/);
+  let json;
+  if (m) { const u8 = unb64(m[2]); json = m[1] === '0' ? new TextDecoder().decode(u8) : await new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream('gzip'))).text(); }
+  else if (j >= 0) json = txt.slice(j, txt.lastIndexOf('}') + 1); // 也接受「回報／匯出」裡的完整存檔 JSON
+  else throw new Error('找不到備份代碼');
+  const o = JSON.parse(json); if (!o || !o.lvl || !o.equip) throw new Error('這不是餘燼地城的存檔'); return o;
+}
+let sioCode = '', sioMeta = null;
+async function openSaveIO() {
+  if (state === 'play') { togglePanel(false); paused = true; } $('sioMsg').textContent = ''; $('sioIn').value = ''; $('saveio').classList.add('on');
+  sioCode = await packSave(); $('sioOut').value = sioCode || '（還沒有存檔）'; try { sioMeta = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { sioMeta = null; }
+  $('sioInfo').textContent = sioCode && sioMeta ? `目前存檔：${CLS[sioMeta.cls] ? CLS[sioMeta.cls].n : '騎士'} Lv ${sioMeta.lvl}・代碼 ${sioCode.length} 字・遊戲版本 ${verTxt()}` : '';
+  const f = sioCode && new File([sioCode], 'x.txt', { type: 'text/plain' }); $('sioShare').style.display = f && navigator.canShare && navigator.canShare({ files: [f] }) ? '' : 'none';
+}
+function closeSaveIO() { $('saveio').classList.remove('on'); if (state === 'play' && !$('panel').classList.contains('on')) paused = false; }
+const sioName = () => `ember-depths-save-Lv${sioMeta ? sioMeta.lvl : ''}-${new Date().toISOString().slice(0, 10)}.txt`;
+$('sioClose').onclick = closeSaveIO;
+$('sioCopy').onclick = async () => { try { await navigator.clipboard.writeText(sioCode); $('sioMsg').textContent = '✅ 已複製：貼到備忘錄或傳給自己保存'; } catch (e) { $('sioOut').focus(); $('sioOut').select(); let ok = false; try { ok = document.execCommand('copy'); } catch (er) { /* 舊瀏覽器 */ } $('sioMsg').textContent = ok ? '✅ 已複製' : '請長按代碼「全選」再「拷貝」'; } };
+$('sioFile').onclick = () => { if (!sioCode) return; const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([sioCode], { type: 'text/plain' })); a.download = sioName(); document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); $('sioMsg').textContent = '⬇️ 已下載（iPhone 會存在「檔案」App 的下載項目）'; };
+$('sioShare').onclick = () => navigator.share({ files: [new File([sioCode], sioName(), { type: 'text/plain' })] }).catch(() => {});
+$('sioPick').onchange = ev2 => { const f = ev2.target.files && ev2.target.files[0]; if (!f) return; f.text().then(t => { $('sioIn').value = t; $('sioMsg').textContent = `已讀取 ${f.name}，按「還原存檔」`; }); ev2.target.value = ''; };
+$('sioLoad').onclick = async () => {
+  let o; try { o = await unpackSave($('sioIn').value); } catch (e) { $('sioMsg').textContent = '❌ ' + (/[\u4e00-\u9fff]/.test(e.message || '') ? e.message : '代碼不完整或損壞，請確認整段都有貼上'); return; }
+  ask(`還原「${CLS[o.cls] ? CLS[o.cls].n : '騎士'} Lv ${o.lvl}」的存檔？目前的進度會被覆蓋。`, () => { try { noSave = true; localStorage.setItem(SAVE_KEY, JSON.stringify(o)); location.reload(); } catch (e) { noSave = false; $('sioMsg').textContent = '❌ 存不進去（是不是無痕模式？）'; } }, '還原');
+};
+$('saveIoBtn').onclick = openSaveIO; $('saveIoBtn2').onclick = openSaveIO;
 for (const b of document.querySelectorAll('[data-diff]')) b.onclick = () => { if (!hasSave()) startGame(true, +b.dataset.diff); else ask('要放棄目前的進度，重新開始嗎？', () => startGame(true, +b.dataset.diff), '重新開始'); };
 $('contBtn').onclick = () => startGame(false);
 $('reviveBtn').onclick = () => { $('dead').classList.remove('on'); if (state !== 'dead') { paused = false; return; } resetRuntime(); refresh(); p.hp = p.st.hp; p.mp = p.st.mp; state = 'play'; if (hero) hero.lock = 0; p.run = null; genCamp(); };
