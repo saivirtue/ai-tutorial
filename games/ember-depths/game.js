@@ -24,7 +24,7 @@ const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI;
 let actx = null, master = null, musicBus = null, muted = false, drone = null;
 let musicT = 0, beat = 0, intensity = 0, musicTarget = 0, musicRoot = 110, musicBossOn = false;
 function audioInit() {
-  if (actx) { if (actx.state === 'suspended') actx.resume(); return; }
+  if (actx) { if (actx.state !== 'running' && actx.state !== 'closed') actx.resume().catch(() => {}); return; }
   try {
     actx = new (window.AudioContext || window.webkitAudioContext)();
     const comp = actx.createDynamicsCompressor(); comp.connect(actx.destination);
@@ -693,6 +693,7 @@ function makeItem(lvl, rarity, slot, kind) {
 // 強化過的裝備（+N）每級讓所有數值多 12%
 // ---------- 熱度：裝備穿著戰鬥會越燒越熱，每級所有數值 +12%，外觀跟著發光變色 ----------
 const HEAT = ['冷鐵', '暗紅', '赤紅', '橙熱', '金焰', '白熾'];
+const HEATM = [0x000000, 0x8a1a08, 0xd23010, 0xff6a10, 0xffa020, 0xffc040]; // 穿在身上的發光色：白熾改成金白，才不會糊成一片白
 const HEATC = [0x000000, 0x8a1a08, 0xd23010, 0xff6a10, 0xffb030, 0xfff0c8], HEATK = [0, 0.45, 0.8, 1.2, 1.6, 2.1];
 const HEATN = [90, 210, 420, 770, 1260]; // 升到下一級要的「戰鬥值」（一般擊殺 1、菁英 3、首領 15）
 const PCTK = ['crit', 'aspd', 'move', 'ls', 'hpr', 'mpr']; // 熱度對百分比、回復類只放大一半
@@ -1801,13 +1802,13 @@ function heroLook() {
   if (!hero) return;
   for (const o of hero.gear || []) o.dispose(); hero.gear = [];
   const sw = hero.root.getObjectByName('1H_Sword'), sh = hero.root.getObjectByName('Badge_Shield'), w = p.equip.weapon, a = p.equip.armor;
-  const put = (model, slot, it) => { const bone = hero.root.getObjectByName(slot); if (!bone) return; const k = it.heat || 0, o = tintClone(model, 1, k ? HEATC[k] : colOf(RAR[it.rarity].c).getHex(), k ? HEATK[k] : it.rarity * 0.2); bone.add(o); hero.gear.push(o); };
+  const put = (model, slot, it) => { const bone = hero.root.getObjectByName(slot); if (!bone) return; const k = it.heat || 0, o = tintClone(model, 1, k ? HEATM[k] : colOf(icol(it)).getHex(), k ? Math.min(0.55, HEATK[k] * 0.3) : it.rarity * 0.15); /* 太亮會變成一片白色剪影 */ bone.add(o); hero.gear.push(o); };
   const wm = w && WMODEL[w.kind], sm = a && SHIELDS[a.rarity];
   if (sw) sw.visible = !!w && !wm; if (sh) sh.visible = !!a && !sm;
   if (wm) put(wm, 'handslotr', w); if (sm) put(sm, 'handslotl', a);
-  const tintPart = (re, it, k0) => hero.root.traverse(m => { if (!m.isMesh || !(re.test(m.name) || re.test(m.parent && m.parent.name))) return; if (!m.userData.tm) { m.material = m.material.clone(); m.userData.tm = true; } const hk = it ? it.heat || 0 : 0; m.material.emissive.setHex(!it ? 0 : hk ? HEATC[hk] : colOf(icol(it)).getHex()); m.material.emissiveIntensity = !it ? 0 : (hk ? HEATK[hk] * 0.6 : 0.12 + it.rarity * 0.1) * k0; });
+  const tintPart = (re, it, k0) => hero.root.traverse(m => { if (!m.isMesh || !(re.test(m.name) || re.test(m.parent && m.parent.name))) return; if (!m.userData.tm) { m.material = m.material.clone(); m.userData.tm = true; } const hk = it ? it.heat || 0 : 0; m.material.emissive.setHex(!it ? 0 : hk ? HEATM[hk] : colOf(icol(it)).getHex()); m.material.emissiveIntensity = !it ? 0 : (hk ? Math.min(0.4, HEATK[hk] * 0.22) : 0.1 + it.rarity * 0.08) * k0; });
   hero.root.traverse(m => { if (/Helmet|_Hat/.test(m.name)) m.visible = !!p.equip.helm; }); /* 有戴頭盔才看得到帽子 */
-  tintPart(/Helmet|_Hat|Rogue_Head/, p.equip.helm, 1); tintPart(/LegLeft|LegRight/, p.equip.boots, 1); tintPart(/_Body/, p.equip.armor, 0.7);
+  tintPart(/Helmet|_Hat/, p.equip.helm, 1); /* 遊俠沒有帽子模型：不染頭（會連臉一起變白） */ tintPart(/LegLeft|LegRight/, p.equip.boots, 1); tintPart(/_Body/, p.equip.armor, 0.7);
   hero.hand = hero.root.getObjectByName('handslotr'); hero.glow = w && (w.heat || 0) >= 3 ? '#' + HEATC[w.heat].toString(16).padStart(6, '0') : w && w.rarity >= 3 ? RAR[w.rarity].c : null; hero.glowN = w ? Math.max(1, (w.heat || 0) - 1) : 1;
 }
 const gateGeo = new THREE.BoxGeometry(4, 3.2, 4), gateMat = new THREE.MeshBasicMaterial({ color: 0xff3a20, transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false });
@@ -2572,7 +2573,15 @@ $('expCopy').onclick = async () => {
 $('exp').addEventListener('click', ev => { if (ev.target === $('exp') || ev.target.id === 'expClose') { $('exp').classList.remove('on'); paused = false; } });
 $('sacJunk').onclick = () => { if ($('sacJunk').dataset.ok !== '1') { $('sacJunk').dataset.ok = '1'; $('sacJunk').textContent = '再按一次確定獻祭'; return; } $('sacJunk').dataset.ok = ''; let c = 0, n = 0; for (let i = p.inv.length - 1; i >= 0; i--) if (junkLeg(p.inv[i])) { c += sacCry(p.inv[i]); p.inv.splice(i, 1); n++; } if (n) { p.mats.cry += c; p.stat.sac = (p.stat.sac || 0) + n; SND.burn(); floatText(p.x, p.y - 20, `獻祭 ${n} 件：💎 +${c}`, '#7ef', 18); burst(p.x, p.y, '#ff8a3a', 40, 160, 1, 1, 7); save(); } drawPanel(); };
 $('sellJunk').onclick = () => sellIf(it => upgradeOf(it) <= 0.5 && !it.fx && !it.set);
-$('sellAll').onclick = () => { if (confirm('背包裡的裝備全部賣掉？（身上穿的不會賣）')) sellIf(() => true); };
+for (const evn of ['pointerdown', 'touchend', 'keydown']) addEventListener(evn, () => { if (actx && actx.state !== 'running' && actx.state !== 'closed') actx.resume().catch(() => {}); }, { capture: true, passive: true });
+for (const evn of ['focus', 'pageshow']) addEventListener(evn, () => { if (actx && actx.state !== 'running' && actx.state !== 'closed') actx.resume().catch(() => {}); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && actx && actx.state !== 'running' && actx.state !== 'closed') actx.resume().catch(() => {}); });
+// 遊戲內的確認框（不用瀏覽器的 confirm：iPhone 跳出系統對話框會打斷聲音）
+let askCb = null;
+function ask(text, cb, yes = '確定') { askCb = cb; $('askTxt').textContent = text; $('askYes').textContent = yes; $('ask').classList.add('on'); }
+$('askYes').onclick = () => { $('ask').classList.remove('on'); const f = askCb; askCb = null; if (f) f(); };
+$('askNo').onclick = () => { $('ask').classList.remove('on'); askCb = null; };
+$('sellAll').onclick = () => ask('背包裡的裝備全部賣掉？（身上穿的不會賣）', () => sellIf(() => true), '全部賣掉');
 $('cards').addEventListener('click', ev => {
   const t = ev.target.closest('[data-card]'); if (!t) return;
   takeCard(cards[+t.dataset.card]); p.picks--;
@@ -2580,7 +2589,7 @@ $('cards').addEventListener('click', ev => {
   $('cards').classList.remove('on'); paused = false; cards = null; save();
 });
 $('closeBtn').onclick = () => togglePanel(false);
-$('quitRun').onclick = () => { if (p.run && confirm('放棄這趟遠征、回到營地？撿到的東西都會留著，但沒有獎勵箱。')) { togglePanel(false); logRun('放棄'); p.run = null; genCamp(); } };
+$('quitRun').onclick = () => { if (p.run) ask('放棄這趟遠征、回到營地？撿到的東西都會留著，但沒有獎勵箱。', () => { if (!p.run) return; togglePanel(false); logRun('放棄'); p.run = null; genCamp(); }, '回營地'); };
 $('bagBtn').onclick = () => togglePanel();
 $('sndBtn').onclick = () => { muted = !muted; $('sndBtn').textContent = muted ? '🔇' : '🔊'; audioInit(); if (master) master.gain.value = muted ? 0 : 1; };
 function nextCam() { camMode = (camMode + 1) % CAMS.length; try { localStorage.setItem('ember-depths-cam', camMode); } catch (e) { /* 沒差 */ } if (state === 'play') banner('', '視角：' + CAMS[camMode].name); }
@@ -2596,7 +2605,7 @@ function startGame(fresh, df = 0) {
   if (fresh) { dropItem(p.x - 55, p.y + 45, makeItem(1, 0, 'weapon', '手弩')); dropItem(p.x + 55, p.y + 45, makeItem(1, 0, 'weapon', '法杖')); setTimeout(() => tip('weap', '地上有手弩和法杖：撿起來到 🎒 換上，普攻的打法會跟著武器變'), 5000); }
   if (p.floor === 1 && p.lvl === 1) { tip('move', touchMode ? '左半邊螢幕拖曳移動，右下 ⚔️ 按住就會自動瞄準攻擊' : 'WASD 移動，按住滑鼠左鍵朝游標攻擊，Q／E／R 是技能'); }
 }
-for (const b of document.querySelectorAll('[data-diff]')) b.onclick = () => { if (!hasSave() || confirm('要放棄目前的進度，重新開始嗎？')) startGame(true, +b.dataset.diff); };
+for (const b of document.querySelectorAll('[data-diff]')) b.onclick = () => { if (!hasSave()) startGame(true, +b.dataset.diff); else ask('要放棄目前的進度，重新開始嗎？', () => startGame(true, +b.dataset.diff), '重新開始'); };
 $('contBtn').onclick = () => startGame(false);
 $('reviveBtn').onclick = () => { $('dead').classList.remove('on'); if (state !== 'dead') { paused = false; return; } resetRuntime(); refresh(); p.hp = p.st.hp; p.mp = p.st.mp; state = 'play'; if (hero) hero.lock = 0; p.run = null; genCamp(); };
 
