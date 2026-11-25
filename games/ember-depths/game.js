@@ -146,6 +146,7 @@ let map, explored, flow, rooms, stairs, pal;
 let enemies = [], shots = [], drops = [], props = [], parts = [], texts = [], corpses = [];
 let blk = [], decos = [], fluff = [], traps = [], booms = [], shrine = null, hitBlk = null, braziers = [];
 let merchant = null, stock = [], boxMsg = '', actMode = null, storeOpen = false;
+let buildFx = []; // 建築施工：火花、敲打聲、木屑
 let totems = [], pools = [], dangers = [], cards = null, lockRoom = null, holes = [], curse = null;
 let range = null, prisoner = null, campFire = null, board = null, extraChars = [], campBlds = [];
 let p = null, boss = null, shake = 0, miniT = 0, flowT = 0, itemId = 1, fullMsgT = 0, hitStop = 0;
@@ -291,6 +292,12 @@ function talCan(id) { // 同一分支要依序點
 const clsOf = () => CLS[(p && p.cls) || 'knight'];
 const wtKey = it => (it && KIND2WT[it.kind]) || 'sword';
 const inClass = it => !it || clsOf().wts.includes(wtKey(it)); // 非本職武器傷害 -30%
+function heroIntro(c) {
+  const C = CLS[c];
+  info(`${C.n}`, `<p style="font-size:15px;line-height:1.7">${C.d}</p><h2>擅長的武器</h2><p>${C.wts.map(w => WT[w].n).join('、')}（其他武器傷害 -30%）</p><h2>技能</h2><p>${C.pool.map(k => `${SK[k].i} ${SK[k].n}`).join('　')}</p><p class="dim">升級時從這些技能裡學；升級卡可以按「🤖 自動選」交給系統推薦</p><p class="dim">沒上場的角色也會分到 25% 經驗。等級 ${p.lvl}・還有 ${p.picks} 張升級卡</p>`);
+}
+function info(title, html) { $('infoTitle').textContent = title; $('infoBody').innerHTML = html; $('infoBox').classList.add('on'); paused = true; }
+$('infoOk').onclick = () => { $('infoBox').classList.remove('on'); if (state === 'play') paused = false; };
 function switchHero(c) {
   if (c === p.cls || p.run) return;
   p.heroes[p.cls] = {}; for (const k of HERO_KEYS) p.heroes[p.cls][k] = p[k];
@@ -302,7 +309,7 @@ function switchHero(c) {
   Object.assign(p, h); p.cls = c; delete p.heroes[c];
   resetRuntime(); refresh(); p.hp = p.st.hp; p.mp = p.st.mp;
   if (hero) { hero.dispose(); hero = null; }
-  genCamp(true); banner(CLS[c].n, CLS[c].d); SND.card();
+  genCamp(true); banner(CLS[c].n, CLS[c].d); SND.card(); heroIntro(c);
 }
 // ---------- 營地建築 ----------
 // 材料：🦴 骨片（擊殺常掉）、💎 餘燼結晶（菁英、鑰匙守衛、首領、寶庫）。cost[L] = 蓋到 L+1 級要的 [骨片, 結晶, 金幣]
@@ -314,7 +321,7 @@ const BLD = {
   guild: { n: '獵人公會', i: '🏹', need: '獵人 洛克', cost: [[60, 3, 400], [220, 9, 3000], [550, 20, 9000]], d: L => ['', '告示板每次回營地可重抽 1 次', '重抽 2 次；完成獎勵金幣 +25%', '重抽 3 次；獎勵箱多一件'][L] },
 };
 const bl = k => (p.bld && p.bld[k]) || 0;
-const canBuild = k => { const B = BLD[k], L = bl(k); if (L >= 3 || (B.need && !p.rescued.includes(B.need))) return false; const [cb, cc, cg] = B.cost[L]; return p.mats.bone >= cb && p.mats.cry >= cc && p.gold >= cg; };
+const canBuild = k => { const B = BLD[k], L = bl(k); if (L >= 3 || (B.need && !p.rescued.includes(B.need))) return false; const [cb, cc, cg] = bcost(k, L); return p.mats.bone >= cb && p.mats.cry >= cc && p.gold >= cg; };
 const invCap = () => 24 + 6 * bl('store');
 const trainCap = () => [0, 5, 10, 20][bl('train')];
 // 建築外觀：沒蓋是一堆瓦礫，等級越高擺設越多。[模型, x 偏移, y 偏移, 縮放, 旋轉, 高度]
@@ -345,6 +352,7 @@ const BOUNTY = {
   elite: { d: b => `擊殺 ${b.need} 隻菁英`, need: [6, 12], ev: 'elite' },
   chest: { d: b => `打開 ${b.need} 個寶箱`, need: [4, 7], ev: 'chest' },
   brazier: { d: b => `點亮 ${b.need} 座火盆`, need: [6, 10], ev: 'brazier' },
+  hero: { d: b => `用「${CLS[b.arg] ? CLS[b.arg].n : '騎士'}」完成 ${b.need} 趟遠征`, need: [1, 1], ev: 'clear', arg: r => { const cs = Object.keys(CLS).filter(c => c === 'knight' || p.rescued.includes(CLS[c].n)); return cs[Math.floor(r() * cs.length)]; } },
   burn: { d: b => `引爆餘燼 ${b.need} 次`, need: [3, 6], ev: 'burn' },
   boss: { d: b => `打倒 ${b.need} 位首領`, need: [1, 2], ev: 'boss' },
   weap: { d: b => `用${WT[b.arg].n}完成 ${b.need} 趟遠征`, need: [1, 1], ev: 'clear', arg: r => ['xbow', 'staff', 'great', 'dagger', 'axe', 'sword'][Math.floor(r() * 6)] },
@@ -362,10 +370,11 @@ function bounty(ev, amt = 1) {
   for (const b of p.daily.list) {
     if (b.done || BOUNTY[b.k].ev !== ev) continue;
     if (b.k === 'weap' && wtOf(p.equip.weapon) !== WT[b.arg]) continue;
+    if (b.k === 'hero' && p.cls !== b.arg) continue;
     if (b.k === 'nopot' && (!p.run || p.run.pots)) continue;
     if (b.k === 'mod' && (!p.run || p.run.mod === 'none')) continue;
     b.n = Math.min(b.need, b.n + amt);
-    if (b.n >= b.need) { b.done = true; banner('', `📜 懸賞完成：${BOUNTY[b.k].d(b)}，回告示板領獎`); SND.card(); }
+    if (b.n >= b.need) { b.done = true; banner('', `📜 懸賞完成：${BOUNTY[b.k].d(b)}（回營地自動領獎）`); SND.card(); }
   }
 }
 const bountyReward = () => ({ cry: 2 + Math.floor(p.tier / 3), bone: 15 + p.tier * 3, gold: 80 * p.tier });
@@ -379,9 +388,10 @@ const WEEKRULE = [
 const weekRule = () => WEEKRULE[Math.floor(seeded(thisWeek())() * WEEKRULE.length)];
 function weekCheck() { const wk = thisWeek(); if (!p.weekly || p.weekly.wk !== wk) p.weekly = { wk, best: 0, paid: 0 }; }
 // 外觀收藏：[名稱, 顏色]；由成就解鎖，在營地篝火旁自由切換
-const LIGHTS = { orange: ['橙火', 0xffb070], blue: ['藍火', 0x80b4ff], green: ['翠火', 0x90ff9a], purple: ['紫火', 0xc896ff], white: ['白焰', 0xfff2e0] };
-const TRAILS = { none: '不留腳印', ember: '餘燼腳印', frost: '霜火腳印' };
-const COS_UNLOCK = { c10: 'light:blue', k1k: 'light:green', w10: 'light:purple', win: 'light:white', r3: 'trail:ember', bty: 'trail:frost' };
+const LIGHTS = { orange: ['橙火', 0xffb070], blue: ['藍火', 0x80b4ff], green: ['翠火', 0x90ff9a], purple: ['紫火', 0xc896ff], white: ['白焰', 0xfff2e0], red: ['血焰', 0xff6060], gold: ['金焰', 0xffd040], cyan: ['冰焰', 0x60f0ff], pink: ['櫻焰', 0xff9ad0], ember: ['餘燼紅', 0xff7030] };
+const TRAILS = { none: '不留腳印', ember: '餘燼腳印', frost: '霜火腳印', void: '虛空腳印', leaf: '翠綠腳印', star: '星光腳印', blood: '血色腳印', gold: '金幣腳印', spark: '火花腳印' };
+const TRAILC = { ember: '#ff7a2a', frost: '#80c8ff', void: '#a060ff', leaf: '#70ff90', star: '#ffffff', blood: '#ff3030', gold: '#ffd040', spark: '#ffe060' };
+const COS_UNLOCK = { c10: 'light:blue', k1k: 'light:green', w10: 'light:purple', win: 'light:white', r3: 'trail:ember', bty: 'trail:frost', c1: 'light:red', c40: 'trail:void', k100: 'trail:leaf', k5k: 'light:gold', t4: 'light:cyan', r6: 'trail:star', h3: 'light:pink', b5: 'trail:blood', b15: 'light:ember', cx: 'trail:gold', burn: 'trail:spark' };
 const COS_NAME = u => { const [t, k] = u.split(':'); return t === 'light' ? LIGHTS[k][0] : TRAILS[k]; };
 // 成就：[編號, 說明, 條件, 獎勵結晶, 獎勵金幣]
 const ACH = [
@@ -552,7 +562,9 @@ function genCamp(keep) {
   blk = new Array(MW * MH).fill(null); decos = []; fluff = []; traps = []; shrine = null; booms = []; braziers = []; p.phoenixUsed = false; p.barbUsed = false;
   const put = (tx, ty, model, rr, sc = 1, rot = 0) => { const d = { x: (tx + 0.5) * T, y: (ty + 0.5) * T, r: rr, model, s: sc, rot }; blk[ty * MW + tx] = d; decos.push(d); return d; };
   campFire = put(r.cx, r.cy, null, 22);
+  { const dm = spawnEnemy('dummy', (r.x + 2.5) * T, (r.cy + 1.5) * T); dm.fixed = true; dm.face = 0; }
   if (p.daily && p.daily.list) { const R0 = bountyReward(); let n = 0; for (const b of p.daily.list) if (b.done && !b.claimed) { b.claimed = true; p.mats.cry += R0.cry; p.mats.bone += R0.bone; p.gold += R0.gold; p.stat.bounty = (p.stat.bounty || 0) + 1; n++; } if (n) setTimeout(() => { banner('懸賞完成', `自動領取 ${n} 份獎勵：💎 ${R0.cry * n}、🦴 ${R0.bone * n}、💰 ${R0.gold * n}`); SND.legend(); checkAch(); }, 900); } if (newVer) setTimeout(showUpd, 0);
+  if (!keep) { const nb = Object.keys(BLD).filter(canBuild).map(k => BLD[k].i + BLD[k].n); if (nb.length) setTimeout(() => banner('🔨 可以蓋了', `${nb.join('、')}：走過去頭上有 ❗ 的建築`), 2600); weekCheck(); if (!p.weekly.best && !p.weekly.seen) { p.weekly.seen = 1; setTimeout(() => banner('⚔️ 本週挑戰開放', '告示板最下面：一直往下打，看你能撐幾層'), 4800); } if (Math.random() * 100 < ncv('gift')) { const gi = pick([['hpPot', '生命藥水 ×2'], ['bone', '骨片 ×40'], ['cry', '結晶 ×4']]); if (gi[0] === 'hpPot') p.hpPot = Math.min(9, p.hpPot + 2); else p.mats[gi[0]] += gi[0] === 'bone' ? 40 : 4; setTimeout(() => banner('🎁 有人送你禮物', gi[1]), 3600); } }
   if (p.inv.filter(it => it.rarity >= 3 && !it.set).length >= 3) setTimeout(() => tip('sacrifice', '背包裡的傳說用不到？到 🎒 背包或篝火「獻祭」換 💎 結晶，或把熱度傳給身上的裝備'), 1500);
   merchant = put(r.x + 2, r.y + 2, null, 10);
   board = put(r.x + r.w - 3, r.y + 1, 'table_medium', 14, 1.1);
@@ -702,6 +714,14 @@ const HEATC = [0x000000, 0x8a1a08, 0xd23010, 0xff6a10, 0xffb030, 0xfff0c8], HEAT
 const HEATN = [90, 210, 420, 770, 1260]; // 升到下一級要的「戰鬥值」（一般擊殺 1、菁英 3、首領 15）
 const PCTK = ['crit', 'aspd', 'move', 'ls', 'hpr', 'mpr']; // 熱度對百分比、回復類只放大一半
 const iv = (it, v, k) => Math.round(v * (1 + (PCTK.includes(k) ? 0.06 : 0.12) * (it.heat || 0)) * 10) / 10;
+const rfCost = it => 25 + it.lvl * 2;
+const scCost = () => 60 + Math.floor(p.lvl * 1.5);
+const setUnlocked = k => p.tier >= SETS[k].boss + 2 || Object.keys(p.codex || {}).some(c => c.startsWith('set:' + k + ':'));
+function reforge(it, i) { // 重擲一條詞綴：換成另一種，數值重新抽
+  const a = it.aff[i]; if (!a || a.ember) return; const used = it.aff.map(x => x.k), pool = Object.keys(AFF).filter(k => !used.includes(k) && !(it.slot === 'weapon' && k === 'armor'));
+  const k = pick(pool.length ? pool : [a.k]); let v = AFF[k](it.lvl) * rand(0.8, 1.2) * (it.rarity >= 4 ? 1.4 : it.rarity === 3 ? 1.25 : 1); v = (k === 'hpr' || k === 'mpr' || k === 'ls') ? Math.round(v * 10) / 10 : Math.round(v);
+  it.aff[i] = { k, v }; return it.aff[i];
+}
 const forgeCost = it => Math.ceil(((it.heat || 0) + 1) * 4 * (bl('smith') >= 3 ? 0.8 : 1)); // 熔鑄花 💎 結晶
 const forgeCap = () => [0, 2, 4, 5][bl('smith')];
 const heatPts = it => HEATN.slice(0, it.heat || 0).reduce((a, b) => a + b, 0) + (it.hx || 0);
@@ -732,11 +752,16 @@ const NC = {
   luck: { n: '幸運', d: v => `${v}% 機率獎勵箱多一件`, v: () => irand(15, 30) },
   trail: { n: '火痕', d: () => '走過的地方留下火焰腳印' },
   ghost: { n: '殘影', d: () => '閃避時留下殘影' },
+  scholar: { n: '博學', d: v => `經驗 +${v}%`, v: () => irand(8, 15) },
+  gift: { n: '人緣', d: v => `回營地時 ${v}% 機率有人送你禮物`, v: () => irand(30, 60) },
+  thrift: { n: '節儉', d: v => `建築與訓練的金幣 -${v}%`, v: () => irand(6, 12) },
 };
 function rollNC() { const k = pick(Object.keys(NC)); return { k, v: NC[k].v ? NC[k].v() : 0 }; }
 const ncv = k => (p.nc && p.nc[k]) || 0;
 const TRAIN = { hp: ['體魄', '生命 +12'], dmg: ['力量', '攻擊 +2'], mp: ['心智', '魔力 +10、每秒回魔 +0.3'] };
-const trainCost = k => Math.round(80 * Math.pow(1.3, p.train[k]));
+const thriftK = () => 1 - Math.min(30, ncv('thrift')) / 100;
+const trainCost = k => Math.round(80 * Math.pow(1.3, p.train[k]) * thriftK());
+const bcost = (k, L) => { const c = BLD[k].cost[L]; return [c[0], c[1], Math.round(c[2] * thriftK())]; };
 const gLv = () => Math.max(p.floor, p.lvl);
 const boxCost = () => Math.round((150 + gLv() * 45) * shopK());
 function gambleItem(slot) {
@@ -763,6 +788,8 @@ function calcStats(eq) {
   s.dmg *= 1 + (pa.power || 0) * 0.12; s.hp *= 1 + (pa.vigor || 0) * 0.15; s.mp *= 1 + (pa.mana || 0) * 0.25;
   for (const k of ['dmg', 'hp', 'mp', 'armor']) s[k] = Math.round(s[k]);
   for (const k of ['crit', 'aspd', 'move', 'ls', 'hpr', 'mpr']) s[k] = Math.round(s[k] * 10) / 10;
+  { const oc = Math.max(0, s.crit - 60), oa = Math.max(0, s.aspd - 60), om = Math.max(0, s.move - 50), oh = Math.max(0, s.hpr - s.hp * 0.015); /* 超過上限的部分轉成別的數值，升級不會白費 */
+    s.critDmg = Math.round(oc * 1.5); s.dmg = Math.round(s.dmg * (1 + oa * 0.005)); s.armor = Math.round(s.armor + om * 4); s.ls += Math.round(oh * 0.5) / 10; s.over = [oc && `暴擊傷害 +${Math.round(oc * 1.5)}%`, oa && `攻擊 +${(oa * 0.5).toFixed(1)}%`, om && `護甲 +${Math.round(om * 4)}`, oh > 0.05 && `吸血 +${(Math.round(oh * 0.5) / 10).toFixed(1)}%`].filter(Boolean); }
   s.crit = Math.min(s.crit, 60); s.aspd = Math.min(s.aspd, 60); s.mpr = Math.min(s.mpr, 12); s.hpr = Math.min(s.hpr, Math.round(s.hp * 0.015 * 10) / 10); s.move = Math.min(s.move, 50); s.ls = Math.min(s.ls, 15);
   if (p.buff && p.buff.k === 'rage') s.dmg = Math.round(s.dmg * 1.5);
   if (p.buff && p.buff.k === 'haste') { s.move += 35; s.aspd += 35; }
@@ -839,9 +866,17 @@ function takeCard(c) {
   const hp = p.st.hp; refresh(); p.hp += p.st.hp - hp; SND.card();
 }
 function openCards() { cards = rollCards(); if (!cards.length) { p.picks = 0; return; } paused = true; joy.id = null; atkHeld = false; mouse.l = mouse.r = false; drawCards(); $('cards').classList.add('on'); }
+function cardScore(c) { // 推薦：技能欄空著先學技能 → 強化放在欄上的技能與變體 → 對應系別的被動
+  if (c.t === 'learn') return p.slots.includes(null) ? 100 : 20;
+  if (c.t === 'up') return p.slots.includes(c.k) ? 60 + (6 - p.skl[c.k]) * 2 : 15;
+  if (c.t === 'mod') { const sk = MODS[c.k][0]; return sk === 'dash' || p.slots.includes(sk) ? 70 : 10; }
+  return PAS[c.k][3] ? (SKILLS.some(q => p.slots.includes(q) && SKTAG[q] === PAS[c.k][3]) ? 65 : 25) : 45;
+}
+const recIdx = () => cards.reduce((bi, c, i) => cardScore(c) > cardScore(cards[bi]) ? i : bi, 0);
 function drawCards() {
   $('cardsTitle').textContent = `升級！選一項${p.picks > 1 ? `（還有 ${p.picks} 次）` : ''}`;
-  $('cardRow').innerHTML = cards.map((c, i) => { const [tag, ic, n, d, col] = cardInfo(c); return `<button class="card" data-card="${i}" style="border-color:${col}"><small style="color:${col}">${tag}</small><i>${ic}</i><b>${n}</b><span>${d}</span></button>`; }).join('');
+  const ri = recIdx(); $('cardAuto').textContent = p.picks > 1 ? `🤖 自動選完（${p.picks} 張）` : '🤖 自動選';
+  $('cardRow').innerHTML = cards.map((c, i) => { const [tag, ic, n, d, col] = cardInfo(c); return `<button class="card" data-card="${i}" style="border-color:${col}"><small style="color:${col}">${tag}${i === ri ? '・👍 推薦' : ''}</small><i>${ic}</i><b>${n}</b><span>${d}</span></button>`; }).join('');
 }
 function newPlayer() {
   p = {
@@ -855,8 +890,11 @@ function resetRuntime() {
   Object.assign(p, { aim: 0, atkCd: 0, slashT: 0, slashA: 0, whirlT: 0, whirlTick: 0, dashT: 0, dashX: 0, dashY: 0, inv_t: 0, potCd: 0, hurtT: 0, moving: false, moveA: 0, combo: 0, buff: null, streak: 0, streakT: 0, thornCd: 0, trapCd: 0, stepT: 0, ember: 0, burnT: 0, burnExt: 0, spentT: 0, emberT: 0, slowT: 0, leap: null, dash2: false, hitChain: 0, hitChainT: 0, cd: Object.fromEntries(Object.keys(SK).map(k => [k, 0])) });
 }
 const xpNeed = l => Math.round(40 * Math.pow(l, 1.7));
+function shareXp(v) { // 沒上場的角色也分到 25% 經驗，換人不用從頭練
+  for (const c in p.heroes || {}) { const hh = p.heroes[c]; if (!hh || !hh.lvl) continue; hh.xp = (hh.xp || 0) + v * 0.25; while (hh.xp >= xpNeed(hh.lvl)) { hh.xp -= xpNeed(hh.lvl); hh.lvl++; hh.picks = (hh.picks || 0) + 1; } }
+}
 function gainXp(v) {
-  p.xp += v;
+  v *= 1 + ncv('scholar') / 100; shareXp(v); p.xp += v;
   while (p.xp >= xpNeed(p.lvl)) {
     p.xp -= xpNeed(p.lvl); p.lvl++; ev(`升到 Lv ${p.lvl + 0}`); p.picks++; refresh(); p.hp = p.st.hp; p.mp = p.st.mp; if (p.lvl % 5 === 0) { floatText(p.x, p.y - 20, '🌳 天賦點 +1', '#7dff8a', 18); tip('tal', '每 5 級得到 1 個天賦點：打開 🎒 背包按「🌳 天賦」來點'); }
     floatText(p.x, p.y, '升級！', '#ffcf6b', 24); 
@@ -867,7 +905,7 @@ function gainXp(v) {
 let noSave = false; // 還原存檔、重新載入前不要再寫回舊進度
 function save() {
   if (!p || noSave) return;
-  const o = {}; for (const k of ['pendingChest', 'lvl', 'xp', 'gold', 'floor', 'best', 'hpPot', 'mpPot', 'sp', 'skl', 'equip', 'inv', 'kills', 'deaths', 'won', 'train', 'slots', 'mods', 'pas', 'picks', 'diff', 'tier', 'run', 'rescued', 'clears', 'board', 'mats', 'bld', 'cls', 'heroes', 'daily', 'weekly', 'codex', 'ach', 'stat', 'danger', 'cos', 'cosU', 'hist', 'pick', 'tal', 'setPity']) o[k] = p[k];
+  const o = {}; for (const k of ['pendingChest', 'weekHist', 'lvl', 'xp', 'gold', 'floor', 'best', 'hpPot', 'mpPot', 'sp', 'skl', 'equip', 'inv', 'kills', 'deaths', 'won', 'train', 'slots', 'mods', 'pas', 'picks', 'diff', 'tier', 'run', 'rescued', 'clears', 'board', 'mats', 'bld', 'cls', 'heroes', 'daily', 'weekly', 'codex', 'ach', 'stat', 'danger', 'cos', 'cosU', 'hist', 'pick', 'tal', 'setPity']) o[k] = p[k];
   if (o.run && o.run.settled) o.run = null;
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(o)); } catch (e) { /* 無痕模式存不了就算了 */ }
 }
@@ -879,6 +917,7 @@ function load() {
     if (!p.rescued) p.rescued = [];
     if (!p.mats) p.mats = { bone: 0, cry: 0 }; if (!p.bld) p.bld = {}; if (!p.cls) p.cls = 'knight'; if (!p.heroes) p.heroes = {}; if (p.diff) { p.danger = Math.max(p.danger || 0, [0, 3, 6][p.diff] || 0); p.diff = 0; } /* 舊的困難／煉獄換成危險度 */
     if (!p.tal) p.tal = {}; for (const h of Object.values(p.heroes || {})) if (!h.tal) h.tal = {};
+    if (p.ach && p.cosU) for (const id in p.ach) { const cu = COS_UNLOCK[id]; if (cu && !p.cosU.includes(cu)) p.cosU.push(cu); } /* 舊成就補發外觀 */
     if (!p.codex) p.codex = {}; for (const it of [...(p.inv || []), ...Object.values(p.equip || {})]) if (it && it.set) p.codex['set:' + it.set + ':' + it.slot] = 1; if (!p.cos) p.cos = { light: 'orange', trail: 'none' }; if (!p.cosU) p.cosU = [];
     for (const it of [...p.inv, ...Object.values(p.equip), ...Object.values(p.heroes || {}).flatMap(h => Object.values(h.equip || {}))]) if (it && it.up) { it.heat = Math.min(5, Math.ceil(it.up * 0.6)); it.hx = 0; delete it.up; } /* 舊的 +N 強化換成熱度 */ if (!p.ach) p.ach = {}; if (!p.stat) p.stat = {};
     if (!p.slots) { p.slots = SKILLS.filter(k => p.skl[k]).slice(0, 3); while (p.slots.length < 3) p.slots.push(null); p.picks += p.sp || 0; p.sp = 0; } // 舊存檔：技能點換成升級卡
@@ -899,6 +938,7 @@ const ET = {
   brute: { n: '骸骨戰將', hp: 110, spd: 62, dmg: 24, r: 16, xp: 22, charger: 1 },
   shaman: { n: '亡靈咒術師', hp: 44, spd: 62, dmg: 13, r: 12, xp: 18, ranged: 1 },
   thief: { n: '偷寶骷髏', hp: 240, spd: 150, dmg: 0, r: 12, xp: 40 },
+  dummy: { n: '練習木樁', hp: 1e9, spd: 0, dmg: 0, r: 15, xp: 0 },
   boss: { n: '守關者', hp: 1500, spd: 76, dmg: 28, r: 30, xp: 300, charger: 1 },
 };
 const TRAITN = { split: '分裂', bomb: '自爆', haste: '疾走', ward: '護盾' };
@@ -956,6 +996,7 @@ function updateEnemy(e, dt) {
   const sm = e.slow > 0 ? 0.45 : 1; e.slow -= dt;
   const d = dist(e, p);
   if (e.type === 'thief') return thiefAI(e, dt, d, sm);
+  if (e.type === 'dummy') { if (e.log) e.log = e.log.filter(q => time - q[0] < 5); return; }
   if (!e.awake) { if (d < 340 && los(e, p)) { e.awake = true; tip('dash', touchMode ? '敵人舉手要打你時，按 💨 閃避，閃避中不會受傷' : '敵人舉手要打你時，按空白鍵閃避，閃避中不會受傷'); if (e === boss) { bossIntro(e); e.act = 1.2; } } else return; }
   // 近戰出手：先有揮擊的前搖，躲得開
   if (e.atkT > 0) {
@@ -1094,8 +1135,10 @@ function hitEnemy(e, mult, kb = 120, src, o = {}) {
   let dmg = p.st.dmg * mult * rand(0.88, 1.12) * (p.burnT > 0 ? 1.3 : 1 + p.ember / 100 * 0.2); const crit = Math.random() * 100 < p.st.crit || (p.nextCrit && !o.noProc && !(p.nextCrit = false));
   { const hf = p.hp / p.st.hp; if (tl('kA4') && hf < 0.3) dmg *= 1.3; if (tl('bA2') && hf < 0.5) dmg *= 1.25; if (tl('mB3') && e.freeze > 0) dmg *= 1.3; if (setN('frost') >= 3 && e.freeze > 0) dmg *= 1.4; if (tl('mC4') && p.mp > p.st.mp * 0.8) dmg *= 1.3; } // 火越旺打得越痛
   if (crit && !o.noProc && setN('void') >= 3 && holes.length < 2 && Math.random() < 0.15) { holes.push({ x: e.x, y: e.y, t: 2, tick: 0.2 }); sfx(90, 0.8, 'sine', 0.08, -50); fxRing(e.x, e.y, 170, 0xa060ff, 0.5); }
+  if (crit) dmg *= 1 + (p.st.critDmg || 0) / 100;
   if (crit) dmg *= tl('rA4') ? 3 : wtOf(p.equip.weapon) === WT.dagger ? 2.6 : 2;
   dmg = Math.max(1, Math.round(dmg));
+  if (e.type === 'dummy') { (e.log = e.log || []).push([time, dmg]); e.flash = 0.12; floatText(e.x, e.y, crit ? dmg + '!' : '' + dmg, crit ? '#ffd84a' : '#fff', crit ? 20 : 14); return; } /* 木樁：只記錄傷害，不會死 */
   e.hp -= dmg; e.flash = 0.12; e.awake = true;
   if (e.type === 'thief') { if (e.fleeT === undefined) e.fleeT = 14; if (Math.random() < 0.3) dropGold(e.x, e.y, irand(3, 6) * (1 + p.floor * 0.1)); }
   if (e.broken > 0) { dmg = Math.round(dmg * 1.5); e.hp -= Math.round(dmg / 3); }
@@ -1241,10 +1284,14 @@ function useShrine() {
   p.hp = Math.min(p.st.hp, p.hp + p.st.hp * 0.3); banner(b[1] + '祝福', b[2] + '（45 秒）');
   fxRing(p.x, p.y, 110, b[3], 0.6); burst(shrine.x, shrine.y, '#' + b[3].toString(16).padStart(6, '0'), 40, 150, 1, 3, 6); SND.shrine();
 }
+function weekSummary(d) { // 每週挑戰結算：跟自己本週、上週比
+  const runs = (p.weekly.runs || []).slice().sort((a, b) => b - a), rank = runs.indexOf(d) + 1, wks = Object.keys(p.weekHist || {}).sort(), prev = wks.filter(w => w < p.weekly.wk).pop(), pb = prev ? p.weekHist[prev] : null;
+  return `<b style="font-size:20px">每週挑戰：完成 ${d} 層</b><br>本週第 ${runs.length} 次挑戰・這次排第 <b>${rank}</b> 名${rank === 1 && runs.length > 1 ? ' <span class="good">（本週新紀錄！）</span>' : ''}<br>本週最佳 ${p.weekly.best} 層${pb !== null ? `・上週最佳 ${pb} 層${p.weekly.best > pb ? ' <span class="good">已超越</span>' : ''}` : ''}<br><span class="dim">本週前三：${runs.slice(0, 3).join('、')} 層・每 3 層 💎 +2</span><br>`;
+}
 function die() {
   p.hp = 0; state = 'dead'; intensity = 0; ev('倒下'); logRun('倒下');
   const endless = p.run && p.run.goal === 'endless', lost = endless ? 0 : Math.floor(p.gold * 0.3); p.gold -= lost;
-  if (endless) { weekCheck(); p.weekly.best = Math.max(p.weekly.best, p.run.depth - 1); }
+  if (endless) { weekCheck(); const dd = p.run.depth - 1; (p.weekly.runs = p.weekly.runs || []).push(dd); p.weekly.best = Math.max(p.weekly.best, dd); p.weekHist = p.weekHist || {}; p.weekHist[p.weekly.wk] = p.weekly.best; }
   if (hero) hero.once('Death_A', 1, 99);
   p.deaths++; setTimeout(() => { if (state === 'dead') endScreen(false, lost); }, 1300); sfx(200, 0.7, 'sawtooth', 0.08, -170);
   save();
@@ -1307,7 +1354,7 @@ function endScreen(win, lost) {
   $('deadTitle').textContent = win ? '你征服了餘燼地城' : '火把熄了';
   $('deadTxt').innerHTML = win
     ? `第 20 層的虛空之主倒下了。<br>擊殺 ${p.kills}・倒下 ${p.deaths} 次・等級 ${p.lvl}<br>想挑戰極限的話，樓梯還會繼續往下。`
-    : p.run && p.run.goal === 'endless' ? `每週挑戰結束：完成了 ${p.run.depth - 1} 層。<br>本週最佳：${p.weekly.best} 層<br>` : `遠征失敗：倒在${p.run ? `${mapName(p.run.tier)}第 ${p.run.depth} 層` : '地城裡'}。<br>掉了 ${lost} 枚金幣，撿到的裝備、等級都還在。<br><span class="dim">擊殺 ${p.kills}・倒下 ${p.deaths} 次</span>`;
+    : p.run && p.run.goal === 'endless' ? weekSummary(p.run.depth - 1) : `遠征失敗：倒在${p.run ? `${mapName(p.run.tier)}第 ${p.run.depth} 層` : '地城裡'}。<br>掉了 ${lost} 枚金幣，撿到的裝備、等級都還在。<br><span class="dim">擊殺 ${p.kills}・倒下 ${p.deaths} 次</span>`;
   $('reviveBtn').textContent = win ? '繼續' : '回到營地';
   $('dead').classList.add('on'); if (win) { paused = true; SND.shrine(); }
 }
@@ -1315,7 +1362,7 @@ function interact() { if (actMode === 'stairs') descend(); else if (actMode === 
 function aimAngle() {
   if (!touchMode) return Math.atan2(mouse.wy - p.y, mouse.wx - p.x);
   let best = null, bd = 380;
-  for (const e of enemies) { const d = dist(e, p) * (e.type === 'crystal' ? 0.5 : 1); if (d < bd && e.awake && !e.shield && los(p, e)) { bd = d; best = e; } }
+  for (const e of enemies) { const d = dist(e, p) * (e.type === 'crystal' ? 0.5 : 1); if (d < bd && (e.awake || e.type === 'dummy') && !e.shield && los(p, e)) { bd = d; best = e; } }
   if (best) return Math.atan2(best.y - p.y, best.x - p.x);
   for (const o of props) { if (o.kind === 'barrel' && dist(o, p) < 80) return Math.atan2(o.y - p.y, o.x - p.x); }
   return p.aim;
@@ -1469,7 +1516,7 @@ function update(dt) {
   } else if (m > 0.05) {
     const sp = 190 * (1 + st.move / 100) * (p.whirlT > 0 ? (p.mx['whirl.long'] ? 1 : 0.8) : p.atkCd > 0.12 ? 0.45 : 1) * (p.burnT > 0 ? 1.2 : 1) * (p.slowT > 0 ? 0.6 : 1);
     movePlayer(moveX * sp * dt, moveY * sp * dt); p.moving = true; p.moveA = Math.atan2(moveY, moveX);
-    if ((p.stepT -= dt) <= 0) { p.stepT = 0.29; SND.step(); if (ncv('trail') || (p.cos && p.cos.trail !== 'none')) { const fc = p.cos && p.cos.trail === 'frost' ? '#80c8ff' : '#ff7a2a'; for (let i = 0; i < 3; i++) parts.push(mkPart(p.x + rand(-5, 5), p.y + rand(-5, 5), 0.06, 0, 0, 0, fc, 1.6, 6)); } }
+    if ((p.stepT -= dt) <= 0) { p.stepT = 0.29; SND.step(); if (ncv('trail') || (p.cos && p.cos.trail !== 'none')) { const fc = (p.cos && TRAILC[p.cos.trail]) || '#ff7a2a'; for (let i = 0; i < 3; i++) parts.push(mkPart(p.x + rand(-5, 5), p.y + rand(-5, 5), 0.06, 0, 0, 0, fc, 1.6, 6)); } }
     if (st.move > 0 && Math.random() < st.move / 25) parts.push(mkPart(p.x - moveX * 10 + rand(-6, 6), p.y - moveY * 10 + rand(-6, 6), 0.2, -moveX * 40 + rand(-20, 20), -moveY * 40 + rand(-20, 20), rand(0.5, 2), st.move > 20 ? '#ff9a40' : '#b8a080', 0.5, rand(2.5, 4.5), 3));
     if (touchMode && p.slashT <= 0) p.aim = p.moveA;
   }
@@ -1622,6 +1669,8 @@ function update(dt) {
   if (p.streakT > 0 && (p.streakT -= dt) <= 0) p.streak = 0;
   if (p.buff && (p.buff.t -= dt) <= 0) { p.buff = null; refresh(); floatText(p.x, p.y, '祝福消失了', '#aaa', 13); }
   if (p.run && !fps && !cine) torchTick(dt);
+  for (const b of buildFx) { b.t -= dt; if ((b.k -= dt) <= 0) { b.k = 0.32; sfx(rand(1400, 1900), 0.07, 'square', 0.04); sfx(180, 0.1, 'triangle', 0.05); for (let i = 0; i < 8; i++) parts.push(mkPart(b.x + rand(-22, 22), b.y + rand(-14, 14), rand(0.8, 2.6), rand(-60, 60), rand(-60, 60), rand(3, 7), Math.random() < 0.5 ? '#ffd27a' : '#c89a60', rand(0.3, 0.7), rand(3, 6), 9)); } if (Math.random() < dt * 10) parts.push(mkPart(b.x + rand(-26, 26), b.y + rand(-20, 20), 0.2, 0, 0, rand(1, 3), '#a89880', 0.9, rand(6, 10), -1)); }
+  buildFx = buildFx.filter(b => b.t > 0);
   if (curse) { const cu = curse;
     if (cu.t > 0) { cu.t -= dt; if (Math.random() < dt * 20) { const b = rand(0, 6.283); parts.push(mkPart(cu.x + Math.cos(b) * 30, cu.y + Math.sin(b) * 30, rand(0.3, 2), 0, 0, rand(4, 8), '#a050ff', 0.6, rand(4, 8), -2)); }
       if ((cu.cd -= dt) <= 0) { cu.cd = 1.2; for (let i = 0, m = 3 + Math.min(3, Math.floor(p.floor / 5)); i < m; i++) { const b = rand(0, 6.283), rr = rand(110, 190), x = cu.x + Math.cos(b) * rr, y = cu.y + Math.sin(b) * rr; if (circleHits(x, y, 14) || Math.hypot(x - p.x, y - p.y) < 90) continue; const e = hordeOf(spawnEnemy(Math.random() < 0.3 ? 'imp' : 'minion', x, y)); e.awake = true; e.rise = true; e.riseT = 0.9; e.atkCd = 0.6; e.waveSpawn = true; e.curse = true; e.xp *= 0.5; } }
@@ -1769,6 +1818,7 @@ const VIS = {
 };
 function ensureVis(e) {
   if (e.v) return e.v;
+  if (e.type === 'dummy') { const g = new THREE.Group(), o = kitClone('pillar', 0.55), sh = kitClone('w_shield_large_a', 1.3); sh.position.set(0, 1.6, 0.35); g.add(o, sh); g.position.set(e.x * U, 0, e.y * U); ents.add(g); e.v = { root: g, lock: 0, px: e.x, py: e.y, base: 0, baseK: 0, mixer: { update() {} }, once() {}, play() {}, emissive() {}, dispose() { g.removeFromParent(); } }; return e.v; }
   if (e.type === 'crystal') {
     const g = new THREE.Group(), m = new THREE.Mesh(cryGeo, crystalMat), l = crystalLights.find(l => !l.userData.used);
     m.scale.set(0.9, 1.6, 0.9); m.position.y = 1.7; g.add(m); g.position.set(e.x * U, 0, e.y * U); ents.add(g);
@@ -2216,11 +2266,12 @@ function drawOverlay() {
   const c = octx, k = ov.width / W;
   c.setTransform(k, 0, 0, k, 0, 0); c.clearRect(0, 0, W, H); c.textAlign = 'center';
   for (const e of enemies) {
-    if (!e.v || !e.v.root.visible || e.type === 'boss' || (e.hp >= e.maxHp && !e.elite && e.type !== 'thief')) continue;
+    if (!e.v || !e.v.root.visible || e.type === 'boss' || (e.hp >= e.maxHp && !e.elite && e.type !== 'thief' && e.type !== 'dummy')) continue;
     const [x, y, ok] = project(e.x, (e.type === 'brute' ? 3.4 : e.type === 'imp' ? 2 : 2.9) * (e.elite ? 1.2 : 1), e.y); if (!ok) continue;
     const w = e.elite ? 46 : 34;
     c.fillStyle = 'rgba(0,0,0,.65)'; c.fillRect(x - w / 2 - 1, y - 1, w + 2, 6);
     c.fillStyle = e.elite ? '#ffd84a' : '#e44'; c.fillRect(x - w / 2, y, w * Math.max(0, e.hp / e.maxHp), 4);
+    if (e.type === 'dummy') { const lg = e.log || [], tot = lg.reduce((a, q) => a + q[1], 0), span = lg.length ? Math.max(1, time - lg[0][0]) : 1; c.font = 'bold 13px sans-serif'; c.fillStyle = '#ffe9b0'; c.strokeStyle = '#000'; c.lineWidth = 3; const nm = lg.length ? `🎯 每秒傷害 ${Math.round(tot / span)}` : '🎯 練習木樁：打我看傷害'; c.strokeText(nm, x, y - 8); c.fillText(nm, x, y - 8); continue; }
     if (e.type === 'thief') { c.font = '12px sans-serif'; c.fillStyle = '#ffd040'; c.strokeStyle = '#000'; c.lineWidth = 3; const nm = `💰 偷寶骷髏${e.fleeT !== undefined ? ' ' + Math.max(0, Math.ceil(e.fleeT)) + 's' : ''}`; c.strokeText(nm, x, y - 5); c.fillText(nm, x, y - 5); }
     if (e.elite) { c.font = '12px sans-serif'; c.fillStyle = '#ffd84a'; c.strokeStyle = '#000'; c.lineWidth = 3; const nm = `${e.key ? '🔑 鑰匙守衛' : '菁英 ' + ET[e.type].n}〔${TRAITN[e.trait] || ''}〕`; c.strokeText(nm, x, y - 5); c.fillText(nm, x, y - 5); }
   }
@@ -2326,7 +2377,7 @@ function upgradeOf(it) { const eq = Object.assign({}, p.equip), cur = p.equip[it
 function drawPanel() {
   const st = p.st;
   $('eq').innerHTML = Object.keys(SLOTS).map(s => { const it = p.equip[s]; return `<div class="slot${sel && sel.it === it && it ? ' sel' : ''}" data-eq="${s}" style="border-color:${it ? icol(it) : '#443a55'}${it ? slotBg(it) : ''}">${it ? itIcon(it) + slotMark(it) + heatMark(it) : ''}<small>${SLOTS[s].n}</small></div>`; }).join('');
-  $('stats').innerHTML = Object.keys(STAT).map(k => `${STAT[k][0]}　<b>${Number.isInteger(st[k]) ? st[k] : st[k].toFixed(1)}${STAT[k][1] ? '%' : ''}</b>`).join('<br>') + Object.keys(p.sets || {}).map(k => `<br><span style="color:${SETS[k].c}">◆ ${SETS[k].n} ${p.sets[k]}/3</span>`).join('');
+  $('stats').innerHTML = Object.keys(STAT).map(k => `${STAT[k][0]}　<b>${Number.isInteger(st[k]) ? st[k] : st[k].toFixed(1)}${STAT[k][1] ? '%' : ''}</b>`).join('<br>') + Object.keys(p.sets || {}).map(k => `<br><span style="color:${SETS[k].c}">◆ ${SETS[k].n} ${p.sets[k]}/3</span>`).join('') + (st.over && st.over.length ? `<br><span style="color:#ffb060">⤴ 超出上限轉換：${st.over.join('、')}</span>` : '');
   const junk = p.inv.filter(it => upgradeOf(it) <= 0.5 && !it.fx && !it.set), sum = a => a.reduce((t, it) => t + sellOf(it), 0);
   $('sellJunk').textContent = p.run ? '回營地才能賣' : `賣掉用不到的（${junk.length} 件 +${sum(junk)} 金）`; $('sellJunk').disabled = !!p.run || !junk.length;
   { const jl = p.inv.filter(junkLeg); $('sacJunk').textContent = p.run ? '回營地才能獻祭' : `🔥 獻祭用不到的傳說（${jl.length} 件 +💎${jl.reduce((t, it) => t + sacCry(it), 0)}）`; $('sacJunk').disabled = !!p.run || !jl.length; $('sacJunk').style.display = p.run ? 'none' : ''; $('sacJunk').dataset.ok = ''; }
@@ -2435,12 +2486,14 @@ function drawBld() {
   let h = '';
   if (B.need && !p.rescued.includes(B.need)) h += `<div class="row bad"><span>🔒 要先救回${B.need}（告示板上的救人任務）</span></div>`;
   else if (L < 3) {
-    const [cb, cc, cg] = B.cost[L], ok = m.bone >= cb && m.cry >= cc && g >= cg;
+    const [cb, cc, cg] = bcost(k, L), ok = m.bone >= cb && m.cry >= cc && g >= cg;
     h += `<div class="row"><span>${L ? '升級到' : '建造'} Lv ${L + 1}：<b>${B.d(L + 1)}</b><br><span class="${ok ? 'dim' : 'bad'}">需要 🦴 ${cb}${cc ? '　💎 ' + cc : ''}　💰 ${cg}</span></span><button class="btn" data-bup="1" ${ok ? '' : 'disabled'}>${L ? '升級' : '建造'}</button></div>`;
   } else h += '<div class="row dim"><span>已經是最高等級</span></div>';
   if (L) h += `<div class="row"><span class="good">目前：${B.d(L)}</span></div>`;
   if (k === 'train' && L) { h += `<h2>訓練 <span class="dim">永久提升，上限 Lv ${trainCap()}</span></h2>`; for (const q in TRAIN) h += `<div class="row"><span><b>${TRAIN[q][0]}</b> Lv ${p.train[q]}　<span class="dim">${TRAIN[q][1]}</span></span>${p.train[q] >= trainCap() ? '<span class="dim">到上限</span>' : btn(`data-train="${q}"`, trainCost(q))}</div>`; }
   if (k === 'smith' && L) { h += `<h2>熔鑄 <span class="dim">花 💎 結晶直接提升一級熱度，上限 ${HEAT[forgeCap()]}；戰鬥本身也會讓裝備變熱</span></h2>`; for (const q in SLOTS) { const it = p.equip[q]; h += it ? `<div class="row"><span>${SLOTS[q].i} <b style="color:${RAR[it.rarity].c}">${it.name}</b>　${heatTag(it)}</span>${(it.heat || 0) >= forgeCap() ? '<span class="dim">到上限</span>' : `<button class="btn" data-upg="${q}" ${m.cry >= forgeCost(it) ? '' : 'disabled'}>💎 ${forgeCost(it)}</button>`}</div>` : `<div class="row dim"><span>${SLOTS[q].i} ${SLOTS[q].n}：沒有裝備</span></div>`; } }
+  if (k === 'smith' && L) { h += `<h2>重鑄詞綴 <span class="dim">花 🦴 骨片把一條詞綴重新擲一次（🔥 餘燼詞綴不能重鑄）</span></h2>`; for (const q in SLOTS) { const it = p.equip[q]; if (!it || !it.aff.length) continue; const c = rfCost(it); h += `<div class="row" style="flex-wrap:wrap"><span style="flex-basis:100%">${SLOTS[q].i} <b style="color:${icol(it)}">${it.name}</b></span>${it.aff.map((a, i) => a.ember ? '' : `<button class="btn mini" data-rf="${q}:${i}" ${m.bone >= c ? '' : 'disabled'}>🎲 ${fmt(a.k, iv(it, a.v, a.k))}・🦴${c}</button>`).join('')}</div>`; } }
+  if (k === 'smith' && L >= 2) { h += `<h2>鑄造套裝 <span class="dim">花 💎 結晶直接打一件打倒過首領的套裝（優先缺的部位）</span></h2>`; for (const sk in SETS) { const S = SETS[sk], ok = setUnlocked(sk), c = scCost(); h += `<div class="row"><span><b style="color:${ok ? S.c : '#777'}">◆ ${S.n}</b> <span class="dim">${S.slots.map(q => SLOTS[q].n).join('、')}${ok ? '' : `・要先打倒 ${BOSSN[S.boss]}`}</span></span><button class="btn mini" data-sc="${sk}" ${ok && m.cry >= c ? '' : 'disabled'}>💎 ${c}</button></div>`; } }
   if (k === 'altar' && L) h += `<h2>重選升級卡與天賦</h2><div class="row"><span>🔄 退回所有技能、變體、被動與天賦點，重新選 ${p.lvl - 1} 張卡</span>${btn('data-respec="1"', respecCost(), p.lvl > 1)}</div>`;
   if (k === 'store') h += `<div class="row dim"><span>背包目前 ${p.inv.length} / ${invCap()} 格</span></div>`;
   if (k === 'guild' && L) h += `<div class="row dim"><span>這次回營地還能重抽告示板 ${p.rerolls || 0} 次</span></div>`;
@@ -2450,13 +2503,15 @@ $('bld').addEventListener('click', ev => {
   if (ev.target === $('bld') || ev.target.id === 'bldClose') return closeBld();
   const sc = ev.target.closest('[data-sac]'); if (sc) { if (!sc.disabled) { if (sacPend === sc.dataset.sac) { const [i2, m2] = sc.dataset.sac.split(':'); sacPend = null; sacrifice(+i2, m2); } else sacPend = sc.dataset.sac; } return drawBld(); }
   const cs = ev.target.closest('[data-cos]'); if (cs) { const [t2, k2] = cs.dataset.cos.split(':'); p.cos[t2] = k2; SND.card(); save(); return drawBld(); }
+  const rf = ev.target.closest('[data-rf]'); if (rf) { if (!rf.disabled) { const [q, i] = rf.dataset.rf.split(':'), it = p.equip[q], c = it && rfCost(it); if (it && p.mats.bone >= c) { p.mats.bone -= c; const a = reforge(it, +i); SND.burn(); burst(p.x, p.y, '#ffcf6b', 20, 120, 0.6, 1, 5); if (a) floatText(p.x, p.y - 20, `🎲 ${fmt(a.k, iv(it, a.v, a.k))}`, '#9cf', 16); refresh(); save(); } } return drawBld(); }
+  const scb = ev.target.closest('[data-sc]'); if (scb) { if (!scb.disabled && p.mats.cry >= scCost()) { p.mats.cry -= scCost(); const it = makeSetItem(scb.dataset.sc, p.lvl); if (p.inv.length < invCap()) p.inv.push(it); else p.equip[it.slot] ? p.inv.push(it) : (p.equip[it.slot] = it); addCodex(it); SND.legend(); lootToast(it); refresh(); save(); } return drawBld(); }
   const t = ev.target.closest('[data-bup],[data-upg],[data-train],[data-respec]'); if (!t || t.disabled) return;
   const ds = t.dataset, pay = c => { if (p.gold < c) return false; p.gold -= c; SND.coin(); return true; };
   if (ds.bup) {
-    const L = bl(bldK), [cb, cc, cg] = BLD[bldK].cost[L];
+    const L = bl(bldK), [cb, cc, cg] = bcost(bldK, L);
     if (L < 3 && p.mats.bone >= cb && p.mats.cry >= cc && p.gold >= cg) {
       p.mats.bone -= cb; p.mats.cry -= cc; p.gold -= cg; p.bld[bldK] = L + 1; if (bldK === 'guild' && !L) p.rerolls = 1;
-      SND.shrine(); genCamp(true); burst(campBlds.find(d => d.k === bldK).x, campBlds.find(d => d.k === bldK).y, '#ffcf6b', 40, 140, 1, 1, 7); shake = 5;
+      SND.shrine(); genCamp(true); { const bd = campBlds.find(d => d.k === bldK); buildFx.push({ x: bd.x, y: bd.y, t: 3.2, k: 0 }); } burst(campBlds.find(d => d.k === bldK).x, campBlds.find(d => d.k === bldK).y, '#ffcf6b', 40, 140, 1, 1, 7); shake = 5;
       floatText(p.x, p.y, `${BLD[bldK].n} Lv ${L + 1}！`, '#ffcf6b', 20); paused = true;
     }
   }
@@ -2612,6 +2667,10 @@ $('cards').addEventListener('click', ev => {
   if (p.picks > 0) { cards = rollCards(); if (cards.length) return drawCards(); p.picks = 0; }
   $('cards').classList.remove('on'); paused = false; cards = null; save();
 });
+$('cardAuto').onclick = () => { // 自動選完剩下的卡
+  while (cards && cards.length && p.picks > 0) { takeCard(cards[recIdx()]); p.picks--; cards = p.picks > 0 ? rollCards() : null; }
+  p.picks = 0; $('cards').classList.remove('on'); paused = false; cards = null; save();
+};
 $('closeBtn').onclick = () => togglePanel(false);
 $('quitRun').onclick = () => { if (p.run) ask('放棄這趟遠征、回到營地？撿到的東西都會留著，但沒有獎勵箱。', () => { if (!p.run) return; togglePanel(false); logRun('放棄'); p.run = null; genCamp(); }, '回營地'); };
 $('bagBtn').onclick = () => togglePanel();
@@ -2926,7 +2985,7 @@ loadAssets().then(() => {
 
 // 測試用
 window.__game = {
-  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get braziers() { return braziers; }, sacrifice, makeSetItem, SETS, get hero() { return hero; }, switchHero, rollCards, gambleItem, boxCost, hitEnemy, finishRun, startRun, get paused() { return paused; }, get hitStop() { return hitStop; }, get pools() { return pools; }, get holes() { return holes; }, refresh, heroLook, attack, cast, ignite, get merchant() { return merchant; }, talCan, talPts, openTal, tl, TALENTS, get pickNear() { return pickNear; }, clsOf, inClass, rollRarity, get renderer() { return renderer; }, exportText, openExport, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
+  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get braziers() { return braziers; }, sacrifice, makeSetItem, SETS, get hero() { return hero; }, switchHero, rollCards, gambleItem, boxCost, hitEnemy, finishRun, startRun, get paused() { return paused; }, openBld, closeBld, get hitStop() { return hitStop; }, get pools() { return pools; }, get holes() { return holes; }, refresh, heroLook, attack, cast, ignite, get merchant() { return merchant; }, talCan, talPts, openTal, tl, TALENTS, get pickNear() { return pickNear; }, clsOf, inClass, rollRarity, get renderer() { return renderer; }, exportText, openExport, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
   get quality() { return quality; }, setQuality(v) { autoQ = false; quality = v; applyQuality(); },
   update, isSolid: (x, y) => solid(x, y), upgradeOf, inheritView, drawPanel, get drops() { return drops; }, dropPot(k) { drops.push(mk(k, p.x, p.y)); }, audioState: () => actx ? actx.state + (musicBossOn ? '+boss' : '') : 'none', isBlk: (x, y) => !!(blk[y * MW + x]), joyWorld(dx, dy) { const c = Math.cos(CAMS[camMode].yaw), n = Math.sin(CAMS[camMode].yaw); joy.id = 99; joy.x = dx * c - dy * n; joy.y = dx * n + dy * c; }, joySet(x, y) { if (x === null) { joy.id = null; joy.x = joy.y = joy.sx = joy.sy = 0; } else { joy.id = 99; joy.x = x; joy.y = y; } }, descend, takeDoor, get doorOpts() { return doorOpts; }, cast, keys, mouse, spawnEnemy, hurtPlayer, dropItem, makeItem, genFloor, setCam(i) { camMode = i; camReady = false; }, info: () => renderer.info.render,
 };
