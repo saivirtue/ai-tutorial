@@ -22,7 +22,7 @@ const angDiff = (a, b) => { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI;
 
 // ---------- 音效與音樂（全部用 WebAudio 即時合成，沒有音檔） ----------
 let actx = null, master = null, musicBus = null, muted = false, drone = null;
-let musicT = 0, beat = 0, intensity = 0, musicTarget = 0, musicRoot = 110;
+let musicT = 0, beat = 0, intensity = 0, musicTarget = 0, musicRoot = 110, musicBossOn = false;
 function audioInit() {
   if (actx) { if (actx.state === 'suspended') actx.resume(); return; }
   try {
@@ -88,9 +88,34 @@ const SND = {
 };
 const SCALE = [0, 3, 5, 7, 10, 12, 15];
 const semi = n => Math.pow(2, n / 12);
+function padNote(f, dur, vol, when) { // 合唱般的鋪底：兩支微微走音的鋸齒波＋低通
+  try { const t = actx.currentTime + when, g = actx.createGain(), lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1100; lp.Q.value = 0.7;
+    g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + dur * 0.25); g.gain.linearRampToValueAtTime(vol * 0.8, t + dur * 0.8); g.gain.linearRampToValueAtTime(0.0001, t + dur);
+    for (const dt2 of [-7, 6]) { const o = actx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = dt2; o.connect(lp); o.start(t); o.stop(t + dur + 0.05); }
+    lp.connect(g).connect(musicBus); } catch (e) { /* 沒差 */ }
+}
+function tickBossMusic() { // 首領戰專屬：D 小調，太鼓、弦樂頓音、合唱、銅管；狂暴後加主旋律
+  const step = 60 / 138 / 2, R0 = 73.42, rage = boss && boss.raged;
+  const prog = [0, -4, 3, -2, 0, -4, 5, 7], CH = [[0, 3, 7], [0, 4, 7], [0, 4, 7], [0, 4, 7], [0, 3, 7], [0, 4, 7], [0, 3, 7], [0, 4, 7]];
+  const MEL = [12, 0, 15, 14, 12, 0, 10, 0, 12, 0, 15, 17, 19, 0, 17, 15];
+  while (musicT < actx.currentTime + 0.25) {
+    const t = musicT - actx.currentTime, b = beat % 16, bar = (beat >> 4) % 8, root = R0 * semi(prog[bar]), ch = CH[bar];
+    if ([0, 3, 6, 8, 11, 14].includes(b)) { sfx(b === 0 ? 62 : 90, b === 0 ? 0.6 : 0.28, 'sine', b === 0 ? 0.42 : 0.28, b === 0 ? -30 : -45, t); noise(0.08, 0.05, 1800, 0, t); } // 太鼓
+    if (b === 4 || b === 12) noise(0.22, 0.12, 3000, 600, t); // 小鼓
+    if (b === 0 && bar % 2 === 0) { sfx(41, 1.4, 'sine', 0.35, -12, t); noise(0.9, 0.06, 500, 0, t); } // 大鼓滾
+    sfx(root * 2 * semi(b % 2 ? ch[2] : ch[0]), step * 0.55, 'sawtooth', 0.032, 0, t, musicBus); // 弦樂頓音
+    if (b === 0) for (const n of ch) padNote(root * 4 * semi(n), step * 16, 0.022, t); // 合唱
+    if (b === 0 || b === 10) for (const n of ch) sfx(root * 2 * semi(n), 0.32, 'sawtooth', 0.02, 0, t, musicBus); // 銅管重音
+    if (b === 0) sfx(root, step * 16, 'triangle', 0.09, 0, t, musicBus); // 低音
+    if (rage && MEL[b]) { sfx(root * 4 * semi(MEL[b] - 12), step * 1.7, 'square', 0.022, 0, t, musicBus); sfx(root * 8 * semi(MEL[b] - 12), step * 1.2, 'sine', 0.012, 0, t, musicBus); }
+    if (b === 15 && bar === 7) sfx(1800, 1.2, 'triangle', 0.03, 0, t, musicBus); // 鐵砧般的鐘響
+    musicT += step; beat++;
+  }
+}
 function tickMusic() {
   if (!actx || actx.state !== 'running') return;
   if (musicT < actx.currentTime) musicT = actx.currentTime + 0.05;
+  if (boss && boss.awake && !boss.dead && state === 'play') { if (!musicBossOn) { musicBossOn = true; beat = 0; } return tickBossMusic(); } else if (musicBossOn) { musicBossOn = false; beat = 0; }
   const step = 60 / (78 + intensity * 44) / 2; // 八分音符
   const prog = semi([0, -4, 3, -2][(beat >> 5) % 4]); // 每四小節換一個和弦
   while (musicT < actx.currentTime + 0.25) {
@@ -124,7 +149,7 @@ let p = null, boss = null, shake = 0, miniT = 0, flowT = 0, itemId = 1, fullMsgT
 let W = 0, H = 0, dpr = 1;
 
 const keys = {}, mouse = { x: 0, y: 0, l: false, r: false, wx: 0, wy: 0 };
-const joy = { id: null, ox: 0, oy: 0, x: 0, y: 0 };
+const joy = { id: null, ox: 0, oy: 0, x: 0, y: 0, sx: 0, sy: 0, used: 0 }; const JOY_R = 64, JOY_DZ = 9;
 let touchMode = false, atkHeld = false;
 
 // ---------- 新手提示：每則只出現一次 ----------
@@ -175,6 +200,13 @@ function circleHits(x, y, r) {
     if (b && (x - b.x) ** 2 + (y - b.y) ** 2 < (r + b.r) ** 2) { hitBlk = b; return true; }
   }
   return false;
+}
+function movePlayer(dx, dy) { // 卡在牆角時，往左右偏一點繞過去
+  const x0 = p.x, y0 = p.y, want = Math.hypot(dx, dy); moveEnt(p, dx, dy);
+  if (want < 0.3 || Math.hypot(p.x - x0, p.y - y0) > want * 0.6) return;
+  const a = Math.atan2(dy, dx), gx = p.x, gy = p.y;
+  for (const off of [0.45, -0.45, 0.8, -0.8, 1.2, -1.2]) { const nx = x0 + Math.cos(a + off) * want, ny = y0 + Math.sin(a + off) * want; if (!circleHits(nx, ny, p.r)) { p.x = nx; p.y = ny; return; } }
+  p.x = gx; p.y = gy;
 }
 function moveEnt(e, dx, dy) {
   let hit = false;
@@ -1249,7 +1281,7 @@ $('chestBtn').onclick = () => {
   const show = () => { // 一件一件翻開，稀有度越高越大聲
     const it = chestItems[i++]; if (!it) { $('sumBack').style.display = 'inline-block'; return; }
     if (p.inv.length < invCap()) p.inv.push(it); else p.gold += it.val; addCodex(it);
-    $('chestOut').insertAdjacentHTML('beforeend', `<div class="loot r${it.rarity}">${SLOTS[it.slot].i} <b style="color:${RAR[it.rarity].c}">${it.name}</b>${upgradeOf(it) > 0.5 ? ' <span class="good">▲</span>' : ''}${it.fx ? `<br><small style="color:#ff8a3a">★ ${fxText(it)}</small>` : ''}</div>`);
+    $('chestOut').insertAdjacentHTML('beforeend', `<div class="loot r${it.rarity}">${itIcon(it)} <b style="color:${RAR[it.rarity].c}">${it.name}</b>${upgradeOf(it) > 0.5 ? ' <span class="good">▲</span>' : ''}${it.fx ? `<br><small style="color:#ff8a3a">★ ${fxText(it)}</small>` : ''}</div>`);
     if (it.rarity >= 3) SND.legend(); else if (it.rarity === 2) SND.level(); else SND.coin();
     setTimeout(show, it.rarity >= 3 ? 900 : 450);
   };
@@ -1401,7 +1433,8 @@ function update(dt) {
   // 輸入方向是「螢幕方向」，要依鏡頭水平角轉成世界方向
   let ix = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
   let iy = (keys.KeyS || keys.ArrowDown ? 1 : 0) - (keys.KeyW || keys.ArrowUp ? 1 : 0);
-  if (joy.id !== null) { ix = joy.x; iy = joy.y; }
+  { const tx = joy.id !== null ? joy.x : 0, ty = joy.id !== null ? joy.y : 0, kk = 1 - Math.exp(-dt * 16); joy.sx += (tx - joy.sx) * kk; joy.sy += (ty - joy.sy) * kk; if (joy.id === null && Math.hypot(joy.sx, joy.sy) < 0.05) joy.sx = joy.sy = 0; } /* 搖桿輸入平滑 */
+  if (joy.id !== null || joy.sx || joy.sy) { ix = joy.sx; iy = joy.sy; }
   const cyaw = CAMS[camMode].yaw, cs = Math.cos(cyaw), sn = Math.sin(cyaw);
   moveX = ix * cs + iy * sn; moveY = -ix * sn + iy * cs;
   let m = Math.hypot(moveX, moveY); if (m > 1) { moveX /= m; moveY /= m; m = 1; }
@@ -1415,12 +1448,12 @@ function update(dt) {
     p.x = L.sx + (L.tx - L.sx) * u; p.y = L.sy + (L.ty - L.sy) * u; p.moving = false;
     if (u >= 1) { p.leap = null; blast(p.x, p.y, 105 * (tl('bB4') ? 1.6 : 1), (1.8 + L.l * 0.3) * sm('leap'), 0xffc060, 0.9); if (tl('bB3')) for (const e of enemies) if (!e.dead && e.type !== 'boss' && dist(e, p) < 130) e.stun = Math.max(e.stun, 1); shake = 9; hitStop = 0.07; if (p.mx['leap.quake']) booms.push({ x: p.x, y: p.y, t: 0.32, R: 150, mult: 1 + L.l * 0.2, color: 0xffa040 }); if (hero) hero.once('1H_Melee_Attack_Chop', 2.2, 0.2); }
   } else if (p.dashT > 0) {
-    p.dashT -= dt; moveEnt(p, p.dashX * 700 * dt, p.dashY * 700 * dt);
+    p.dashT -= dt; movePlayer(p.dashX * 700 * dt, p.dashY * 700 * dt);
     if (p.dashT <= 0 && p.fx.blink) blast(p.x, p.y, 95, p.fx.blink || 1.2, 0xaa88ff);
     parts.push(mkPart(p.x, p.y, 1.2, 0, 0, 0, '#88ccff', 0.25, 9));
   } else if (m > 0.05) {
     const sp = 190 * (1 + st.move / 100) * (p.whirlT > 0 ? (p.mx['whirl.long'] ? 1 : 0.8) : p.atkCd > 0.12 ? 0.45 : 1) * (p.burnT > 0 ? 1.2 : 1) * (p.slowT > 0 ? 0.6 : 1);
-    moveEnt(p, moveX * sp * dt, moveY * sp * dt); p.moving = true; p.moveA = Math.atan2(moveY, moveX);
+    movePlayer(moveX * sp * dt, moveY * sp * dt); p.moving = true; p.moveA = Math.atan2(moveY, moveX);
     if ((p.stepT -= dt) <= 0) { p.stepT = 0.29; SND.step(); if (ncv('trail') || (p.cos && p.cos.trail !== 'none')) { const fc = p.cos && p.cos.trail === 'frost' ? '#80c8ff' : '#ff7a2a'; for (let i = 0; i < 3; i++) parts.push(mkPart(p.x + rand(-5, 5), p.y + rand(-5, 5), 0.06, 0, 0, 0, fc, 1.6, 6)); } }
     if (st.move > 0 && Math.random() < st.move / 25) parts.push(mkPart(p.x - moveX * 10 + rand(-6, 6), p.y - moveY * 10 + rand(-6, 6), 0.2, -moveX * 40 + rand(-20, 20), -moveY * 40 + rand(-20, 20), rand(0.5, 2), st.move > 20 ? '#ff9a40' : '#b8a080', 0.5, rand(2.5, 4.5), 3));
     if (touchMode && p.slashT <= 0) p.aim = p.moveA;
@@ -1742,6 +1775,26 @@ function ensureVis(e) {
   ents.add(c.root); e.v = c; return c;
 }
 // 主角手上的武器與盾牌跟著裝備換
+const KINDI = { '皮甲': '🦺', '鎖甲': '⛓️', '鱗甲': '🐉', '戰袍': '👘', '指環': '💍', '護符': '📿', '徽記': '🏅', '皮帽': '🧢', '鐵盔': '⛑️', '角盔': '🪖', '兜帽': '🥷', '皮靴': '👢', '鐵靴': '🥾', '旅靴': '👟', '短劍': '🔪', '長劍': '🗡️', '彎刀': '🗡️', '戰斧': '🪓', '釘錘': '🔨', '巨劍': '⚔️', '手弩': '🏹', '法杖': '🪄' };
+const ICON = {}; // 武器種類 → 用 3D 模型拍的小圖
+function makeIcons() { // 開另一個小畫布把武器模型各拍一張，拍完就丟掉，不影響主畫面
+  try {
+    const c = document.createElement('canvas'); c.width = c.height = 96;
+    const r2 = new THREE.WebGLRenderer({ canvas: c, alpha: true, antialias: true, preserveDrawingBuffer: true }); r2.setClearColor(0x000000, 0);
+    const sc = new THREE.Scene(), cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 20); cam.position.set(0, 0, 10);
+    sc.add(new THREE.HemisphereLight(0xffffff, 0x554433, 2.4)); const dl = new THREE.DirectionalLight(0xffffff, 2.2); dl.position.set(2, 3, 5); sc.add(dl);
+    for (const k in WMODEL) { if (!A[WMODEL[k]]) continue; const o = kitClone(WMODEL[k], 1), g = new THREE.Group(); g.add(o); sc.add(g);
+      const b0 = new THREE.Box3().setFromObject(o), sz = b0.getSize(new THREE.Vector3()); if (sz.x > sz.y && sz.x > sz.z) o.rotation.z = Math.PI / 2; else if (sz.z > sz.y) o.rotation.x = Math.PI / 2;
+      g.rotation.z = -Math.PI / 4; g.rotation.y = 0.35; g.updateMatrixWorld(true);
+      const b = new THREE.Box3().setFromObject(g), ct = b.getCenter(new THREE.Vector3()), s2 = b.getSize(new THREE.Vector3()), m = Math.max(s2.x, s2.y) * 0.56;
+      cam.left = ct.x - m; cam.right = ct.x + m; cam.top = ct.y + m; cam.bottom = ct.y - m; cam.updateProjectionMatrix();
+      r2.render(sc, cam); ICON[k] = c.toDataURL('image/png'); sc.remove(g); }
+    r2.dispose(); r2.forceContextLoss && r2.forceContextLoss();
+  } catch (e) { console.warn('icons', e); }
+}
+const itIcon = it => ICON[it.kind] ? `<img class="ico" src="${ICON[it.kind]}" alt="">` : (KINDI[it.kind] || SLOTS[it.slot].i);
+const slotBg = it => it.rarity >= 1 ? `;background:radial-gradient(circle at 50% 55%, ${icol(it)}${it.rarity >= 3 ? '55' : '30'}, #0e0b14 72%)` : '';
+const slotMark = it => it.set ? `<i class="mk" style="color:${icol(it)}">◆</i>` : it.rarity >= 3 ? `<i class="mk" style="color:${icol(it)}">★</i>` : '';
 const WMODEL = { '手弩': 'h_crossbow', '法杖': 'h_staff', '短劍': 'h_dagger', '戰斧': 'h_axe_1handed', '巨劍': 'h_sword_2handed', '釘錘': 'h_axe_1handed', '彎刀': 'w_blade' };
 const SHIELDS = ['h_shield_round', null, 'h_shield_square', 'h_shield_spikes', 'h_shield_spikes'];
 function heroLook() {
@@ -2111,7 +2164,7 @@ function render3d(dt) {
       else if (d.kind === 'cry') { d.v = new THREE.Mesh(cryGeo, cryMat); d.v.scale.setScalar(0.45); }
       else if (d.kind === 'hp' || d.kind === 'mp') d.v = tintClone('bottle_A_labeled_green', 1.5, d.kind === 'hp' ? 0xff1010 : 0x1060ff, 1.6);
       else {
-        d.v = tintClone(d.it.slot === 'weapon' ? 'w_blade' : d.it.slot === 'ring' ? 'coin_stack_small' : 'w_shield_large_a', d.it.slot === 'ring' ? 1.6 : d.it.slot === 'armor' ? 1.1 : 0.8, colOf(icol(d.it)).getHex(), 0.35);
+        d.v = tintClone(d.it.slot === 'weapon' ? (WMODEL[d.it.kind] || 'w_blade') : d.it.slot === 'ring' ? 'coin_stack_small' : 'w_shield_large_a', d.it.slot === 'ring' ? 1.6 : d.it.slot === 'armor' ? 1.1 : 0.8, colOf(icol(d.it)).getHex(), 0.35);
         if (d.it.slot !== 'ring') d.v.children.forEach(c => { c.rotation.x = Math.PI / 2 - 0.2; c.position.y = 0.35; });
         const b = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ color: icol(d.it), transparent: true, opacity: 0.14 + d.it.rarity * 0.08, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
         const sy = 0.35 + d.it.rarity * 0.15; b.scale.set(1 + d.it.rarity * 0.5, sy, 1 + d.it.rarity * 0.5); b.position.y = 4 * sy; b.userData.ownMat = true; d.v.add(b);
@@ -2172,8 +2225,14 @@ function drawOverlay() {
   }
   c.globalAlpha = 1;
   if (joy.id !== null) {
-    c.strokeStyle = 'rgba(255,255,255,.3)'; c.lineWidth = 3; c.beginPath(); c.arc(joy.ox, joy.oy, 52, 0, 6.283); c.stroke();
-    c.fillStyle = 'rgba(255,255,255,.3)'; c.beginPath(); c.arc(joy.ox + joy.x * 52, joy.oy + joy.y * 52, 24, 0, 6.283); c.fill();
+    c.fillStyle = 'rgba(0,0,0,.18)'; c.beginPath(); c.arc(joy.ox, joy.oy, JOY_R, 0, 6.283); c.fill();
+    c.strokeStyle = 'rgba(255,255,255,.35)'; c.lineWidth = 3; c.beginPath(); c.arc(joy.ox, joy.oy, JOY_R, 0, 6.283); c.stroke();
+    c.fillStyle = 'rgba(255,210,150,.45)'; c.beginPath(); c.arc(joy.ox + joy.x * JOY_R, joy.oy + joy.y * JOY_R, 26, 0, 6.283); c.fill();
+  } else if (touchMode && state === 'play' && !paused && !fps && !cine) { // 沒按的時候：左下角淡淡的搖桿底座
+    const gx = Math.min(110, W * 0.22), gy = H - Math.min(170, H * 0.24), a = joy.used < 3 ? 0.32 + Math.sin(time * 3) * 0.08 : 0.14;
+    c.strokeStyle = `rgba(255,255,255,${a})`; c.lineWidth = 3; c.setLineDash([8, 8]); c.beginPath(); c.arc(gx, gy, JOY_R, 0, 6.283); c.stroke(); c.setLineDash([]);
+    c.fillStyle = `rgba(255,255,255,${a * 0.8})`; c.beginPath(); c.arc(gx, gy, 22, 0, 6.283); c.fill();
+    if (joy.used < 3) { c.font = '13px sans-serif'; c.textAlign = 'center'; c.fillStyle = `rgba(255,255,255,${a + 0.3})`; c.fillText('按住左半邊拖曳移動', gx, gy + JOY_R + 20); }
   }
 }
 function drawMini() {
@@ -2242,7 +2301,7 @@ function itemHtml(it) {
 function upgradeOf(it) { const eq = Object.assign({}, p.equip), cur = p.equip[it.slot]; eq[it.slot] = it; return power(calcStats(eq)) - power(p.st) + (it.fx || it.set ? 60 : 0) - (cur && (cur.fx || cur.set) ? 60 : 0); }
 function drawPanel() {
   const st = p.st;
-  $('eq').innerHTML = Object.keys(SLOTS).map(s => { const it = p.equip[s]; return `<div class="slot${sel && sel.it === it && it ? ' sel' : ''}" data-eq="${s}" style="border-color:${it ? icol(it) : '#443a55'}">${it ? SLOTS[s].i : ''}<small>${SLOTS[s].n}</small></div>`; }).join('');
+  $('eq').innerHTML = Object.keys(SLOTS).map(s => { const it = p.equip[s]; return `<div class="slot${sel && sel.it === it && it ? ' sel' : ''}" data-eq="${s}" style="border-color:${it ? icol(it) : '#443a55'}${it ? slotBg(it) : ''}">${it ? itIcon(it) + slotMark(it) : ''}<small>${SLOTS[s].n}</small></div>`; }).join('');
   $('stats').innerHTML = Object.keys(STAT).map(k => `${STAT[k][0]}　<b>${Number.isInteger(st[k]) ? st[k] : st[k].toFixed(1)}${STAT[k][1] ? '%' : ''}</b>`).join('<br>') + Object.keys(p.sets || {}).map(k => `<br><span style="color:${SETS[k].c}">◆ ${SETS[k].n} ${p.sets[k]}/3</span>`).join('');
   const junk = p.inv.filter(it => upgradeOf(it) <= 0.5 && !it.fx && !it.set), sum = a => a.reduce((t, it) => t + sellOf(it), 0);
   $('sellJunk').textContent = p.run ? '回營地才能賣' : `賣掉用不到的（${junk.length} 件 +${sum(junk)} 金）`; $('sellJunk').disabled = !!p.run || !junk.length;
@@ -2257,7 +2316,7 @@ function drawPanel() {
   $('quitRun').style.display = p.run ? '' : 'none'; $('recBtn').textContent = `📖 紀錄（${ACH.filter(a => p.ach[a[0]]).length}/${ACH.length}）`;
   $('invTxt').textContent = `${p.inv.length} / ${invCap()}`;
   let h = '';
-  for (let i = 0; i < invCap(); i++) { const it = p.inv[i]; h += it ? `<div class="slot${sel && sel.it === it ? ' sel' : ''}${upgradeOf(it) > 0.5 ? ' up' : ''}" data-inv="${i}" style="border-color:${RAR[it.rarity].c}">${SLOTS[it.slot].i}</div>` : '<div class="slot"></div>'; }
+  for (let i = 0; i < invCap(); i++) { const it = p.inv[i]; h += it ? `<div class="slot${sel && sel.it === it ? ' sel' : ''}${upgradeOf(it) > 0.5 ? ' up' : ''}" data-inv="${i}" style="border-color:${icol(it)}${slotBg(it)}">${itIcon(it)}${slotMark(it)}</div>` : '<div class="slot"></div>'; }
   $('inv').innerHTML = h;
   const d = $('detail');
   if (!sel) { d.innerHTML = '<span class="dim">點選物品查看內容。右上角有 ▲ 的是比身上更好的裝備。</span>'; return; }
@@ -2390,7 +2449,7 @@ function drawStore() {
   let h = `<h2>藥水</h2><div class="row"><span>🧪 生命藥水（持有 ${p.hpPot}/9）</span>${btn('data-buy="hp"', c, p.hpPot < 9)}</div>
     <div class="row"><span>💧 魔力藥水（持有 ${p.mpPot}/9）</span>${btn('data-buy="mp"', c, p.mpPot < 9)}</div><h2>這一層的貨</h2>`;
   const full = p.inv.length >= invCap();
-  stock.forEach((it, i) => { h += it ? `<div class="row"><span>${SLOTS[it.slot].i} ${itemHtml(it)}${upgradeOf(it) > 0.5 ? '<span class="good">▲ 比身上的好</span>' : ''}</span>${btn(`data-item="${i}"`, priceOf(it), !full)}</div>` : ''; });
+  stock.forEach((it, i) => { h += it ? `<div class="row"><span>${itIcon(it)} ${itemHtml(it)}${upgradeOf(it) > 0.5 ? '<span class="good">▲ 比身上的好</span>' : ''}</span>${btn(`data-item="${i}"`, priceOf(it), !full)}</div>` : ''; });
   if (!stock.some(x => x)) h += '<div class="row dim"><span>賣完了，下一層會進新貨</span></div>';
   h += `<h2>賭裝 <span class="dim">Lv ${gLv()}・稀有 35%・傳說 7.5%・套裝 2.5%${(p.danger || 0) >= 5 ? '・餘燼 1.5%' : ''}</span></h2><div class="row"><span>🎲 選一個部位，開出一件未知的裝備${boxMsg ? '<br>' + boxMsg : ''}</span></div><div class="row" style="flex-wrap:wrap;gap:6px">${Object.keys(SLOTS).map(q => btn(`data-box="${q}"`, boxCost(), !full, `${SLOTS[q].i} ${boxCost()}`)).join('')}</div>`;
   if (full) h += '<div class="row bad"><span>背包滿了，先到 🎒 賣掉一些</span></div>';
@@ -2732,7 +2791,7 @@ cv.addEventListener('pointerdown', e => {
   if (fps) { if (e.pointerType === 'touch') { fpsDrag = { id: e.pointerId, x: e.clientX, y: e.clientY }; } else { if (!document.pointerLockElement && cv.requestPointerLock) try { cv.requestPointerLock(); } catch (er) { /* 沒差 */ } if (e.button === 0) mouse.l = true; } return; }
   if (e.pointerType === 'touch') {
     setTouch(true);
-    if (joy.id === null && e.clientX < W * 0.55) { joy.id = e.pointerId; joy.ox = e.clientX; joy.oy = e.clientY; joy.x = joy.y = 0; }
+    if (joy.id === null && e.clientX < W * 0.55) { joy.id = e.pointerId; joy.ox = e.clientX; joy.oy = e.clientY; joy.x = joy.y = 0; joy.used++; }
     return;
   }
   setTouch(false); mouse.x = e.clientX; mouse.y = e.clientY;
@@ -2741,7 +2800,7 @@ cv.addEventListener('pointerdown', e => {
 addEventListener('pointermove', e => {
   if (fps && fpsDrag && e.pointerId === fpsDrag.id) { fps.yaw -= (e.clientX - fpsDrag.x) * 0.0105; fps.pitch = clamp(fps.pitch - (e.clientY - fpsDrag.y) * 0.0085, -0.7, 0.6); fpsDrag.x = e.clientX; fpsDrag.y = e.clientY; return; }
   if (e.pointerType === 'touch') {
-    if (e.pointerId === joy.id) { const dx = e.clientX - joy.ox, dy = e.clientY - joy.oy, m = Math.hypot(dx, dy), k = Math.min(1, m / 52) / (m || 1); joy.x = dx * k; joy.y = dy * k; }
+    if (e.pointerId === joy.id) { let dx = e.clientX - joy.ox, dy = e.clientY - joy.oy, m = Math.hypot(dx, dy); if (m > JOY_R) { joy.ox += dx * (1 - JOY_R / m); joy.oy += dy * (1 - JOY_R / m); dx = e.clientX - joy.ox; dy = e.clientY - joy.oy; m = JOY_R; } /* 拉超過範圍，底座跟著手指走 */ const k = m < JOY_DZ ? 0 : (m - JOY_DZ) / (JOY_R - JOY_DZ) / m; joy.x = dx * k; joy.y = dy * k; }
     return;
   }
   mouse.x = e.clientX; mouse.y = e.clientY;
@@ -2784,6 +2843,7 @@ function frame(now) {
 }
 
 loadAssets().then(() => {
+  makeIcons();
   $('loading').style.display = 'none'; $('startBtns').style.display = 'block';
   if (!hasSave()) $('contBtn').style.display = 'none';
   requestAnimationFrame(frame);
@@ -2793,5 +2853,5 @@ loadAssets().then(() => {
 window.__game = {
   get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get braziers() { return braziers; }, sacrifice, makeSetItem, SETS, get hero() { return hero; }, switchHero, rollCards, gambleItem, boxCost, hitEnemy, get pools() { return pools; }, get holes() { return holes; }, refresh, heroLook, attack, cast, ignite, get merchant() { return merchant; }, talCan, talPts, openTal, tl, TALENTS, get pickNear() { return pickNear; }, clsOf, inClass, rollRarity, get renderer() { return renderer; }, exportText, openExport, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
   get quality() { return quality; }, setQuality(v) { autoQ = false; quality = v; applyQuality(); },
-  update, descend, takeDoor, get doorOpts() { return doorOpts; }, cast, keys, mouse, spawnEnemy, hurtPlayer, dropItem, makeItem, genFloor, setCam(i) { camMode = i; camReady = false; }, info: () => renderer.info.render,
+  update, isSolid: (x, y) => solid(x, y), audioState: () => actx ? actx.state + (musicBossOn ? '+boss' : '') : 'none', isBlk: (x, y) => !!(blk[y * MW + x]), joyWorld(dx, dy) { const c = Math.cos(CAMS[camMode].yaw), n = Math.sin(CAMS[camMode].yaw); joy.id = 99; joy.x = dx * c - dy * n; joy.y = dx * n + dy * c; }, joySet(x, y) { if (x === null) { joy.id = null; joy.x = joy.y = joy.sx = joy.sy = 0; } else { joy.id = 99; joy.x = x; joy.y = y; } }, descend, takeDoor, get doorOpts() { return doorOpts; }, cast, keys, mouse, spawnEnemy, hurtPlayer, dropItem, makeItem, genFloor, setCam(i) { camMode = i; camReady = false; }, info: () => renderer.info.render,
 };
