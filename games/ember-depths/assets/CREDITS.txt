@@ -3,3 +3,6 @@
 - KayKit : Adventurers Character Pack (1.0)
 - KayKit Character Pack : Skeletons (1.0)
 為了縮小檔案，這裡的 .glb 只保留遊戲用到的動畫與配件。
+
+怪物模型（m_orc、m_demon、m_bluedemon）來自 Quaternius 的 Ultimate Monsters 系列（CC0），只保留遊戲用到的動畫。
+音效（sfx/ 資料夾）來自 Kenney (www.kenney.nl) 的 Impact Sounds 與 RPG Audio（CC0），轉成 mp3 並截短。
