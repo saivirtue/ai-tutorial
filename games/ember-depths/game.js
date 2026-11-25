@@ -926,7 +926,7 @@ function gainXp(v) {
 let noSave = false; // 還原存檔、重新載入前不要再寫回舊進度
 function save() {
   if (!p || noSave) return;
-  const o = {}; for (const k of ['pendingChest', 'weekHist', 'dailyRun', 'insc', 'lvl', 'xp', 'gold', 'floor', 'best', 'hpPot', 'mpPot', 'sp', 'skl', 'equip', 'inv', 'kills', 'deaths', 'won', 'train', 'slots', 'mods', 'pas', 'picks', 'diff', 'tier', 'run', 'rescued', 'clears', 'board', 'mats', 'bld', 'cls', 'heroes', 'daily', 'weekly', 'codex', 'ach', 'stat', 'danger', 'cos', 'cosU', 'hist', 'pick', 'tal', 'setPity']) o[k] = p[k];
+  const o = {}; for (const k of ['sens', 'pendingChest', 'weekHist', 'dailyRun', 'insc', 'lvl', 'xp', 'gold', 'floor', 'best', 'hpPot', 'mpPot', 'sp', 'skl', 'equip', 'inv', 'kills', 'deaths', 'won', 'train', 'slots', 'mods', 'pas', 'picks', 'diff', 'tier', 'run', 'rescued', 'clears', 'board', 'mats', 'bld', 'cls', 'heroes', 'daily', 'weekly', 'codex', 'ach', 'stat', 'danger', 'cos', 'cosU', 'hist', 'pick', 'tal', 'setPity']) o[k] = p[k];
   if (o.run && o.run.settled) o.run = null;
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(o)); } catch (e) { /* 無痕模式存不了就算了 */ }
 }
@@ -2733,6 +2733,8 @@ function openExport() {
   $('exp').classList.add('on');
 }
 $('expBtn').onclick = openExport;
+for (const b of document.querySelectorAll('[data-sens]')) b.addEventListener('pointerdown', ev2 => { ev2.stopPropagation(); ev2.preventDefault(); p.sens = clamp(Math.round(((p.sens || 1) + +b.dataset.sens) * 10) / 10, 0.4, 2.5); $('sensTxt').textContent = `靈敏度 ×${p.sens.toFixed(1)}`; save(); });
+$('sensTxt').textContent = '靈敏度 ×1.0';
 let shotURL = null, shotCb = null;
 function snapShot() { // 由 render3d 在畫完的當下呼叫：把 3D 畫面和名字／血條那層疊在一起
   const w = Math.min(960, cv.width), hh = Math.round(cv.height * w / cv.width), c = document.createElement('canvas'); c.width = w; c.height = hh;
@@ -2848,6 +2850,25 @@ $('reviveBtn').onclick = () => { $('dead').classList.remove('on'); if (state !==
 // 站在營地南邊，骷髏從北邊衝過來；60 秒、3 條命。電腦用滑鼠轉視角、左鍵射擊；手機拖曳轉視角、按射擊鈕
 let fps = null, fpsDrag = null;
 const FOES = { minion: { m: 'skel_minion', hp: 1, spd: [3.2, 4.5], s: 1, pts: 10 }, imp: { m: 'skel_minion', hp: 1, spd: [6, 7.5], s: 0.7, pts: 15, tint: 0x8fe07a }, brute: { m: 'skel_warrior', hp: 3, spd: [2.2, 2.8], s: 1.25, pts: 30, tint: 0x9fb4e0 } };
+const FPSW = { // 第一人稱用身上的武器：[名稱, 冷卻, 判定寬度倍率, 穿透, 彈道色, 傷害倍率]
+  xbow: ['手弩連射', 0.3, 1, 0, '#ffe0a0', 1], staff: ['追蹤魔彈', 0.42, 2.2, 0, '#c080ff', 1], dagger: ['飛刀', 0.2, 0.9, 0, '#e0e0ff', 0.8],
+  sword: ['飛劍', 0.34, 1.2, 1, '#cfe0ff', 1], axe: ['迴旋斧', 0.42, 1.4, 2, '#ffcf8a', 1.2], great: ['巨刃飛斬', 0.55, 1.8, 3, '#ff9a5a', 1.5],
+};
+const fpsW = () => FPSW[wtKey(p.equip.weapon)] || FPSW.xbow;
+function fpsGun(tint) { // 拿身上武器的模型；沒有對應模型就用手弩
+  const w = p.equip.weapon, m = (w && WMODEL[w.kind] && A[WMODEL[w.kind]]) ? WMODEL[w.kind] : 'h_crossbow', g = A[m].scene.clone(), ranged = m === 'h_crossbow';
+  g.scale.setScalar(ranged ? 0.55 : 0.42); g.rotation.set(ranged ? 0.05 : -1.15, ranged ? Math.PI + 0.08 : 0.2, ranged ? 0 : -0.35); /* 近戰武器：刀身朝前上方 */
+  octx.setTransform(1, 0, 0, 1, 0, 0); octx.clearRect(0, 0, ov.width, ov.height); /* 第一人稱不重畫名字層：先清掉殘影 */
+  if (tint) g.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.emissive.setHex(tint); o.material.emissiveIntensity = 0.8; } });
+  return g;
+}
+let skyDome = null;
+function campSky(on) { // 營地第一人稱往上看：星空
+  if (on && !skyDome) { const c = document.createElement('canvas'); c.width = c.height = 512; const x = c.getContext('2d'); const gr = x.createRadialGradient(256, 256, 40, 256, 256, 360); gr.addColorStop(0, '#1a2448'); gr.addColorStop(1, '#05060e'); x.fillStyle = gr; x.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 420; i++) { const r = Math.random() < 0.9 ? rand(0.4, 1.2) : rand(1.4, 2.4); x.fillStyle = `rgba(255,${200 + Math.floor(rand(0, 55))},${180 + Math.floor(rand(0, 75))},${rand(0.4, 1)})`; x.beginPath(); x.arc(rand(0, 512), rand(0, 512), r, 0, 6.283); x.fill(); }
+    const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace; skyDome = new THREE.Mesh(new THREE.PlaneGeometry(160, 120), new THREE.MeshBasicMaterial({ map: tx, side: THREE.DoubleSide, fog: false })); skyDome.rotation.x = Math.PI / 2; }
+  if (!skyDome) return; if (on) { const r = rooms[0]; skyDome.position.set((r.x + r.w / 2) * 4, 18, (r.y + r.h / 2) * 4); scene.add(skyDome); } else skyDome.removeFromParent();
+}
 function startRange() {
   if (fps || p.run) return;
   const r = rooms[0];
@@ -2855,9 +2876,9 @@ function startRange() {
     x: (r.x + r.w / 2) * 4, z: (r.y + r.h - 1.6) * 4, zFar: (r.y + 1) * 4, xMin: (r.x + 1) * 4, xMax: (r.x + r.w - 1) * 4 };
   p.x = fps.x / U; p.y = fps.z / U;
   paused = true; joy.id = null; atkHeld = false; mouse.l = mouse.r = false;
-  document.body.classList.add('fps'); $('fpsHud').classList.add('on'); $('fpsQuit').style.display = '';
+  document.body.classList.add('fps'); $('fpsHud').classList.add('on'); $('fpsQuit').style.display = ''; $('sensTxt').textContent = `靈敏度 ×${sens().toFixed(1)}`;
   camera.fov = W < H ? 75 : 62; camera.far = 85; camera.updateProjectionMatrix(); renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true; /* 第一人稱看得到整個房間，比較重：陰影只算一次、遠處不畫 */
-  fps.gun = A.h_crossbow.scene.clone(); fps.gun.scale.setScalar(0.55); fps.gun.rotation.set(0.05, Math.PI + 0.08, 0); camera.add(fps.gun);
+  fps.gun = fpsGun(); camera.add(fps.gun); fps.w = fpsW(); campSky(true); $('fpsW').textContent = `${fps.w[0]}（${WT[wtKey(p.equip.weapon)] ? WT[wtKey(p.equip.weapon)].n : '手弩'}）`;
   fps.flash = camFlash; fps.lamp = rangeLamp; rangeLamp.intensity = 140; rangeLamp.position.set(fps.x, 7, fps.zFar + 8); // 靶場遠端照亮，衝過來的骷髏才看得清楚
   if (!touchMode && cv.requestPointerLock) try { cv.requestPointerLock(); } catch (e) { /* 不支援就用一般滑鼠移動 */ }
   tip('fps', touchMode ? '拖曳螢幕轉視角，按 🎯 射擊；打頭分數加倍' : '移動滑鼠瞄準，左鍵射擊；打頭分數加倍，Esc 離開');
@@ -2878,8 +2899,7 @@ function startSnipe(e) {
   joy.id = null; atkHeld = false; mouse.l = mouse.r = false;
   document.body.classList.add('fps'); $('fpsHud').classList.add('on'); $('fpsQuit').style.display = 'none';
   camera.fov = W < H ? 75 : 62; camera.far = 85; camera.updateProjectionMatrix(); renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true; /* 第一人稱看得到整個房間，比較重：陰影只算一次、遠處不畫 */
-  fps.gun = A.h_crossbow.scene.clone(); fps.gun.scale.setScalar(0.55); fps.gun.rotation.set(0.05, Math.PI + 0.08, 0); camera.add(fps.gun);
-  fps.gun.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.emissive.setHex(0xff6a10); o.material.emissiveIntensity = 0.8; } });
+  fps.gun = fpsGun(0xff6a10); camera.add(fps.gun); fps.w = fpsW(); $('fpsW').textContent = `餘燼${fps.w[0]}`;
   fps.flash = camFlash;
   if (!touchMode && cv.requestPointerLock) try { cv.requestPointerLock(); } catch (er) { /* 不支援就用一般滑鼠移動 */ }
   tip('snipe', touchMode ? '破防時間停住了：拖曳瞄準首領的頭，按 🎯 連射' : '破防時間停住了：瞄準首領的頭，按住左鍵連射');
@@ -2896,7 +2916,7 @@ function endRange(show) {
     return;
   }
   for (const f of fps.foes) f.c.dispose();
-  fps.gun.removeFromParent(); camFlash.intensity = 0; rangeLamp.intensity = 0;
+  fps.gun.removeFromParent(); camFlash.intensity = 0; rangeLamp.intensity = 0; campSky(false);
   if (document.pointerLockElement) document.exitPointerLock();
   const sc = fps.score, best = Math.max(sc, p.stat.range || 0), newBest = sc > (p.stat.range || 0), acc = fps.shots ? Math.round(fps.hits / fps.shots * 100) : 0;
   p.stat.range = best; const bone = Math.floor(sc / 25), gold = sc * 2; p.mats.bone += bone; p.gold += gold;
@@ -2913,18 +2933,19 @@ function fpsDir(out) { const cp = Math.cos(fps.pitch); return out.set(-Math.sin(
 function fpsFire() {
   if (!fps || fps.cd > 0) return;
   if (fps.mode === 'boss') return snipeFire();
-  fps.cd = 0.3; fps.shots++; fps.kick = 1; fps.flash.intensity = 40; SND.shoot(false); noise(0.08, 0.06, 5000, 1500);
+  const W0 = fps.w || FPSW.xbow; fps.cd = W0[1]; fps.shots++; fps.kick = 1; fps.flash.intensity = 40; SND.shoot(false); noise(0.08, 0.06, 5000, 1500);
   const O = new THREE.Vector3(fps.x, 2.3, fps.z), D = fpsDir(new THREE.Vector3()) /* 用主角的位置，不等畫面刷新 */, hd = Math.hypot(D.x, D.z) || 1;
   let best = null, bt = 1e9, by = 0;
   for (const f of fps.foes) {
     if (f.dead) continue;
     const t = ((f.x - O.x) * D.x + (f.z - O.z) * D.z) / (hd * hd); if (t <= 0) continue;
     const px = O.x + D.x * t, pz = O.z + D.z * t, py = O.y + D.y * t, H = 2.5 * f.s;
-    if (Math.hypot(px - f.x, pz - f.z) < 0.95 * f.s && py > 0 && py < H * 1.05 && t < bt) { bt = t; best = f; by = py / H; }
+    if (Math.hypot(px - f.x, pz - f.z) < 0.95 * f.s * W0[2] && py > 0 && py < H * 1.05 && t < bt) { bt = t; best = f; by = py / H; }
   }
   const end = best ? bt : 60;
-  for (let i = 1; i < 14; i++) { const u = i / 14 * end; parts.push(mkPart((O.x + D.x * u) / U, (O.z + D.z * u) / U, O.y + D.y * u, 0, 0, 0, '#ffe0a0', 0.12, 3)); }
+  for (let i = 1; i < 14; i++) { const u = i / 14 * end; parts.push(mkPart((O.x + D.x * u) / U, (O.z + D.z * u) / U, O.y + D.y * u, 0, 0, 0, W0[4], 0.12, W0[2] > 1.5 ? 5 : 3)); }
   if (!best) { fps.combo = 0; fpsHud(); return; }
+  if (W0[3]) { let n = W0[3]; for (const f of fps.foes) { if (n <= 0 || f === best || f.dead) continue; const t = ((f.x - O.x) * D.x + (f.z - O.z) * D.z) / (hd * hd); if (t <= bt) continue; const px = O.x + D.x * t, pz = O.z + D.z * t; if (Math.hypot(px - f.x, pz - f.z) < 0.95 * f.s * W0[2]) { n--; f.hp -= 1; if (f.hp <= 0) { f.dead = true; f.c.once('Death_C_Skeletons', 1.6, 99); f.dieT = 1.2; fps.score += FOES[f.type].pts; } else f.c.once('Hit_A', 2, 0.25); } } } /* 飛刃類會穿透後面的骷髏 */
   const head = by > 0.74, hx = O.x + D.x * bt, hy = O.y + D.y * bt, hz = O.z + D.z * bt;
   fps.hits++; fps.combo++; best.hp -= head ? 2 : 1;
   burst(hx / U, hz / U, head ? '#ffd84a' : '#e8e2d0', head ? 16 : 8, 140, 0.4, hy, 3); SND.hit(null, fps.combo);
@@ -2937,16 +2958,16 @@ function fpsFire() {
   fpsHud();
 }
 function snipeFire() {
-  const F = fps, e = F.boss; F.cd = 0.2; F.shots++; F.kick = 1; F.flash.intensity = 50; SND.shoot(false); noise(0.08, 0.06, 5000, 1500);
+  const F = fps, e = F.boss, W0 = F.w || FPSW.xbow; F.cd = W0[1] * 0.7; F.shots++; F.kick = 1; F.flash.intensity = 50; SND.shoot(false); noise(0.08, 0.06, 5000, 1500);
   const O = new THREE.Vector3(fps.x, 2.3, fps.z), D = fpsDir(new THREE.Vector3()) /* 用主角的位置，不等畫面刷新 */, hd = Math.hypot(D.x, D.z) || 1, bx = e.x * U, bz = e.y * U, S = 2, H = 2.5 * S;
   const t = ((bx - O.x) * D.x + (bz - O.z) * D.z) / (hd * hd), px = O.x + D.x * t, pz = O.z + D.z * t, py = O.y + D.y * t;
-  const hit = t > 0 && Math.hypot(px - bx, pz - bz) < 0.95 * S && py > 0 && py < H * 1.05, end = hit ? t : 60;
+  const hit = t > 0 && Math.hypot(px - bx, pz - bz) < 0.95 * S * Math.min(1.6, W0[2]) && py > 0 && py < H * 1.05, end = hit ? t : 60;
   for (let i = 1; i < 14; i++) { const u = i / 14 * end; parts.push(mkPart((O.x + D.x * u) / U, (O.z + D.z * u) / U, O.y + D.y * u, 0, 0, 0, '#ffb060', 0.12, 3.5)); }
   if (!hit) { F.combo = 0; return fpsHud(); }
   const head = py / H > 0.72, hp0 = e.hp; F.hits++; F.combo++;
   burst(px / U, pz / U, head ? '#ffd84a' : '#ff9a40', head ? 18 : 10, 160, 0.4, py, 3);
   if (head) { floatText(px / U, pz / U, '要害！', '#ffd84a', 22); SND.crit(); }
-  hitEnemy(e, head ? 1 : 0.45, 0, null, { noProc: true });
+  hitEnemy(e, (head ? 1 : 0.45) * W0[5], 0, null, { noProc: true });
   if (!fps) return; // 首領被打倒時已經結束射擊
   F.dmg += Math.max(0, hp0 - e.hp); SND.hit(null, F.combo); fpsHud();
 }
@@ -3009,7 +3030,8 @@ function fpsCam() {
 }
 $('fpsFire').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); fpsFire(); });
 $('fpsQuit').addEventListener('click', () => endRange(true));
-document.addEventListener('mousemove', e => { if (fps && !touchMode) { fps.yaw -= e.movementX * 0.0035; fps.pitch = clamp(fps.pitch - e.movementY * 0.0035, -0.7, 0.6); } });
+const sens = () => (p && p.sens) || 1;
+document.addEventListener('mousemove', e => { if (fps && !touchMode) { fps.yaw -= e.movementX * 0.0035 * sens(); fps.pitch = clamp(fps.pitch - e.movementY * 0.0035 * sens(), -0.7, 0.6); } });
 
 // ---------- 輸入 ----------
 addEventListener('keydown', e => {
@@ -3042,7 +3064,7 @@ cv.addEventListener('pointerdown', e => {
   if (e.button === 0) mouse.l = true; else if (e.button === 2) mouse.r = true;
 });
 addEventListener('pointermove', e => {
-  if (fps && fpsDrag && e.pointerId === fpsDrag.id) { fps.yaw -= (e.clientX - fpsDrag.x) * 0.0105; fps.pitch = clamp(fps.pitch - (e.clientY - fpsDrag.y) * 0.0085, -0.7, 0.6); fpsDrag.x = e.clientX; fpsDrag.y = e.clientY; return; }
+  if (fps && fpsDrag && e.pointerId === fpsDrag.id) { fps.yaw -= (e.clientX - fpsDrag.x) * 0.0105 * sens(); fps.pitch = clamp(fps.pitch - (e.clientY - fpsDrag.y) * 0.0085 * sens(), -0.7, 0.6); fpsDrag.x = e.clientX; fpsDrag.y = e.clientY; return; }
   if (e.pointerType === 'touch') {
     if (e.pointerId === joy.id) { let dx = e.clientX - joy.ox, dy = e.clientY - joy.oy, m = Math.hypot(dx, dy); if (m > JOY_R) { joy.ox += dx * (1 - JOY_R / m); joy.oy += dy * (1 - JOY_R / m); dx = e.clientX - joy.ox; dy = e.clientY - joy.oy; m = JOY_R; } /* 拉超過範圍，底座跟著手指走 */ const k = m < JOY_DZ ? 0 : (m - JOY_DZ) / (JOY_R - JOY_DZ) / m; joy.x = dx * k; joy.y = dy * k; }
     return;
@@ -3102,7 +3124,7 @@ loadAssets().then(() => {
 
 // 測試用
 window.__game = {
-  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get braziers() { return braziers; }, sacrifice, makeSetItem, SETS, get hero() { return hero; }, switchHero, rollCards, gambleItem, boxCost, hitEnemy, finishRun, startRun, get paused() { return paused; }, openBld, closeBld, get hitStop() { return hitStop; }, get pools() { return pools; }, get holes() { return holes; }, refresh, heroLook, attack, cast, ignite, get merchant() { return merchant; }, talCan, talPts, openTal, tl, TALENTS, get pickNear() { return pickNear; }, clsOf, inClass, rollRarity, get renderer() { return renderer; }, exportText, openExport, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
+  get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get braziers() { return braziers; }, sacrifice, makeSetItem, SETS, get hero() { return hero; }, switchHero, rollCards, gambleItem, boxCost, hitEnemy, finishRun, startRun, get paused() { return paused; }, openBld, closeBld, startRange, endRange, fpsFire, fpsPitch(v) { if (fps) fps.pitch = v; }, get fpsOn() { return !!fps; }, get joyId() { return joy.id; }, get hitStop() { return hitStop; }, get pools() { return pools; }, get holes() { return holes; }, refresh, heroLook, attack, cast, ignite, get merchant() { return merchant; }, talCan, talPts, openTal, tl, TALENTS, get pickNear() { return pickNear; }, clsOf, inClass, rollRarity, get renderer() { return renderer; }, exportText, openExport, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
   get quality() { return quality; }, setQuality(v) { autoQ = false; quality = v; applyQuality(); },
   update, isSolid: (x, y) => solid(x, y), upgradeOf, inheritView, drawPanel, get drops() { return drops; }, dropPot(k) { drops.push(mk(k, p.x, p.y)); }, audioState: () => actx ? actx.state + (musicBossOn ? '+boss' : '') : 'none', isBlk: (x, y) => !!(blk[y * MW + x]), joyWorld(dx, dy) { const c = Math.cos(CAMS[camMode].yaw), n = Math.sin(CAMS[camMode].yaw); joy.id = 99; joy.x = dx * c - dy * n; joy.y = dx * n + dy * c; }, joySet(x, y) { if (x === null) { joy.id = null; joy.x = joy.y = joy.sx = joy.sy = 0; } else { joy.id = 99; joy.x = x; joy.y = y; } }, descend, takeDoor, get doorOpts() { return doorOpts; }, cast, keys, mouse, spawnEnemy, hurtPlayer, dropItem, makeItem, genFloor, setCam(i) { camMode = i; camReady = false; }, info: () => renderer.info.render,
 };
