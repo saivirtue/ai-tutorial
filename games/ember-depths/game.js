@@ -506,7 +506,7 @@ function genFloor() {
     }
     const n = Math.round((2.5 + r.w * r.h / 18 + Math.min(5, f * 0.6)) * diff().cnt * (p.clears ? 1.7 : 1.3)); /* 成群：數量多、單隻脆 */
     for (let i = 0; i < n; i++) {
-      const s = freeSpot(r, 18), elite = Math.random() < (f >= 2 ? 0.08 : 0.04) * (rmod('elite') ? 2 : 1) * (R.door === 'risk' ? 2 : 1);
+      const s = freeSpot(r, 18), elite = Math.random() < ((f >= 2 ? 0.08 : 0.04) + Math.max(0, (R.danger || 0) - 5) * 0.01) * (rmod('elite') ? 2 : 1) * (R.door === 'risk' ? 2 : 1);
       const e = spawnEnemy(rollType(f), s.x, s.y, elite); if (!elite) hordeOf(e);
     }
     r.wave = r !== far && r !== vault && f >= 2 && Math.random() < 0.55; /* 怪潮房（要是封門房才會觸發） */
@@ -912,14 +912,14 @@ function rollType(f) {
 const hordeOf = e => { e.horde = true; e.hp = e.maxHp = e.hp * 0.6; e.dmg *= 0.75; e.xp *= 0.45; return e; };
 let chainCtx = false; // 正在處理連鎖爆炸
 function spawnEnemy(type, x, y, elite) {
-  const d = ET[type], f = p.floor, ov = overLv(), hs = (1 + 0.42 * (f - 1)) * diff().hp * (1 + 0.1 * ov), ds = (1.15 + 0.34 * (f - 1)) * diff().dmg * (1 + 0.08 * ((p.run && p.run.danger) || 0)) * (1 + 0.08 * ov);
+  const d = ET[type], f = p.floor, ov = overLv(), hs = (1 + 0.42 * (f - 1)) * diff().hp * (1 + 0.1 * ov) * (1 + 0.06 * Math.max(0, ((p.run && p.run.danger) || 0) - 5)), dgv = (p.run && p.run.danger) || 0, ds = (1.15 + 0.34 * (f - 1)) * diff().dmg * (1 + 0.1 * dgv) * (1 + 0.08 * ov);
   const e = {
     type, x, y, r: d.r * (elite ? 1.25 : 1), hp: d.hp * hs * (elite ? 3.2 : 1), dmg: d.dmg * ds * (elite ? 1.4 : 1),
     spd: d.spd * rand(0.9, 1.1), xp: d.xp * (1 + 0.2 * (f - 1)) * (elite ? 4 : 1), elite: !!elite,
     awake: false, atkCd: rand(0, 0.6), atkT: 0, shotCd: rand(1, 2.5), flash: 0, slow: 0, freeze: 0, kx: 0, ky: 0, ph: rand(0, 6.28), ch: null, chCd: rand(2, 4),
     face: rand(0, 6.28), faceLock: 0, riseT: 0, stun: 0, trait: elite && type !== 'boss' ? pick(['split', 'bomb', 'haste', 'ward']) : null, wardT: 0, wardCd: rand(2, 4), act: 2.5, volley: 0, volT: 0, v: null,
   };
-  e.maxHp = e.hp; if (e.trait === 'haste') e.spd *= 1.5;
+  e.maxHp = e.hp; if (e.trait === 'haste') e.spd *= 1.5; if (dgv > 10 && type !== 'boss') e.spd *= 1 + (dgv - 10) * 0.025; /* 煉獄：怪更快 */
   if (rmod('swift')) { e.spd *= 1.25; e.xp *= 1.3; }
   if (type === 'boss') { const tr = p.run ? p.run.tier : 1; e.hp = e.maxHp = e.hp * Math.min(1, 0.45 + 0.11 * tr); e.dmg *= Math.min(1, 0.5 + 0.1 * tr); /* 前幾區的首領比較溫和 */ e.bi = (tr - 1) % BOSSN.length; e.name = BOSSN[e.bi]; e.tint = [0xff9a80, 0x9fe08a, 0xff7040, 0x90c0ff, 0xc080ff][e.bi]; e.spiral = 0; e.spT = 0; e.spA = 0; boss = e; }
   enemies.push(e); return e;
@@ -2205,6 +2205,7 @@ function render3d(dt) {
 
   renderer.render(scene, camera);
   drawOverlay();
+  if (shotCb) { const f = shotCb; shotCb = null; try { f(); } catch (e) { $('expMsg').textContent = '截圖失敗：' + e.message; } } /* WebGL 畫完立刻抓，手機才不會抓到空白 */
 }
 
 function drawOverlay() {
@@ -2379,7 +2380,7 @@ function openBoard() {
   if (!p.board || !p.board.length) rollBoard();
   dailyCheck(); weekCheck();
   const R0 = bountyReward(), wr = weekRule(), dg = p.danger || 0, easy = p.lvl >= recLv(p.tier, dg) + 4;
-  const dh = `<div class="row" style="background:#2a1a12;border-radius:10px;padding:6px 10px"><span>⚠️ <b>危險度 ${dg}</b>　<span class="dim">${dg ? `敵人 +${dg * 2} 級、傷害 +${dg * 8}%；傳說機率 ×${(1 + dg * 0.25).toFixed(2)}、材料 +${dg * 15}%` : '想更刺激就往上調'}${dg >= 5 ? '；<b style="color:#ff4a3a">會掉 🔥餘燼裝備</b>' : '；危險度 5 起會掉 🔥餘燼裝備'}</span>${easy ? '<br><span class="good">你比建議等級高很多，試試提高危險度</span>' : ''}</span><button class="btn mini" data-dg="-1" ${dg > 0 ? '' : 'disabled'}>－</button><button class="btn mini" data-dg="1" ${dg < 10 ? '' : 'disabled'}>＋</button></div>`;
+  const dh = `<div class="row" style="background:#2a1a12;border-radius:10px;padding:6px 10px"><span>⚠️ <b>危險度 ${dg}${dg > 10 ? ' <span style="color:#ff4a3a">煉獄</span>' : ''}</b>　<span class="dim">${dg ? `敵人 +${dg * 2} 級、傷害 +${dg * 10}%${dg > 5 ? `、生命再 +${(dg - 5) * 6}%` : ''}${dg > 10 ? `、速度 +${Math.round((dg - 10) * 2.5)}%` : ''}；傳說機率 ×${(1 + dg * 0.25).toFixed(2)}、材料 +${dg * 15}%` : '想更刺激就往上調'}${dg >= 5 ? '；<b style="color:#ff4a3a">會掉 🔥餘燼裝備</b>' : '；危險度 5 起會掉 🔥餘燼裝備'}</span>${easy ? '<br><span class="good">你比建議等級高很多，試試提高危險度</span>' : ''}</span><button class="btn mini" data-dg="-1" ${dg > 0 ? '' : 'disabled'}>－</button><button class="btn mini" data-dg="1" ${dg < 20 ? '' : 'disabled'}>＋</button></div>`;
   const bh = `<h2 style="margin-top:4px">📜 今日懸賞 <span class="dim">每天換一批・獎勵 💎 ${R0.cry}、🦴 ${R0.bone}、💰 ${R0.gold}</span></h2>` + p.daily.list.map((b, i) => `<div class="row"><span>${b.claimed ? '✅' : b.done ? '🎁' : '▫️'} ${BOUNTY[b.k].d(b)}　<span class="dim">${b.n} / ${b.need}</span></span>${b.done && !b.claimed ? `<button class="btn" data-claim="${i}">領獎</button>` : ''}</div>`).join('')
     + (p.clears ? `<h2>🌀 每週挑戰：${wr.n} <span class="dim">${wr.d}</span></h2><div class="row"><span>無盡往下，能走多深就走多深；倒下不扣金幣。每 3 層 💎 +2<br><span class="dim">本週最佳：完成 ${p.weekly.best} 層</span></span><button class="btn" data-week="1">挑戰</button></div>` : '') + '<h2>遠征</h2>';
   $('boardList').innerHTML = dh + bh + p.board.map((o, i) => {
@@ -2389,7 +2390,7 @@ function openBoard() {
   $('board').classList.add('on');
 }
 $('board').addEventListener('click', ev => {
-  const dgb = ev.target.closest('[data-dg]'); if (dgb) { if (!dgb.disabled) { p.danger = clamp((p.danger || 0) + +dgb.dataset.dg, 0, 10); SND.card(); save(); } return openBoard(); }
+  const dgb = ev.target.closest('[data-dg]'); if (dgb) { if (!dgb.disabled) { p.danger = clamp((p.danger || 0) + +dgb.dataset.dg, 0, 20); SND.card(); save(); } return openBoard(); }
   const cl = ev.target.closest('[data-claim]'); if (cl) { const b = p.daily.list[+cl.dataset.claim], R0 = bountyReward(); if (b && b.done && !b.claimed) { b.claimed = true; p.mats.cry += R0.cry; p.mats.bone += R0.bone; p.gold += R0.gold; p.stat.bounty = (p.stat.bounty || 0) + 1; SND.legend(); checkAch(); save(); } return openBoard(); }
   if (ev.target.closest('[data-week]')) { const wr = weekRule(); p.board.push({ tier: p.tier, goal: 'endless', mod: wr.mod, glass: wr.glass }); return startRun(p.board.length - 1); }
   const t = ev.target.closest('[data-run]'), rr = ev.target.closest('[data-reroll]'); if (rr && !rr.disabled && p.rerolls > 0) { p.rerolls--; rollBoard(); SND.card(); openBoard(); } else if (t) startRun(+t.dataset.run); else if (ev.target === $('board') || ev.target.id === 'boardClose') { $('board').classList.remove('on'); paused = false; } });
@@ -2552,16 +2553,16 @@ function openExport() {
   $('exp').classList.add('on');
 }
 $('expBtn').onclick = openExport;
-let shotURL = null;
-function snapShot() { // 重畫一格後立刻抓圖，把 3D 畫面和名字／血條那層疊在一起
-  render3d(0); const w = Math.min(960, cv.width), hh = Math.round(cv.height * w / cv.width), c = document.createElement('canvas'); c.width = w; c.height = hh;
+let shotURL = null, shotCb = null;
+function snapShot() { // 由 render3d 在畫完的當下呼叫：把 3D 畫面和名字／血條那層疊在一起
+  const w = Math.min(960, cv.width), hh = Math.round(cv.height * w / cv.width), c = document.createElement('canvas'); c.width = w; c.height = hh;
   const x = c.getContext('2d'); x.drawImage(cv, 0, 0, w, hh); x.drawImage(ov, 0, 0, w, hh); return c;
 }
-$('expShot').onclick = () => {
+$('expShot').onclick = () => { $('expMsg').textContent = '📷 截圖中…'; shotCb = () => {
   const c = snapShot(); shotURL = c.toDataURL('image/jpeg', 0.8); $('expImg').src = shotURL; $('expImg').style.display = 'block';
   $('expMsg').textContent = '📷 已截圖（這是打開背包前的畫面）。長按圖片可以存到相簿，再跟文字一起傳給 Claude';
   c.toBlob(b => { if (!b) return; const f = new File([b], 'ember-report.jpg', { type: 'image/jpeg' }); $('expShare').style.display = navigator.canShare && navigator.canShare({ files: [f] }) ? '' : 'none'; $('expShare').onclick = () => navigator.share({ files: [f], text: $('expText').value }).catch(() => {}); }, 'image/jpeg', 0.8);
-};
+}; };
 function openTal() { togglePanel(false); paused = true; drawTal(); $('tal').classList.add('on'); }
 function drawTal() {
   const pts = talPts(), next = (Math.floor(p.lvl / 5) + 1) * 5;
