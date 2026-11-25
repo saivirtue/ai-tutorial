@@ -551,7 +551,8 @@ function genCamp(keep) {
   stairs = { x: -1e5, y: -1e5, tx: -1, ty: -1, open: false };
   blk = new Array(MW * MH).fill(null); decos = []; fluff = []; traps = []; shrine = null; booms = []; braziers = []; p.phoenixUsed = false; p.barbUsed = false;
   const put = (tx, ty, model, rr, sc = 1, rot = 0) => { const d = { x: (tx + 0.5) * T, y: (ty + 0.5) * T, r: rr, model, s: sc, rot }; blk[ty * MW + tx] = d; decos.push(d); return d; };
-  campFire = put(r.cx, r.cy, null, 22); if (newVer) setTimeout(showUpd, 0);
+  campFire = put(r.cx, r.cy, null, 22);
+  if (p.daily && p.daily.list) { const R0 = bountyReward(); let n = 0; for (const b of p.daily.list) if (b.done && !b.claimed) { b.claimed = true; p.mats.cry += R0.cry; p.mats.bone += R0.bone; p.gold += R0.gold; p.stat.bounty = (p.stat.bounty || 0) + 1; n++; } if (n) setTimeout(() => { banner('懸賞完成', `自動領取 ${n} 份獎勵：💎 ${R0.cry * n}、🦴 ${R0.bone * n}、💰 ${R0.gold * n}`); SND.legend(); checkAch(); }, 900); } if (newVer) setTimeout(showUpd, 0);
   if (p.inv.filter(it => it.rarity >= 3 && !it.set).length >= 3) setTimeout(() => tip('sacrifice', '背包裡的傳說用不到？到 🎒 背包或篝火「獻祭」換 💎 結晶，或把熱度傳給身上的裝備'), 1500);
   merchant = put(r.x + 2, r.y + 2, null, 10);
   board = put(r.x + r.w - 3, r.y + 1, 'table_medium', 14, 1.1);
@@ -703,6 +704,12 @@ const PCTK = ['crit', 'aspd', 'move', 'ls', 'hpr', 'mpr']; // 熱度對百分比
 const iv = (it, v, k) => Math.round(v * (1 + (PCTK.includes(k) ? 0.06 : 0.12) * (it.heat || 0)) * 10) / 10;
 const forgeCost = it => Math.ceil(((it.heat || 0) + 1) * 4 * (bl('smith') >= 3 ? 0.8 : 1)); // 熔鑄花 💎 結晶
 const forgeCap = () => [0, 2, 4, 5][bl('smith')];
+const heatPts = it => HEATN.slice(0, it.heat || 0).reduce((a, b) => a + b, 0) + (it.hx || 0);
+const inheritPts = (it, old) => old && old !== it && (old.heat || old.hx) ? Math.round(heatPts(old) * 0.7) : 0;
+function inheritView(it) { // 預覽：換上後的樣子（含繼承的熱度），不動到原本的物品
+  const n = inheritPts(it, p.equip[it.slot]); if (!n) return it;
+  const c = Object.assign({}, it, { aff: it.aff.slice() }); let hx = (c.hx || 0) + n, hh = c.heat || 0; while (hh < 5 && hx >= HEATN[hh]) { hx -= HEATN[hh]; hh++; } c.heat = hh; c.hx = hh >= 5 ? 0 : hx; return c;
+}
 function heatUp(it, n) { // 回傳是否升級
   if (!it || (it.heat || 0) >= 5) return false;
   it.hx = (it.hx || 0) + n; let up = false;
@@ -1259,12 +1266,12 @@ function logRun(res) { // 記下這一趟，匯出狀態時用
   const R = p.run; if (!R) return;
   p.hist = (p.hist || []).slice(-14);
   p.hist.push({ at: new Date().toISOString().slice(5, 16).replace('T', ' '), cls: p.cls, lvl: p.lvl, tier: R.tier, dg: R.danger || 0, goal: R.goal, mod: R.mod, depth: R.depth, res,
-    sec: Math.round((Date.now() - R.t0) / 1000), kills: R.kills, taken: Math.round(R.taken || 0), hp: p.st.hp, pots: R.pots || 0, items: R.items, gold: p.gold - R.gold0 });
+    sec: Math.round(R.act !== undefined ? R.act : (Date.now() - R.t0) / 1000), kills: R.kills, taken: Math.round(R.taken || 0), hp: p.st.hp, pots: R.pots || 0, items: R.items, gold: p.gold - R.gold0 });
 }
 function finishRun() {
   const R = p.run; if (!R) return;
   paused = true; joy.id = null; atkHeld = false; mouse.l = mouse.r = false;
-  const unlock = R.goal === 'boss' && R.tier === p.tier, sec = Math.round((Date.now() - R.t0) / 1000);
+  const unlock = R.goal === 'boss' && R.tier === p.tier, sec = Math.round(R.act !== undefined ? R.act : (Date.now() - R.t0) / 1000);
   if (unlock) p.tier++;
   logRun('完成'); const firstEver = !p.clears; p.clears = (p.clears || 0) + 1; bounty('clear');
   const n = 2 + (Math.random() * 100 < ncv('luck') ? 1 : 0) + (rmod('elite') ? 1 : 0) + (R.goal === 'rescue' ? 1 : 0) + (bl('guild') >= 3 ? 1 : 0);
@@ -1433,7 +1440,7 @@ let moveX = 0, moveY = 0, pickNear = null;
 const PICKN = ['全部', '精良以上', '稀有以上', '只撿傳說'];
 const skipPick = d => d.kind === 'item' && d.it.rarity < (p.pick || 0); // 自動撿取設定以下的裝備留在地上
 function update(dt) {
-  time += dt; p.stat.play = (p.stat.play || 0) + dt;
+  time += dt; p.stat.play = (p.stat.play || 0) + dt; if (p.run) p.run.act = (p.run.act || 0) + dt;
   // 輸入方向是「螢幕方向」，要依鏡頭水平角轉成世界方向
   let ix = (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0);
   let iy = (keys.KeyS || keys.ArrowDown ? 1 : 0) - (keys.KeyW || keys.ArrowUp ? 1 : 0);
@@ -2265,6 +2272,7 @@ function banner(a, b) { const el = $('banner'); el.innerHTML = `${a}<small>${b |
 const setBar = (id, v, max, txt) => { const b = $(id); b.firstElementChild.style.width = clamp(v / max * 100, 0, 100) + '%'; if (txt) b.lastElementChild.textContent = `${Math.ceil(v)} / ${max}`; };
 let hudT = 0;
 function hud() {
+  { const low = state === 'play' && p.run && p.hp < p.st.hp * 0.35 && p.hpPot > 0; $('sk-hp').classList.toggle('warn', !!low); if (low) tip('lowhp', touchMode ? '血快沒了！按閃爍的 🧪 喝藥水' : '血快沒了！按 1 喝藥水'); }
   setBar('hpBar', p.hp, p.st.hp, 1); setBar('mpBar', p.mp, p.st.mp, 1);
   for (let i = 0; i < 4; i++) {
     const k = i < 3 ? p.slots[i] : 'dash', el = $(i < 3 ? 'sk-s' + i : 'sk-dash');
@@ -2304,7 +2312,7 @@ function itemHtml(it) {
   if (it.set) { const S = SETS[it.set], n = setN(it.set); h += `<span style="color:${S.c}">◆ ${S.n}（身上 ${n}/3）</span><br><span class="${n >= 2 ? 'good' : 'dim'}">　2 件：${S.b2}</span><br><span class="${n >= 3 ? 'good' : 'dim'}">　3 件：${S.b3}</span><br><span class="dim">　部位：${S.slots.map(q => SLOTS[q].n).join('、')}｜只有 ${BOSSN[S.boss]} 會掉</span><br>`; }
   return h;
 }
-function upgradeOf(it) { const eq = Object.assign({}, p.equip), cur = p.equip[it.slot]; eq[it.slot] = it; return power(calcStats(eq)) - power(p.st) + (it.fx || it.set ? 60 : 0) - (cur && (cur.fx || cur.set) ? 60 : 0); }
+function upgradeOf(it) { const eq = Object.assign({}, p.equip), cur = p.equip[it.slot]; eq[it.slot] = inheritView(it); return power(calcStats(eq)) - power(p.st) + (it.fx || it.set ? 60 : 0) - (cur && (cur.fx || cur.set) ? 60 : 0); }
 function drawPanel() {
   const st = p.st;
   $('eq').innerHTML = Object.keys(SLOTS).map(s => { const it = p.equip[s]; return `<div class="slot${sel && sel.it === it && it ? ' sel' : ''}" data-eq="${s}" style="border-color:${it ? icol(it) : '#443a55'}${it ? slotBg(it) : ''}">${it ? itIcon(it) + slotMark(it) : ''}<small>${SLOTS[s].n}</small></div>`; }).join('');
@@ -2328,7 +2336,8 @@ function drawPanel() {
   if (!sel) { d.innerHTML = '<span class="dim">點選物品查看內容。右上角有 ▲ 的是比身上更好的裝備。</span>'; return; }
   const it = sel.it; h = itemHtml(it);
   if (sel.from === 'inv') {
-    const eq = Object.assign({}, p.equip); eq[it.slot] = it; const ns = calcStats(eq), diff = [];
+    const iv2 = inheritView(it), eq = Object.assign({}, p.equip); eq[it.slot] = iv2; const ns = calcStats(eq), diff = [];
+    if (iv2 !== it) h += `<div style="margin-top:6px;color:#ffb060">🔥 換上後繼承身上裝備 70% 的熱度：${HEAT[it.heat || 0]} → <b>${HEAT[iv2.heat]}</b>（換下的那件會變回冷鐵）</div>`;
     for (const k in STAT) { const dv = Math.round((ns[k] - st[k]) * 10) / 10; if (dv) diff.push(`<span class="${dv > 0 ? 'good' : 'bad'}">${fmt(k, dv)}</span>`); }
     h += `<div style="margin-top:6px" class="dim">換上後：${diff.join('、') || '沒有差別'}</div>`;
     const wNew = wtOf(eq.weapon), wOld = wtOf(p.equip.weapon), hpE = ET.minion.hp * (1 + 0.42 * (p.floor - 1)) * DIFF[p.diff || 0].hp;
@@ -2355,7 +2364,7 @@ $('panel').addEventListener('click', ev => {
   else if (ds.buy) { const c = potCost(); if (p.gold >= c) { p.gold -= c; if (ds.buy === 'hp') p.hpPot++; else p.mpPot++; sfx(900, 0.06, 'square', 0.03); } }
   else if (ds.act && sel) {
     const it = sel.it, i = p.inv.indexOf(it);
-    if (ds.act === 'equip' && i >= 0) { const old = p.equip[it.slot]; p.equip[it.slot] = it; if (old) p.inv[i] = old; else p.inv.splice(i, 1); sfx(500, 0.1, 'triangle', 0.05, 200); }
+    if (ds.act === 'equip' && i >= 0) { const old = p.equip[it.slot], ip = inheritPts(it, old); if (ip) { const was = it.heat || 0; heatUp(it, ip); old.heat = 0; old.hx = 0; floatText(p.x, p.y - 20, it.heat > was ? `🔥 繼承熱度：${HEAT[it.heat]}` : `🔥 繼承熱度 +${ip}`, '#ffb060', 16); } p.equip[it.slot] = it; if (old) p.inv[i] = old; else p.inv.splice(i, 1); sfx(500, 0.1, 'triangle', 0.05, 200); }
     else if (ds.act === 'sell' && i >= 0 && !p.run) { p.inv.splice(i, 1); p.gold += sellOf(it); sfx(1200, 0.05, 'square', 0.03); }
     else if (ds.act === 'drop' && i >= 0) { p.inv.splice(i, 1); sfx(300, 0.08, 'triangle', 0.03, -100); }
     else if (ds.act === 'unequip' && p.inv.length < invCap()) { p.equip[it.slot] = null; p.inv.push(it); }
@@ -2874,5 +2883,5 @@ loadAssets().then(() => {
 window.__game = {
   get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get braziers() { return braziers; }, sacrifice, makeSetItem, SETS, get hero() { return hero; }, switchHero, rollCards, gambleItem, boxCost, hitEnemy, get pools() { return pools; }, get holes() { return holes; }, refresh, heroLook, attack, cast, ignite, get merchant() { return merchant; }, talCan, talPts, openTal, tl, TALENTS, get pickNear() { return pickNear; }, clsOf, inClass, rollRarity, get renderer() { return renderer; }, exportText, openExport, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
   get quality() { return quality; }, setQuality(v) { autoQ = false; quality = v; applyQuality(); },
-  update, isSolid: (x, y) => solid(x, y), get drops() { return drops; }, dropPot(k) { drops.push(mk(k, p.x, p.y)); }, audioState: () => actx ? actx.state + (musicBossOn ? '+boss' : '') : 'none', isBlk: (x, y) => !!(blk[y * MW + x]), joyWorld(dx, dy) { const c = Math.cos(CAMS[camMode].yaw), n = Math.sin(CAMS[camMode].yaw); joy.id = 99; joy.x = dx * c - dy * n; joy.y = dx * n + dy * c; }, joySet(x, y) { if (x === null) { joy.id = null; joy.x = joy.y = joy.sx = joy.sy = 0; } else { joy.id = 99; joy.x = x; joy.y = y; } }, descend, takeDoor, get doorOpts() { return doorOpts; }, cast, keys, mouse, spawnEnemy, hurtPlayer, dropItem, makeItem, genFloor, setCam(i) { camMode = i; camReady = false; }, info: () => renderer.info.render,
+  update, isSolid: (x, y) => solid(x, y), upgradeOf, inheritView, drawPanel, get drops() { return drops; }, dropPot(k) { drops.push(mk(k, p.x, p.y)); }, audioState: () => actx ? actx.state + (musicBossOn ? '+boss' : '') : 'none', isBlk: (x, y) => !!(blk[y * MW + x]), joyWorld(dx, dy) { const c = Math.cos(CAMS[camMode].yaw), n = Math.sin(CAMS[camMode].yaw); joy.id = 99; joy.x = dx * c - dy * n; joy.y = dx * n + dy * c; }, joySet(x, y) { if (x === null) { joy.id = null; joy.x = joy.y = joy.sx = joy.sy = 0; } else { joy.id = 99; joy.x = x; joy.y = y; } }, descend, takeDoor, get doorOpts() { return doorOpts; }, cast, keys, mouse, spawnEnemy, hurtPlayer, dropItem, makeItem, genFloor, setCam(i) { camMode = i; camReady = false; }, info: () => renderer.info.render,
 };
