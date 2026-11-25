@@ -88,8 +88,8 @@
       font-size: 18px; border-radius: 12px; border: 2px solid #ffcf6b; background: #2a1d10; color: #ffe; cursor: pointer; }
     #tip { left: 50%; bottom: calc(84px + var(--sb)); transform: translateX(-50%); max-width: min(520px, 62vw); padding: 8px 14px; border-radius: 10px;
       background: #000b; border: 1px solid #b98b3e88; font-size: 14px; line-height: 1.5; color: #ffe9b0; opacity: 0; transition: opacity .5s; text-align: center; }
-    body.touch #tip { bottom: calc(8px + var(--sb)); max-width: 36vw; font-size: 13px; padding: 6px 10px; }
-    @media (orientation: portrait) { body.touch #tip { bottom: calc(220px + var(--sb)); max-width: 86vw; } }
+    body.touch #tip { bottom: auto; top: calc(58px + var(--st)); max-width: 46vw; font-size: 13px; padding: 6px 10px; opacity: .92; }
+    @media (orientation: portrait) { body.touch #tip { top: calc(176px + var(--st)); bottom: auto; max-width: 86vw; } }
     #buff { top: calc(12px + var(--st)); left: 50%; transform: translateX(-50%); font-size: 14px; color: #ffe9b0; white-space: nowrap; }
     body.touch #buff { top: calc(118px + var(--st)); left: calc(12px + var(--sl)); transform: none; font-size: 13px; }
     #cine { position: fixed; inset: 0; z-index: 3; pointer-events: none; display: none; }
@@ -131,14 +131,14 @@
     body.touch .sk small { display: none; }
     body.touch .sk em { right: 50%; transform: translateX(50%); bottom: 3px; font-size: 13px; font-weight: 700; text-shadow: 0 0 3px #000, 0 0 3px #000; }
     body.touch #sk-atk { display: block; width: 92px; height: 92px; right: 4px; bottom: 4px; font-size: 40px; border-width: 3px; }
-    body.touch #sk-dash { right: 108px; bottom: 2px; }
-    body.touch #sk-s0 { right: 102px; bottom: 68px; }
-    body.touch #sk-s1 { right: 52px; bottom: 112px; }
-    body.touch #sk-s2 { right: -6px; bottom: 132px; margin-right: 6px; }
-    body.touch #sk-ember { right: 118px; bottom: 134px; width: 50px; height: 50px; font-size: 22px; }
+    body.touch #sk-dash { right: 110px; bottom: 2px; }
+    body.touch #sk-s0 { right: 104px; bottom: 76px; }
+    body.touch #sk-s1 { right: 54px; bottom: 124px; }
+    body.touch #sk-s2 { right: -6px; bottom: 170px; margin-right: 6px; }
+    body.touch #sk-ember { right: 126px; bottom: 148px; width: 50px; height: 50px; font-size: 22px; }
     .sk.warn { border-color: #ff4040; box-shadow: 0 0 0 3px #ff404088, 0 0 18px #ff2020; animation: hpwarn .6s infinite alternate; } @keyframes hpwarn { to { box-shadow: 0 0 0 6px #ff404044, 0 0 28px #ff2020; } }
-    body.touch #sk-hp { right: 172px; bottom: 2px; width: 50px; height: 50px; font-size: 22px; }
-    body.touch #sk-mpp { right: 166px; bottom: 60px; width: 50px; height: 50px; font-size: 22px; }
+    body.touch #sk-hp { right: 194px; bottom: 4px; width: 50px; height: 50px; font-size: 22px; }
+    body.touch #sk-mpp { right: 190px; bottom: 70px; width: 50px; height: 50px; font-size: 22px; }
     body.touch #mini { width: 98px; height: 70px; }
     body.touch #act { bottom: calc(74px + var(--sb)); font-size: 19px; padding: 13px 26px; white-space: nowrap; }
     @media (orientation: portrait) { body.touch #act { bottom: calc(290px + var(--sb)); } }

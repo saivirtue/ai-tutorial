@@ -2030,9 +2030,9 @@ function buildLevel3D() {
   const L = { floor_tile_large: [], floor_tile_large_rocks: [], floor_dirt_large: [], floor_dirt_large_rocky: [], wall: [], wall_cracked: [], torch_mounted: [], floor_tile_big_grate_open: [], pillar: [] };
   const BAN = ['banner_patternA_red', 'banner_patternB_blue', 'banner_shield_green']; for (const b of BAN) L[b] = [];
   const LOW = 1.5, HI = 4;
-  const capPos = [], capNrm = [];
-  const quad = (a, b, c, d, n) => { for (const v of [a, b, c, a, c, d]) { capPos.push(v[0], v[1], v[2]); capNrm.push(n[0], n[1], n[2]); } };
-  const nearFloor = (x, y) => { for (let j = -2; j <= 2; j++) for (let i = -2; i <= 2; i++) if (!solid(x + i, y + j)) return true; return false; };
+  const capPos = [], capNrm = [], capCol = []; let qc = [1, 1, 1];
+  const quad = (a, b, c, d, n) => { const k = n[1] ? 1 : n[2] > 0 ? 0.62 : 0.78; for (const v of [a, b, c, a, c, d]) { capPos.push(v[0], v[1], v[2]); capNrm.push(n[0], n[1], n[2]); capCol.push(qc[0] * k, qc[1] * k, qc[2] * k); } };
+  const nearFloor = (x, y) => { for (let j = -3; j <= 3; j++) for (let i = -3; i <= 3; i++) if (!solid(x + i, y + j)) return true; return false; };
 
   for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
     const h = hash(x, y), X = x * 4, Z = y * 4;
@@ -2053,7 +2053,7 @@ function buildLevel3D() {
       // 牆頂：實心牆格蓋一塊暗色石頂。只有「房間北側、西側的背牆」是全高，
       // 其餘（鏡頭這一側的南牆、東牆）都做矮，才不會擋住畫面
       const back = !solid(x, y + 1) || !solid(x + 1, y) || !solid(x + 1, y + 1), front = !solid(x, y - 1) || !solid(x - 1, y);
-      const h2 = (back && !front ? HI : LOW) - 0.02, x0 = X, x1 = X + 4, z0 = Z, z1 = Z + 4;
+      const h2 = (back && !front ? HI : LOW) - 0.02, x0 = X, x1 = X + 4, z0 = Z, z1 = Z + 4; { const v = 0.7 + h * 0.5 + (hash(x * 5 + 1, y * 3) > 0.85 ? 0.25 : 0); qc = [v, v * 0.97, v * 0.94]; } /* 每格石頭深淺不同 */
       quad([x0, h2, z1], [x1, h2, z1], [x1, h2, z0], [x0, h2, z0], [0, 1, 0]);
       quad([x0, 0, z1], [x1, 0, z1], [x1, h2, z1], [x0, h2, z1], [0, 0, 1]);
       quad([x1, 0, z0], [x0, 0, z0], [x0, h2, z0], [x1, h2, z0], [0, 0, -1]);
@@ -2062,8 +2062,8 @@ function buildLevel3D() {
     }
   }
   const cg = new THREE.BufferGeometry();
-  cg.setAttribute('position', new THREE.Float32BufferAttribute(capPos, 3)); cg.setAttribute('normal', new THREE.Float32BufferAttribute(capNrm, 3));
-  const cap = new THREE.Mesh(cg, new THREE.MeshLambertMaterial({ color: new THREE.Color(0x2a2630).multiply(tint) }));
+  cg.setAttribute('position', new THREE.Float32BufferAttribute(capPos, 3)); cg.setAttribute('normal', new THREE.Float32BufferAttribute(capNrm, 3)); cg.setAttribute('color', new THREE.Float32BufferAttribute(capCol, 3));
+  const cap = new THREE.Mesh(cg, new THREE.MeshLambertMaterial({ color: new THREE.Color(0x5a5260).multiply(tint), vertexColors: true }));
   cap.userData.own = true; cap.receiveShadow = true; cap.castShadow = true; lvl.add(cap);
   // 地板下面墊一片黑，免得縫隙透光
   const under = new THREE.Mesh(new THREE.PlaneGeometry(MW * 4, MH * 4), new THREE.MeshBasicMaterial({ color: 0x020203 }));
