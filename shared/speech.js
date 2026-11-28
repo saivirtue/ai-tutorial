@@ -35,27 +35,34 @@ function pickVoice() {
     voices.find((v) => v.lang.startsWith("zh")) ||
     null;
 
-  // 英文語音優先挑「跟中文同一家」的（都是 Google、都是 Microsoft、都是裝置內建）：
-  // 中英文各挑各的，常常一個是 Google、一個是系統內建，音色和口氣差很多，
-  // 一題裡中文指示接英文單字，聽起來像換了一個人在講，小孩不好分辨。
+  // 英文語音：Windows／Chrome 上中英文常常一個是 Google、一個是 Microsoft，音色差很多，
+  // 所以那兩家優先挑同一家。iPhone／Mac 的語音全是 Apple 的，不用配對；而且清單裡有很多
+  // 「怪聲音」（Bells、Bubbles、Zarvox…）和還沒下載的語音，挑到會沒聲音——
+  // 所以 Apple 裝置一律用系統預設的英文語音（通常是 Samantha）。
   const family = chineseVoice ? voiceFamily(chineseVoice) : null;
-  const sameFamily = (v) => family !== null && voiceFamily(v) === family;
-  const enVoices = voices.filter((v) => v.lang === "en-US");
+  const pairable = family === "google" || family === "microsoft";
+  const sameFamily = (v) => pairable && voiceFamily(v) === family;
+  const enVoices = voices.filter((v) => v.lang === "en-US" || v.lang === "en_US");
+  const safe = enVoices.filter((v) => !NOVELTY_VOICES.test(v.name));
   englishVoice =
-    enVoices.find((v) => sameFamily(v) && isEnhanced(v)) ||
-    enVoices.find(sameFamily) ||
-    enVoices.find(isEnhanced) ||
-    enVoices[0] ||
+    safe.find(sameFamily) ||
+    (pairable ? null : safe.find((v) => v.default)) ||
+    safe.find((v) => /^samantha$/i.test(v.name)) ||
+    safe.find(isEnhanced) ||
+    safe[0] ||
     voices.find((v) => v.lang.startsWith("en")) ||
     null;
 }
 
-// 語音是哪一家做的：看名字，不然就看是不是裝置內建
+// Apple 裝置內建的「特效」語音：唱歌、氣泡、外星人……念單字不能用
+var NOVELTY_VOICES = /albert|bad news|bahh|bells|boing|bubbles|cellos|good news|jester|organ|superstar|trinoids|whisper|wobble|zarvox|grandma|grandpa|junior|ralph|fred|kathy|rocko|eddy|flo|reed|sandy|shelley/i;
+
+// 語音是哪一家做的：看名字
 function voiceFamily(v) {
-  const name = v.name.toLowerCase();
+  const name = (v.name || "").toLowerCase();
   if (name.indexOf("google") >= 0) return "google";
   if (name.indexOf("microsoft") >= 0) return "microsoft";
-  return v.localService ? "local" : "remote";
+  return "other";
 }
 
 if (window.speechSynthesis) {
@@ -273,17 +280,26 @@ function createSpeechToggle() {
 }
 
 /* 手機瀏覽器規定：要等使用者碰過畫面才能出聲。
-   第一次碰畫面時「暖機」一次，之後的 say()／sayWithClip() 就都能出聲了。 */
-document.addEventListener(
-  "pointerdown",
-  () => {
-    try {
-      if (window.speechSynthesis) speechSynthesis.resume();
-      // 也順便「解鎖」一下 <audio> 播放權限，之後 sayWithClip() 用 setTimeout
-      // 觸發（不是直接在點擊事件裡）也不會被瀏覽器的自動播放限制擋掉
-      const unlock = new Audio();
-      unlock.play().catch(() => {});
-    } catch (e) {}
-  },
-  { once: true }
-);
+   iPhone Safari 更嚴格：第一次 speechSynthesis.speak() 一定要在「手指放開」那一下
+   （touchend／click）裡面呼叫，光是 resume() 不算——不然之後念什麼都沒聲音。
+   所以第一次碰畫面時先念一句聽不到的空白（音量 0）「解鎖」，之後的 say() 就都能出聲了。 */
+var speechUnlocked = false;
+function unlockSpeech() {
+  if (speechUnlocked) return;
+  speechUnlocked = true;
+  try {
+    if (window.speechSynthesis) {
+      speechSynthesis.resume();
+      var u = new SpeechSynthesisUtterance(" ");
+      u.volume = 0;
+      speechSynthesis.speak(u);
+    }
+    // 也順便「解鎖」一下 <audio> 播放權限，之後 sayWithClip() 用 setTimeout
+    // 觸發（不是直接在點擊事件裡）也不會被瀏覽器的自動播放限制擋掉
+    var unlock = new Audio();
+    unlock.play().catch(function () {});
+  } catch (e) {}
+}
+document.addEventListener("touchend", unlockSpeech, { once: true, capture: true });
+document.addEventListener("click", unlockSpeech, { once: true, capture: true });
+document.addEventListener("keydown", unlockSpeech, { once: true, capture: true });
