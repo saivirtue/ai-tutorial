@@ -226,7 +226,6 @@
   <div id="side" class="hud">
     <canvas id="mini" width="56" height="40"></canvas>
     <div id="rb">
-      <button class="rbtn" id="camBtn" title="切換視角 (V)">🎥</button>
       <button class="rbtn" id="sndBtn" title="音效">🔊</button>
       <button class="rbtn" id="bagBtn" title="背包 (I)">🎒</button>
     </div>
@@ -288,7 +287,7 @@
         <div class="grid" id="inv"></div>
         <div id="detail"></div>
         <div style="margin-top:8px">
-          <button class="btn" id="talBtn">🌳 天賦</button><button class="btn" id="recBtn">📖 紀錄</button><button class="btn" id="expBtn">📋 回報／匯出</button><button class="btn" id="saveIoBtn2">💾 存檔備份</button><button class="btn" id="pickBtn">🧲 自動撿：全部</button><button class="btn" id="sellJunk">賣掉用不到的</button><button class="btn" id="sellAll">全部賣掉</button><button class="btn" id="sacJunk">🔥 獻祭用不到的傳說</button>
+          <button class="btn" id="talBtn">🌳 天賦</button><button class="btn" id="recBtn">📖 紀錄</button><button class="btn" id="expBtn">📋 回報／匯出</button><button class="btn" id="saveIoBtn2">💾 存檔備份</button><button class="btn" id="camBtn">🎥 視角</button><button class="btn" id="pickBtn">🧲 自動撿：全部</button><button class="btn" id="sellJunk">賣掉用不到的</button><button class="btn" id="sellAll">全部賣掉</button><button class="btn" id="sacJunk">🔥 獻祭用不到的傳說</button>
           <button class="btn" id="quitRun">🔥 放棄遠征</button><button class="btn" id="closeBtn" style="float:right">關閉</button><span class="dim" id="panelVer" style="float:right;font-size:11px;margin:12px 8px 0 0"></span>
         </div>
       </div>
@@ -368,7 +367,7 @@
     <div style="display:flex;align-items:center;gap:10px"><h1 style="font-size:24px;letter-spacing:3px;text-align:left;flex:1">回報／匯出</h1><button class="btn" id="expClose" style="margin:0">關閉</button></div>
     <p class="dim" style="margin:4px 0 8px">覺得哪裡怪、卡、太難或太無聊，就打開這裡：複製文字（含最近 30 秒發生的事與效能）貼給 Claude，需要的話再附一張截圖。電腦上可以直接按 F8。</p>
     <textarea id="expText" readonly style="width:100%;height:46vh;background:#0e0b14;color:#dcd;border:1px solid #443a55;border-radius:8px;padding:8px;font-size:12px;line-height:1.5;font-family:ui-monospace,Menlo,monospace;user-select:text;-webkit-user-select:text;-webkit-touch-callout:default;touch-action:auto"></textarea>
-    <div class="row"><label style="flex:1;font-size:14px"><input type="checkbox" id="expFull"> 附上完整存檔（比較長，找問題時用）</label><button class="btn" id="expShot">📷 截圖</button><button class="btn" id="expShare" style="display:none">📤 分享</button><button class="btn" id="expCopy">📋 複製</button></div>
+    <div class="row"><label style="flex:1;font-size:14px"><input type="checkbox" id="expFull"> 附上完整存檔（比較長，找問題時用）</label><button class="btn" id="expShot">📷 截圖</button><button class="btn" id="expShare" style="display:none">📤 分享</button><button class="btn" id="expShareT" style="display:none">📤 分享文字</button><button class="btn" id="expCopy">📋 複製</button></div>
     <img id="expImg" alt="截圖" style="display:none;width:100%;border-radius:8px;border:1px solid #443a55;margin-top:6px;-webkit-touch-callout:default;user-select:auto">
     <p id="expMsg" class="good" style="font-size:14px"></p>
   </div></div>
@@ -392,6 +391,6 @@
     <button class="btn big" id="reviveBtn">重新點燃</button>
   </div></div>
 
-  <script type="module" src="game.js?v=0.9.0&d=2026-11-25"></script>
+  <script type="module" src="game.js?v=0.9.3&d=2026-11-28"></script>
 </body>
 </html>
