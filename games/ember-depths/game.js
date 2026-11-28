@@ -2546,6 +2546,7 @@ function drawPanel() {
   $('panelGold').textContent = `💰 ${p.gold}`;
   $('talBtn').textContent = `🌳 天賦${talPts() > 0 ? `（${talPts()} 點可用）` : ''}`;
   $('pickBtn').textContent = `🧲 自動撿：${PICKN[p.pick || 0]}`;
+  $('camBtn').textContent = `🎥 視角：${CAMS[camMode].name}`;
   $('quitRun').style.display = p.run ? '' : 'none'; $('recBtn').textContent = `📖 紀錄（${ACH.filter(a => p.ach[a[0]]).length}/${ACH.length}）`;
   $('invTxt').textContent = `${p.inv.length} / ${invCap()}`;
   let h = '';
@@ -2852,7 +2853,7 @@ $('quitRun').onclick = () => { if (p.run) ask('放棄這趟遠征、回到營地
 $('bagBtn').onclick = () => togglePanel();
 $('sndBtn').onclick = () => { muted = !muted; $('sndBtn').textContent = muted ? '🔇' : '🔊'; audioInit(); if (master) master.gain.value = muted ? 0 : 1; };
 function nextCam() { camMode = (camMode + 1) % CAMS.length; try { localStorage.setItem('ember-depths-cam', camMode); } catch (e) { /* 沒差 */ } if (state === 'play') banner('', '視角：' + CAMS[camMode].name); }
-$('camBtn').onclick = nextCam;
+$('camBtn').onclick = () => { nextCam(); SND.card(); if ($('panel').classList.contains('on')) drawPanel(); }; /* 從畫面上方移進背包：避免誤觸 */
 try { camMode = (+localStorage.getItem('ember-depths-cam') || 0) % CAMS.length; } catch (e) { /* 沒差 */ }
 $('act').onclick = interact;
 
