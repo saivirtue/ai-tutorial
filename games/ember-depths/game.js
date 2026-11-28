@@ -980,7 +980,9 @@ const ET = {
   dummy: { n: '練習木樁', hp: 1e9, spd: 0, dmg: 0, r: 15, xp: 0 },
   boss: { n: '守關者', hp: 1500, spd: 76, dmg: 28, r: 30, xp: 300, charger: 1 },
 };
-const TRAITN = { split: '分裂', bomb: '自爆', haste: '疾走', ward: '護盾' };
+const TRAITN = { split: '分裂', bomb: '自爆', haste: '疾走', ward: '護盾', mirror: '反射', molten: '熔地' };
+const dgLv = () => (p.run && p.run.danger) || 0;
+function curseAt(x, y, R, t, dmg, col) { if (dangers.length < 14) dangers.push({ x, y, t, R, dmg, col }); }
 const BOSSN = ['灰燼守衛', '沼澤骨王', '熔核督軍', '霜冠亡王', '虛空之主'];
 const BOSSE = ['灰燼迴廊的看門人', '沼澤深處的腐骨之王', '熔岩礦坑的督軍', '霜封墓穴的亡王', '虛空的主宰'];
 function rollType(f) {
@@ -998,7 +1000,7 @@ function spawnEnemy(type, x, y, elite) {
     type, x, y, r: d.r * (elite ? 1.25 : 1), hp: d.hp * hs * (elite ? 3.2 : 1), dmg: d.dmg * ds * (elite ? 1.4 : 1),
     spd: d.spd * rand(0.9, 1.1), xp: d.xp * (1 + 0.2 * (f - 1)) * (elite ? 4 : 1), elite: !!elite,
     awake: false, atkCd: rand(0, 0.6), atkT: 0, shotCd: rand(1, 2.5), flash: 0, slow: 0, freeze: 0, kx: 0, ky: 0, ph: rand(0, 6.28), ch: null, chCd: rand(2, 4),
-    face: rand(0, 6.28), faceLock: 0, riseT: 0, stun: 0, trait: elite && type !== 'boss' ? pick(['split', 'bomb', 'haste', 'ward']) : null, wardT: 0, wardCd: rand(2, 4), act: 2.5, volley: 0, volT: 0, v: null,
+    face: rand(0, 6.28), faceLock: 0, riseT: 0, stun: 0, trait: elite && type !== 'boss' ? pick(['split', 'bomb', 'haste', 'ward', 'mirror', 'mirror', 'molten', 'molten']) : null, mirT: 0, mirCd: rand(2, 3.5), moltCd: rand(1.5, 3), wardT: 0, wardCd: rand(2, 4), act: 2.5, volley: 0, volT: 0, v: null,
   };
   e.maxHp = e.hp; if (e.trait === 'haste') e.spd *= 1.5; if (dgv > 10 && type !== 'boss') e.spd *= 1 + (dgv - 10) * 0.025; /* 煉獄：怪更快 */
   if (rmod('swift')) { e.spd *= 1.25; e.xp *= 1.3; }
@@ -1027,7 +1029,7 @@ function updateEnemy(e, dt) {
   }
   if (e.type === 'crystal' && e.variant === 4) { // 虛空裂隙：把玩家吸過去
     const d0 = dist(e, p); if (d0 < 280 && d0 > 20) movePlayer((e.x - p.x) / d0 * 75 * dt, (e.y - p.y) / d0 * 75 * dt);
-    if (d0 < 70 && (e.bite = (e.bite || 0) - dt) <= 0) { e.bite = 0.6; hurtPlayer((boss ? boss.dmg : 20) * 0.35); }
+    if (d0 < 70 && (e.bite = (e.bite || 0) - dt) <= 0) { e.bite = 0.6; hurtPlayer((boss ? boss.dmg : 20) * 0.35, true); }
     if (Math.random() < dt * 14) { const a = rand(0, 6.283); parts.push(mkPart(e.x + Math.cos(a) * 120, e.y + Math.sin(a) * 120, rand(0.3, 2), -Math.cos(a) * 240, -Math.sin(a) * 240, 0, '#b060ff', 0.5, 6)); }
   }
   if (e.type === 'crystal') { // 餘燼水晶：不會動，定時放一圈彈幕，有光束連到首領
@@ -1040,6 +1042,12 @@ function updateEnemy(e, dt) {
   if (e.freeze > 0) { e.freeze -= dt; return; }
   if (e.broken > 0) { e.broken -= dt; if (Math.random() < 0.3) parts.push(mkPart(e.x + rand(-20, 20), e.y + rand(-20, 20), 5 + rand(0, 1), rand(-20, 20), rand(-20, 20), 0, '#ffe080', 0.5, 4)); return; }
   if (e.trait === 'ward') { e.wardT -= dt; if ((e.wardCd -= dt) <= 0 && e.awake) { e.wardCd = 6; e.wardT = 2.4; } }
+  if (e.trait === 'mirror' && e.awake) { // 反射：先閃白光預告，然後 1.8 秒內打牠會反彈
+    if (e.mirT > 0) e.mirT -= dt;
+    else if ((e.mirCd -= dt) <= 0.6 && !e.mirWarn) { e.mirWarn = true; floatText(e.x, e.y - 20, '反射準備⋯', '#e8f4ff', 14); sfx(1500, 0.3, 'sine', 0.03, 600); tip('mirror', '菁英「反射」發白光時別打牠：打下去的子彈會彈回來，等光消失再打'); }
+    if (e.mirCd <= 0) { e.mirCd = 5; e.mirT = 1.8; e.mirWarn = false; fxRing(e.x, e.y, 60, 0xe0f0ff, 0.4); } }
+  if (e.trait === 'molten' && e.awake && dist(e, p) < 420 && (e.moltCd -= dt) <= 0) { // 熔地：在你腳下點火
+    e.moltCd = Math.max(1.6, 3 - dgLv() * 0.08); curseAt(p.x, p.y, 62, 1.1, e.dmg * 1.5, 0xff5a10); if (Math.random() < 0.5) curseAt(p.x + rand(-90, 90), p.y + rand(-90, 90), 62, 1.3, e.dmg * 1.5, 0xff5a10); sfx(200, 0.25, 'sawtooth', 0.03, -80); tip('molten', '地上出現紅圈就快離開：內圈長滿就會爆'); }
   if (e.stun > 0) { e.stun -= dt; return; } // 被打到會踉蹌一下
   if (e.burnT > 0) { e.burnT -= dt; if ((e.burnK = (e.burnK || 0) - dt) <= 0) { e.burnK = 0.5; hitEnemy(e, e.burnD / 4 / Math.max(1, p.st.dmg), 0, e, { noProc: true }); parts.push(mkPart(e.x, e.y, 1, 0, 0, 3, '#ff7a2a', 0.4, 6)); } if (e.burnT <= 0) e.burnD = 0; }
   const sm = e.slow > 0 ? 0.45 : 1; e.slow -= dt;
@@ -1080,7 +1088,8 @@ function updateEnemy(e, dt) {
   const startCharge = () => { e.ch = { wind: true, t: 0.7, a: Math.atan2(p.y - e.y, p.x - e.x) }; charOnce(e, 'Taunt', 1.6, 0.7); };
 
   if (e.type === 'boss') { if (bossAI(e, dt, d, see, startCharge)) return; }
-  else if (def.charger) { e.chCd -= dt; if (see && d < 280 && d > 80 && e.chCd <= 0) { e.chCd = rand(3.5, 5); startCharge(); return; } }
+  else if (def.charger) { e.chCd -= dt; if (see && d < 280 && d > 80 && e.chCd <= 0) { e.chCd = rand(3.5, 5); startCharge(); return; }
+    if (see && d < 120 && e.chCd <= 1.5 && Math.random() < dt * (0.6 + dgLv() * 0.06)) { e.chCd = rand(3, 4.5); curseAt(e.x, e.y, 105, 0.9, e.dmg * 1.4, 0xff3a10); e.stun = 0.9; e.atkCd = 1.6; charOnce(e, 'Taunt', 1.6, 0.9); return; } } // 砸地：原地蓄力一圈
 
   if (def.ranged) {
     e.shotCd -= dt;
@@ -1089,6 +1098,7 @@ function updateEnemy(e, dt) {
       if (e.shotCd <= 0 && d < 360) {
         const a = Math.atan2(p.y - e.y, p.x - e.x); e.face = a; e.faceLock = 0.5;
         if (e.type === 'archer') { enemyShot(e, a, 300, e.dmg, '#ffe9b0', 5, true); e.shotCd = rand(1.6, 2.4); sfx(700, 0.05, 'triangle', 0.03, -300); charOnce(e, '2H_Ranged_Shoot', 1.6); }
+        else if (Math.random() < 0.3 + dgLv() * 0.035) { const lx = p.x + (p.moving ? Math.cos(p.moveA) * 70 : 0), ly = p.y + (p.moving ? Math.sin(p.moveA) * 70 : 0); curseAt(p.x, p.y, 58, 1.15, e.dmg * 1.7, 0xb040ff); curseAt(lx, ly, 58, 1.35, e.dmg * 1.7, 0xb040ff); e.shotCd = rand(2.6, 3.4); sfx(180, 0.4, 'sine', 0.04, -60); charOnce(e, 'Spellcast_Shoot', 1.5); tip('molten', '地上出現紅圈就快離開：內圈長滿就會爆'); }
         else { for (const o of [-0.3, 0, 0.3]) enemyShot(e, a + o, 150, e.dmg, '#c56cff', 7); e.shotCd = rand(2.6, 3.4); sfx(300, 0.15, 'sine', 0.04, 200); charOnce(e, 'Spellcast_Shoot', 1.5); }
       }
     }
@@ -1196,8 +1206,9 @@ function burst(x, y, c, n, spd, life = 0.5, h = 1.2, up = 3) {
 function hitEnemy(e, mult, kb = 120, src, o = {}) {
   if (e.dead) return;
   if (e.wardT > 0) { floatText(e.x, e.y, '格擋', '#7fe8ff', 13); e.awake = true; return; }
+  if (e.mirT > 0) { if (!o.noProc && time > (e.mirHurt || 0)) { e.mirHurt = time + 0.4; floatText(e.x, e.y, '反射！', '#e8f4ff', 14); hurtPlayer(e.dmg * 0.35, true); } return; }
   if (e.shield) { if (Math.random() < 0.4) { floatText(e.x, e.y, '屏障', '#7fe8ff', 13); sfx(1600, 0.05, 'triangle', 0.03); } return; }
-  let dmg = p.st.dmg * mult * rand(0.88, 1.12) * (p.burnT > 0 ? 1.3 : 1 + p.ember / 100 * 0.2); const crit = Math.random() * 100 < p.st.crit || (p.nextCrit && !o.noProc && !(p.nextCrit = false));
+  let dmg = p.st.dmg * mult * rand(0.88, 1.12) * (p.burnT > 0 ? 1.3 : 1 + p.ember / 100 * 0.2) * (p.ctrT > 0 ? 1.6 : 1); const crit = Math.random() * 100 < p.st.crit + (p.ctrT > 0 ? 30 : 0) || (p.nextCrit && !o.noProc && !(p.nextCrit = false));
   { const hf = p.hp / p.st.hp; if (tl('kA4') && hf < 0.3) dmg *= 1.3; if (tl('bA2') && hf < 0.5) dmg *= 1.25; if (tl('mB3') && e.freeze > 0) dmg *= 1.3; if (setN('frost') >= 3 && e.freeze > 0) dmg *= 1.4; if (tl('mC4') && p.mp > p.st.mp * 0.8) dmg *= 1.3; } // 火越旺打得越痛
   if (crit && !o.noProc && setN('void') >= 3 && holes.length < 2 && Math.random() < 0.15) { holes.push({ x: e.x, y: e.y, t: 2, tick: 0.2 }); sfx(90, 0.8, 'sine', 0.08, -50); fxRing(e.x, e.y, 170, 0xa060ff, 0.5); }
   if (crit) dmg *= 1 + (p.st.critDmg || 0) / 100;
@@ -1223,7 +1234,7 @@ function hitEnemy(e, mult, kb = 120, src, o = {}) {
   for (let i = 0, n = Math.round((crit ? 10 : o.heavy ? 8 : 4) + chunk * 14); i < n; i++) { const b = a + rand(-0.6, 0.6), v = rand(80, 260) * (1 + chunk); parts.push(mkPart(e.x, e.y, 1.4, Math.cos(b) * v, Math.sin(b) * v, rand(0, 3), crit ? '#ffd84a' : '#f4eedc', rand(0.2, 0.4), rand(2.5, 5), 7)); }
   if (crit) { SND.crit(); punch = Math.max(punch, 0.07); if (tl('mA4') && !o.noProc && Math.random() < 0.3) setTimeout(() => chain(e), 0);
     hitStop = Math.max(hitStop, 0.07); if (p.pas.critboom && !o.noProc) blast(e.x, e.y, 52, 0.5 * p.pas.critboom, 0xffd84a, 0.2, true); }
-  if (p.st.ls > 0) { p.hp = Math.min(p.st.hp, p.hp + dmg * p.st.ls / 100); if (Math.random() < 0.15 + p.st.ls * 0.04) for (let i = 0; i < 3; i++) parts.push(mkPart(e.x, e.y, 1.4, (p.x - e.x) / 0.35 + rand(-30, 30), (p.y - e.y) / 0.35 + rand(-30, 30), 0, '#ff3048', 0.35, 4)); }
+  if (p.st.ls > 0) { const hl = Math.min(p.lsBank || 0, dmg * p.st.ls / 100); p.lsBank = (p.lsBank || 0) - hl; p.hp = Math.min(p.st.hp, p.hp + hl); if (Math.random() < 0.15 + p.st.ls * 0.04) for (let i = 0; i < 3; i++) parts.push(mkPart(e.x, e.y, 1.4, (p.x - e.x) / 0.35 + rand(-30, 30), (p.y - e.y) / 0.35 + rand(-30, 30), 0, '#ff3048', 0.35, 4)); }
   if (e.hp <= 0) killEnemy(e);
   else if (e.type !== 'boss' && !e.ch && e.atkT <= 0 && e.v && e.v.lock <= 0) charOnce(e, 'Hit_A', 2, 0.2);
 }
@@ -1292,7 +1303,8 @@ function dropItem(x, y, it) {
   } else if (it.rarity === 2) { sfx(880, 0.3, 'triangle', 0.06, 400); sfx(1320, 0.3, 'triangle', 0.04, 0, 0.1); fxRing(x, y, 60, 0xffd84a, 0.4); }
 }
 
-function hurtPlayer(d) {
+function hurtPlayer(d, noPD) {
+  if (!noPD && p.dashT > 0 && state === 'play' && time > (p.pdAt || 0)) { p.pdAt = time + 1; p.ctrT = 3; hitStop = Math.max(hitStop, 0.09); floatText(p.x, p.y - 24, '完美閃避！', '#ffe060', 19); texts[texts.length - 1].pop = 1; SND.legend(); burst(p.x, p.y, '#ffe060', 26, 180, 0.6, 1, 6); fxRing(p.x, p.y, 80, 0xffe060, 0.35); ev('完美閃避'); tip('perfect', '完美閃避：在攻擊打到的瞬間閃避，3 秒內傷害 +60%、暴擊 +30%'); }
   if (p.inv_t > 0 || p.dashT > 0 || state !== 'play') return;
   if (tl('kA3') && Math.random() < 0.2) { d *= 0.5; floatText(p.x, p.y, '格擋', '#cfe0ff', 13); sfx(1800, 0.1, 'triangle', 0.04); }
   if ((tl('kA4') && p.hp < p.st.hp * 0.3) || p.iceT > 0) d *= 0.5;
@@ -1658,6 +1670,7 @@ function update(dt) {
       if (wall || s.life <= 0) { s.dead = true; if (wall) burst(s.x, s.y, s.col, 4, 60, 0.3, 1.2, 1); }
       else {
         for (const e of enemies) if (!e.dead && !s.hit.has(e) && dist(e, s) < e.r + s.r + 3) {
+          if (e.mirT > 0) { const a = Math.atan2(p.y - e.y, p.x - e.x); Object.assign(s, { from: 'e', ps: false, dmg: e.dmg * 0.45, vx: Math.cos(a) * 360, vy: Math.sin(a) * 360, life: 2, col: '#e8f4ff', r: 6 }); sfx(2000, 0.04, 'triangle', 0.03); break; }
           s.hit.add(e); hitEnemy(e, s.mult * (s.weapon && tl('rA3') && dist(e, p) > 200 ? 1.3 : 1), s.kb, s);
           if (s.weapon) { weaponFx([e]); p.mp = Math.min(p.st.mp, p.mp + 1.5); p.hitChain++; p.hitChainT = 1.3; SND.hit(null, p.hitChain); }
           if (s.aoe) blast(s.x, s.y, s.aoe, s.mult * 0.6, 0xb98cff, 0.15, true);
@@ -1769,7 +1782,8 @@ function update(dt) {
   if (p.spentT > 0) p.spentT -= dt;
   if (p.burnT <= 0 && (p.emberT -= dt) <= 0) p.ember = Math.max(0, p.ember - 4 * dt);
   if (p.burnT > 0 && p.burnT - dt <= 0) { p.spentT = 4; floatText(p.x, p.y, '火把燒盡，暫時虛弱', '#a98', 14); sfx(200, 0.5, 'sawtooth', 0.06, -150); }
-  if (p.slowT > 0) p.slowT -= dt;
+  if (p.slowT > 0) p.slowT -= dt; if (p.ctrT > 0) { p.ctrT -= dt; if (Math.random() < dt * 20) parts.push(mkPart(p.x + rand(-12, 12), p.y + rand(-12, 12), rand(0.5, 2.5), 0, 0, 40, '#ffe060', 0.4, 4)); }
+  p.lsBank = Math.min(p.st.hp * 0.03, (p.lsBank || 0) + p.st.hp * 0.03 * dt); /* 吸血每秒最多回 3% 生命 */
   if (p.burnT > 0) { p.burnT -= dt; for (let i = 0; i < 2; i++) parts.push(mkPart(p.x + rand(-12, 12), p.y + rand(-12, 12), rand(0.2, 2), rand(-10, 10), rand(-10, 10), rand(3, 7), Math.random() < 0.5 ? '#ffb040' : '#ff5a20', rand(0.3, 0.6), rand(4, 8), -2)); }
   for (const t of totems) {
     t.t -= dt;
@@ -1783,7 +1797,7 @@ function update(dt) {
   }
   pools = pools.filter(q => q.t > 0);
   if (setN('bog') >= 3 && pools.some(q => q.bog && dist(q, p) < q.R)) p.hp = Math.min(p.st.hp, p.hp + p.st.hp * 0.03 * dt);
-  for (const d of dangers) if ((d.t -= dt) <= 0) { burst(d.x, d.y, '#ff4020', 30, 220, 0.6, 1, 6); fxFlash(d.x, d.y, 0xff4020, 0.25); SND.boom(0.8); shake = Math.max(shake, 6); if (dist(d, p) < d.R) hurtPlayer(d.dmg); }
+  for (const d of dangers) if ((d.t -= dt) <= 0) { burst(d.x, d.y, d.col ? '#' + d.col.toString(16).padStart(6, '0') : '#ff4020', 30, 220, 0.6, 1, 6); fxFlash(d.x, d.y, 0xff4020, 0.25); SND.boom(0.8); shake = Math.max(shake, 6); if (dist(d, p) < d.R) hurtPlayer(d.dmg); }
   dangers = dangers.filter(d => d.t > 0);
   if (p.streakT > 0 && (p.streakT -= dt) <= 0) p.streak = 0;
   if (p.buff && (p.buff.t -= dt) <= 0) { p.buff = null; refresh(); floatText(p.x, p.y, '祝福消失了', '#aaa', 13); }
@@ -2144,6 +2158,14 @@ function buildLevel3D() {
 }
 
 // ----- 特效 -----
+const discGeo = (() => { const g = new THREE.CircleGeometry(1, 40); g.rotateX(-Math.PI / 2); return g; })(); const warns = [];
+function drawWarns() { // 地上的紅圈：外圈是範圍，內圈長滿就爆
+  let i = 0;
+  for (const d of dangers) { if (i + 3 > 42) break; if (d.t0 === undefined) d.t0 = Math.max(d.t, 0.05);
+    for (let j = 0; j < 3; j++, i++) { let m = warns[i]; if (!m) { m = new THREE.Mesh(i % 3 === 2 ? ringGeo : discGeo, new THREE.MeshBasicMaterial({ color: 0xff2a10, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })); m.renderOrder = 2; warns.push(m); scene.add(m); }
+      const k = clamp(1 - d.t / d.t0, 0, 1), R = d.R * U * (j === 1 ? k : 1); m.visible = true; m.position.set(d.x * U, 0.1 + j * 0.01, d.y * U); m.scale.set(Math.max(0.01, R), 1, Math.max(0.01, R)); m.material.color.setHex(d.col || 0xff2a10); m.material.opacity = j === 2 ? 0.9 : j ? 0.28 + k * 0.3 : 0.12 + 0.08 * Math.sin(time * 20); } }
+  for (; i < warns.length; i++) warns[i].visible = false;
+}
 const ringGeo = (() => { const g = new THREE.RingGeometry(0.93, 1, 64); g.rotateX(-Math.PI / 2); return g; })();
 const rings = []; // 擴散光環
 function fxRing(x, y, R, color, dur) {
@@ -2304,7 +2326,7 @@ function render3d(dt) {
     c.root.position.set(e.x * U, 0, e.y * U);
     c.root.rotation.y += angDiff(Math.PI / 2 - e.face, c.root.rotation.y) * (1 - Math.pow(1e-5, dt));
     c.lock -= dt;
-    if (e.freeze > 0) c.emissive(0x2050c0, 0.55); else if (e.wardT > 0 || e.shield) c.emissive(0x30e0ff, 1.1); else if (e.broken > 0) c.emissive(0xff8a20, 0.8 + Math.sin(time * 20) * 0.4); else if (e.flash > 0) c.emissive(0xffffff, 0.9); else c.emissive(c.base, c.baseK);
+    if (e.freeze > 0) c.emissive(0x2050c0, 0.55); else if (e.wardT > 0 || e.shield) c.emissive(0x30e0ff, 1.1); else if (e.mirT > 0) c.emissive(0xeef6ff, 1.3); else if (e.mirWarn) c.emissive(0xc0d8ff, 0.5 + Math.sin(time * 30) * 0.4); else if (e.broken > 0) c.emissive(0xff8a20, 0.8 + Math.sin(time * 20) * 0.4); else if (e.flash > 0) c.emissive(0xffffff, 0.9); else c.emissive(c.base, c.baseK);
     if (e.freeze <= 0) {
       if (c.lock <= 0) {
         if (e.ch && !e.ch.wind) c.play('Running_C', true, 2.2);
@@ -2377,6 +2399,7 @@ function render3d(dt) {
     else if (d.kind === 'item') d.v.rotation.y = time * 1.2 + d.sp;
   }
   // --- 光環、揮砍 ---
+  drawWarns();
   for (const r of rings) if (r.visible) { const u = r.userData; u.t += dt; const k = u.t / u.dur; if (k >= 1) { r.visible = false; continue; } const s = u.R * (0.15 + 0.85 * (1 - (1 - k) ** 2)); r.scale.set(s, 1, s); r.material.opacity = (1 - k) * 0.75; }
   for (const s of slashes) if (s.visible) { s.userData.t += dt; const k = 1 - s.userData.t / 0.2; if (k <= 0) { s.visible = false; continue; } s.material.uniforms.k.value = k; s.position.set(p.x * U, 1.3, p.y * U); }
   // --- 粒子 ---
@@ -2757,7 +2780,7 @@ function exportText(full) {
 }
 function openExport() {
   togglePanel(false); paused = true;
-  $('expFull').checked = false; $('expText').value = exportText(false); $('expMsg').textContent = ''; $('expImg').style.display = 'none'; $('expShare').style.display = 'none';
+  $('expFull').checked = false; $('expText').value = exportText(false); $('expMsg').textContent = ''; $('expImg').style.display = 'none'; $('expShare').style.display = 'none'; $('expShareT').style.display = navigator.share ? '' : 'none';
   $('exp').classList.add('on');
 }
 $('expBtn').onclick = openExport;
@@ -2791,11 +2814,17 @@ $('tal').addEventListener('click', ev => {
 $('talBtn').onclick = openTal;
 $('pickBtn').onclick = () => { p.pick = ((p.pick || 0) + 1) % 4; SND.card(); save(); drawPanel(); };
 $('expFull').onchange = () => { $('expText').value = exportText($('expFull').checked); };
-$('expCopy').onclick = async () => {
-  const t = $('expText');
-  try { await navigator.clipboard.writeText(t.value); $('expMsg').textContent = '✅ 已複製，貼到對話裡就可以了'; }
-  catch (e) { t.focus(); t.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (er) { /* 舊瀏覽器 */ } $('expMsg').textContent = ok ? '✅ 已複製' : '請長按文字框，選「全選」再「拷貝」'; }
-};
+function copyText(txt, btn, msgEl, okMsg) { // iOS：一定要在點擊當下同步複製，await 之後就不算使用者操作了
+  const ta = document.createElement('textarea'); ta.value = txt; ta.contentEditable = 'true'; ta.readOnly = true; ta.style.cssText = 'position:fixed;top:0;left:0;width:2px;height:2px;opacity:0.01;font-size:16px;border:0;padding:0';
+  document.body.appendChild(ta); let ok = false;
+  try { ta.focus({ preventScroll: true }); const rg = document.createRange(); rg.selectNodeContents(ta); const sl = getSelection(); sl.removeAllRanges(); sl.addRange(rg); ta.setSelectionRange(0, txt.length); ok = document.execCommand('copy'); } catch (e) { /* 舊瀏覽器 */ }
+  ta.blur(); ta.remove(); getSelection().removeAllRanges();
+  const cp = navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(txt) : null; /* 兩種都試，在點擊當下一起發出 */
+  const done = good => { const o = btn.dataset.lb || (btn.dataset.lb = btn.textContent); btn.textContent = good ? '✅ 已複製' : '❌ 失敗'; setTimeout(() => btn.textContent = o, 1800); msgEl.textContent = good ? okMsg : (navigator.share ? '複製被擋住了：改按「📤 分享」，在選單裡選「拷貝」' : '請長按文字框，選「全選」再「拷貝」'); };
+  if (cp) cp.then(() => done(true), () => done(ok)); else done(ok);
+}
+$('expCopy').onclick = () => copyText($('expText').value, $('expCopy'), $('expMsg'), '✅ 已複製，貼到對話裡就可以了');
+$('expShareT').onclick = () => navigator.share({ text: $('expText').value }).catch(() => {});
 $('exp').addEventListener('click', ev => { if (ev.target === $('exp') || ev.target.id === 'expClose') { $('exp').classList.remove('on'); paused = false; } });
 $('sacJunk').onclick = () => { if ($('sacJunk').dataset.ok !== '1') { $('sacJunk').dataset.ok = '1'; $('sacJunk').textContent = '再按一次確定獻祭'; return; } $('sacJunk').dataset.ok = ''; let c = 0, n = 0; for (let i = p.inv.length - 1; i >= 0; i--) if (junkLeg(p.inv[i])) { c += sacCry(p.inv[i]); p.inv.splice(i, 1); n++; } if (n) { p.mats.cry += c; p.stat.sac = (p.stat.sac || 0) + n; SND.burn(); floatText(p.x, p.y - 20, `獻祭 ${n} 件：💎 +${c}`, '#7ef', 18); burst(p.x, p.y, '#ff8a3a', 40, 160, 1, 1, 7); save(); } drawPanel(); };
 $('sellJunk').onclick = () => sellIf(it => upgradeOf(it) <= 0.5 && !it.fx && !it.set);
@@ -2861,7 +2890,7 @@ async function openSaveIO() {
 function closeSaveIO() { $('saveio').classList.remove('on'); if (state === 'play' && !$('panel').classList.contains('on')) paused = false; }
 const sioName = () => `ember-depths-save-Lv${sioMeta ? sioMeta.lvl : ''}-${new Date().toISOString().slice(0, 10)}.txt`;
 $('sioClose').onclick = closeSaveIO;
-$('sioCopy').onclick = async () => { try { await navigator.clipboard.writeText(sioCode); $('sioMsg').textContent = '✅ 已複製：貼到備忘錄或傳給自己保存'; } catch (e) { $('sioOut').focus(); $('sioOut').select(); let ok = false; try { ok = document.execCommand('copy'); } catch (er) { /* 舊瀏覽器 */ } $('sioMsg').textContent = ok ? '✅ 已複製' : '請長按代碼「全選」再「拷貝」'; } };
+$('sioCopy').onclick = () => copyText(sioCode, $('sioCopy'), $('sioMsg'), '✅ 已複製：貼到備忘錄或傳給自己保存');
 $('sioFile').onclick = () => { if (!sioCode) return; const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([sioCode], { type: 'text/plain' })); a.download = sioName(); document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000); $('sioMsg').textContent = '⬇️ 已下載（iPhone 會存在「檔案」App 的下載項目）'; };
 $('sioShare').onclick = () => navigator.share({ files: [new File([sioCode], sioName(), { type: 'text/plain' })] }).catch(() => {});
 $('sioPick').onchange = ev2 => { const f = ev2.target.files && ev2.target.files[0]; if (!f) return; f.text().then(t => { $('sioIn').value = t; $('sioMsg').textContent = `已讀取 ${f.name}，按「還原存檔」`; }); ev2.target.value = ''; };
@@ -3151,7 +3180,7 @@ loadAssets().then(() => {
 }).catch(err => { $('loadTxt').textContent = '載入失敗：' + err.message + '（請重新整理）'; console.error(err); });
 
 // 測試用
-window.__game = {
+window.__game = { get dangers() { return dangers; }, get shots() { return shots; }, hurtPlayer, copyText,
   get p() { return p; }, get enemies() { return enemies; }, get state() { return state; }, get stairs() { return stairs; }, get boss() { return boss; }, get rooms() { return rooms; }, get props() { return props; }, get braziers() { return braziers; }, sacrifice, makeSetItem, SETS, get hero() { return hero; }, switchHero, rollCards, gambleItem, boxCost, hitEnemy, finishRun, startRun, get paused() { return paused; }, openBld, closeBld, startRange, endRange, fpsFire, fpsPitch(v) { if (fps) fps.pitch = v; }, get fpsOn() { return !!fps; }, get joyId() { return joy.id; }, get hitStop() { return hitStop; }, get pools() { return pools; }, get holes() { return holes; }, refresh, heroLook, attack, cast, ignite, get merchant() { return merchant; }, talCan, talPts, openTal, tl, TALENTS, get pickNear() { return pickNear; }, clsOf, inClass, rollRarity, get renderer() { return renderer; }, exportText, openExport, startRange, endRange, fpsFire, updateFps, startSnipe, get fps() { return fps; }, get rangeObj() { return range; }, get cine() { return cine; }, bossShield, heatUp, NC, rollNC, drawPanel, get campFire() { return campFire; }, get scene() { return scene; }, get ents() { return ents; }, get corpses() { return corpses; }, dailyCheck, bounty, checkAch, openRec, weekRule, switchHero, get extraChars() { return extraChars; }, get campBlds() { return campBlds; }, openBld, closeBld, bl, get run() { return p.run; }, get prisoner() { return prisoner; }, get boardObj() { return board; }, startRun, finishRun, openBoard, freePrisoner, genCamp, get lockRoom() { return lockRoom; }, get cards() { return cards; }, takeCard, rollCards, SK, SKILLS, MODS, PAS, openStore, closeStore, get traps() { return traps; }, get shrine() { return shrine; }, heroLook, refresh,
   get quality() { return quality; }, setQuality(v) { autoQ = false; quality = v; applyQuality(); },
   update, isSolid: (x, y) => solid(x, y), smpCount: () => Object.values(SMP).reduce((a, l) => a + l.length, 0), get zoneI() { return zoneI; }, upgradeOf, inheritView, drawPanel, get drops() { return drops; }, dropPot(k) { drops.push(mk(k, p.x, p.y)); }, audioState: () => actx ? actx.state + (musicBossOn ? '+boss' : '') : 'none', isBlk: (x, y) => !!(blk[y * MW + x]), joyWorld(dx, dy) { const c = Math.cos(CAMS[camMode].yaw), n = Math.sin(CAMS[camMode].yaw); joy.id = 99; joy.x = dx * c - dy * n; joy.y = dx * n + dy * c; }, joySet(x, y) { if (x === null) { joy.id = null; joy.x = joy.y = joy.sx = joy.sy = 0; } else { joy.id = 99; joy.x = x; joy.y = y; } }, descend, takeDoor, get doorOpts() { return doorOpts; }, cast, keys, mouse, spawnEnemy, hurtPlayer, dropItem, makeItem, genFloor, setCam(i) { camMode = i; camReady = false; }, info: () => renderer.info.render,
