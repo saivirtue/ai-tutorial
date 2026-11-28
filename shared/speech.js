@@ -35,12 +35,27 @@ function pickVoice() {
     voices.find((v) => v.lang.startsWith("zh")) ||
     null;
 
+  // 英文語音優先挑「跟中文同一家」的（都是 Google、都是 Microsoft、都是裝置內建）：
+  // 中英文各挑各的，常常一個是 Google、一個是系統內建，音色和口氣差很多，
+  // 一題裡中文指示接英文單字，聽起來像換了一個人在講，小孩不好分辨。
+  const family = chineseVoice ? voiceFamily(chineseVoice) : null;
+  const sameFamily = (v) => family !== null && voiceFamily(v) === family;
   const enVoices = voices.filter((v) => v.lang === "en-US");
   englishVoice =
+    enVoices.find((v) => sameFamily(v) && isEnhanced(v)) ||
+    enVoices.find(sameFamily) ||
     enVoices.find(isEnhanced) ||
     enVoices[0] ||
     voices.find((v) => v.lang.startsWith("en")) ||
     null;
+}
+
+// 語音是哪一家做的：看名字，不然就看是不是裝置內建
+function voiceFamily(v) {
+  const name = v.name.toLowerCase();
+  if (name.indexOf("google") >= 0) return "google";
+  if (name.indexOf("microsoft") >= 0) return "microsoft";
+  return v.localService ? "local" : "remote";
 }
 
 if (window.speechSynthesis) {
@@ -106,8 +121,11 @@ function saySlow(text, onDone) {
 }
 
 // 唸英文（ABC 小火車用）
+// 英文的語速：預設跟中文一樣；剛開始學的遊戲可以自己把它調慢（例如英語日小考）
+var englishRate = NORMAL_RATE;
+
 function sayEnglish(text, onDone) {
-  speak(text, englishVoice, "en-US", onDone);
+  speak(text, englishVoice, "en-US", onDone, englishRate);
 }
 
 /* ===== 英文錄音檔（audio/en/） =====

@@ -275,6 +275,24 @@
     var REVEAL_AFTER = 2;      // 連錯幾次就直接亮出正確答案（教他，不是罰他）
     var REDO_GAP = 2;          // 答錯（或看了答案才對）的題，隔幾題後再回來問一次
 
+    /* 聲音的節奏：實際試玩回饋「題目、旁白、答完的回饋一句接一句，太緊、分不出來」。
+       - 中文和英文之間留一段停頓，讓他聽得出「這句是指示、下一句才是要學的英文」
+       - 答對、答錯不再用講的（「答對了！」「再試一次！」），只用音效——少一句話，
+         也不會被下一題的聲音切掉一半
+       - 英文念慢一點 */
+    var GAP_MS = 800;              // 中文說完到英文開始，中間停多久
+    var NEXT_AFTER_RIGHT_MS = 1300;  // 答對之後，停多久才出下一題
+    var NEXT_AFTER_HELP_MS = 1900;   // 看了答案才答對的，多停一下
+    englishRate = 0.75;              // 英文語速（平常是 0.9）
+
+    // 念完之後停一下再做下一件事（中間如果已經換題了，就不要接下去）
+    function pauseThen(fn) {
+      var cur = q;
+      return function () {
+        setTimeout(function () { if (cur === q) fn(); }, GAP_MS);
+      };
+    }
+
     var currentKey = null;     // 現在在練哪一種
     var q = null;              // 現在這一題
     var locked = false;
@@ -590,7 +608,7 @@
       session.lastKind = q.kind;
       var cur = q;
       if (changed) {
-        sayInstruction(function () { if (cur === q && q.speakOnStart) q.say(); });
+        sayInstruction(pauseThen(function () { if (cur === q && q.speakOnStart) q.say(); }));
       } else if (q.speakOnStart) {
         q.say();
       }
@@ -603,7 +621,6 @@
       if (opt.correct) {
         locked = true;
         playSound("pop");
-        cheer();
         btn.style.background = "var(--good)";
         btn.classList.remove("reveal");
         messageEl.textContent = q.answerText;
@@ -616,8 +633,9 @@
         if (q.tries >= REVEAL_AFTER) {
           reveal();
         } else {
-          encourage();
-          setTimeout(function () { if (q) q.say(); }, 900);   // 再唸一次給他聽
+          // 不講「再試一次」，停一下直接再念一次英文給他聽
+          var cur = q;
+          setTimeout(function () { if (cur === q) q.say(); }, GAP_MS);
         }
       }
     }
@@ -628,7 +646,7 @@
       if (right) right.classList.add("reveal");
       // 其他錯的選項這時候收起來，只剩正確的可以按
       choicesEl.querySelectorAll('button[data-correct="0"]').forEach(function (b) { b.disabled = true; });
-      say("是這個喔！", function () { if (q) q.say(); });
+      say("是這個喔！", pauseThen(function () { q.say(); }));
     }
 
     function finishQuestion(firstTry) {
@@ -645,7 +663,7 @@
         locked = false;
         if (session.results.length >= roundSize()) roundDone();
         else nextQuestion();
-      }, firstTry ? 900 : 1500);
+      }, firstTry ? NEXT_AFTER_RIGHT_MS : NEXT_AFTER_HELP_MS);
     }
 
     function roundDone() {
@@ -833,7 +851,7 @@
       var cur = q;
       if (!session.spoken[step]) {
         session.spoken[step] = true;
-        sayInstruction(function () { if (cur === q) q.say(); });
+        sayInstruction(pauseThen(function () { q.say(); }));
       } else {
         q.say();
       }
@@ -858,7 +876,7 @@
             locked = false;
             spellStep++;
             showSpellStep();
-          }, 400);
+          }, GAP_MS);
         });
       } else {
         spellAnyMiss = true;
@@ -869,10 +887,11 @@
         if (spellMisses >= REVEAL_AFTER) {
           var right = choicesEl.querySelector('button[data-correct="1"]');
           if (right) right.classList.add("reveal");
-          say("是這個喔！", function () { sayLetter(letterItem(answer)); });
+          say("是這個喔！", pauseThen(function () { sayLetter(letterItem(answer)); }));
         } else {
-          encourage();
-          setTimeout(function () { if (q) q.say(); }, 900);
+          // 不講「再試一次」，停一下直接再念一次這個字
+          var again = q;
+          setTimeout(function () { if (again === q) q.say(); }, GAP_MS);
         }
       }
     }
@@ -913,7 +932,11 @@
 
     // 「B—I—R—D，bird！」：念到哪個字母，那一格就亮起來。
     // 沒開聲音時 sayLetter 會馬上回來，所以每格至少亮 CHANT_MIN_MS，畫面還是看得到在拼。
-    var CHANT_MIN_MS = 450;
+    // 字母和字母之間至少停 LETTER_GAP_MS，念完最後一個字母再停 WORD_GAP_MS 才念整個字，
+    // 不然「C-A-T-cat」黏在一起，聽不出哪個是字母、哪個是單字。
+    var CHANT_MIN_MS = 750;
+    var LETTER_GAP_MS = 350;
+    var WORD_GAP_MS = 600;
     function chantSpelling(cur, onDone) {
       var slots = slotsEl.children;
       var i = 0;
@@ -921,7 +944,7 @@
         if (cur !== q) return;   // 中途回選單了
         for (var k = 0; k < slots.length; k++) slots[k].classList.remove("chant");
         if (i >= cur.word.length) {
-          sayWord(cur.item, onDone);
+          setTimeout(function () { if (cur === q) sayWord(cur.item, onDone); }, WORD_GAP_MS);
           return;
         }
         slots[i].classList.add("chant");
@@ -929,7 +952,7 @@
         var c = cur.word.charAt(i);
         i++;
         sayLetter(letterItem(c), function () {
-          setTimeout(nextLetter, Math.max(150, CHANT_MIN_MS - (Date.now() - started)));
+          setTimeout(nextLetter, Math.max(LETTER_GAP_MS, CHANT_MIN_MS - (Date.now() - started)));
         });
       }
       nextLetter();
