@@ -982,6 +982,7 @@ const ET = {
 };
 const TRAITN = { split: '分裂', bomb: '自爆', haste: '疾走', ward: '護盾', mirror: '反射', molten: '熔地' };
 const dgLv = () => (p.run && p.run.danger) || 0;
+const healK = (dg = dgLv()) => Math.max(0.4, 1 - Math.max(0, dg - 5) * 0.05); // 危險度 6 起：生命回復和吸血打折
 function curseAt(x, y, R, t, dmg, col) { if (dangers.length < 14) dangers.push({ x, y, t, R, dmg, col }); }
 const BOSSN = ['灰燼守衛', '沼澤骨王', '熔核督軍', '霜冠亡王', '虛空之主'];
 const BOSSE = ['灰燼迴廊的看門人', '沼澤深處的腐骨之王', '熔岩礦坑的督軍', '霜封墓穴的亡王', '虛空的主宰'];
@@ -995,7 +996,7 @@ function rollType(f) {
 const hordeOf = e => { e.horde = true; e.hp = e.maxHp = e.hp * 0.6; e.dmg *= 0.75; e.xp *= 0.45; return e; };
 let chainCtx = false; // 正在處理連鎖爆炸
 function spawnEnemy(type, x, y, elite) {
-  const d = ET[type], f = p.floor, ov = overLv(), hs = (1 + 0.42 * (f - 1)) * diff().hp * (1 + 0.1 * ov) * (1 + 0.06 * Math.max(0, ((p.run && p.run.danger) || 0) - 5)), dgv = (p.run && p.run.danger) || 0, ds = (1.15 + 0.34 * (f - 1)) * diff().dmg * (1 + 0.1 * dgv) * (1 + 0.08 * ov);
+  const d = ET[type], f = p.floor, ov = overLv(), hs = (1 + 0.42 * (f - 1)) * diff().hp * (1 + 0.1 * ov) * (1 + 0.06 * Math.max(0, ((p.run && p.run.danger) || 0) - 5)), dgv = (p.run && p.run.danger) || 0, ds = (1.15 + 0.34 * (f - 1)) * diff().dmg * (1 + 0.1 * dgv) * (1 + 0.08 * ov) * (1 + Math.max(0, dgv - 10) * 0.12); /* 煉獄：每級傷害再 +12% */
   const e = {
     type, x, y, r: d.r * (elite ? 1.25 : 1), hp: d.hp * hs * (elite ? 3.2 : 1), dmg: d.dmg * ds * (elite ? 1.4 : 1),
     spd: d.spd * rand(0.9, 1.1), xp: d.xp * (1 + 0.2 * (f - 1)) * (elite ? 4 : 1), elite: !!elite,
@@ -1611,7 +1612,7 @@ function update(dt) {
   const st = p.st;
   for (const k in p.cd) p.cd[k] -= dt;
   p.atkCd -= dt; p.slashT -= dt; p.inv_t -= dt; p.potCd -= dt; p.hurtT -= dt;
-  p.hp = Math.min(st.hp, p.hp + st.hpr * dt); p.mp = Math.min(st.mp, p.mp + st.mpr * dt);
+  p.hp = Math.min(st.hp, p.hp + st.hpr * dt * healK()); p.mp = Math.min(st.mp, p.mp + st.mpr * dt);
   p.moving = false;
   if (p.leap) { // 躍擊：拋物線跳到落點再砸地
     const L = p.leap; L.t += dt; const u = Math.min(1, L.t / L.T);
@@ -1783,7 +1784,7 @@ function update(dt) {
   if (p.burnT <= 0 && (p.emberT -= dt) <= 0) p.ember = Math.max(0, p.ember - 4 * dt);
   if (p.burnT > 0 && p.burnT - dt <= 0) { p.spentT = 4; floatText(p.x, p.y, '火把燒盡，暫時虛弱', '#a98', 14); sfx(200, 0.5, 'sawtooth', 0.06, -150); }
   if (p.slowT > 0) p.slowT -= dt; if (p.ctrT > 0) { p.ctrT -= dt; if (Math.random() < dt * 20) parts.push(mkPart(p.x + rand(-12, 12), p.y + rand(-12, 12), rand(0.5, 2.5), 0, 0, 40, '#ffe060', 0.4, 4)); }
-  p.lsBank = Math.min(p.st.hp * 0.03, (p.lsBank || 0) + p.st.hp * 0.03 * dt); /* 吸血每秒最多回 3% 生命 */
+  p.lsBank = Math.min(p.st.hp * 0.02, (p.lsBank || 0) + p.st.hp * 0.02 * healK() * dt); /* 吸血每秒最多回 2% 生命（危險度高再打折） */
   if (p.burnT > 0) { p.burnT -= dt; for (let i = 0; i < 2; i++) parts.push(mkPart(p.x + rand(-12, 12), p.y + rand(-12, 12), rand(0.2, 2), rand(-10, 10), rand(-10, 10), rand(3, 7), Math.random() < 0.5 ? '#ffb040' : '#ff5a20', rand(0.3, 0.6), rand(4, 8), -2)); }
   for (const t of totems) {
     t.t -= dt;
@@ -2599,7 +2600,7 @@ function openBoard() {
   if (!p.board || !p.board.length) rollBoard();
   dailyCheck(); weekCheck();
   const R0 = bountyReward(), wr = weekRule(), dg = p.danger || 0, easy = p.lvl >= recLv(p.tier, dg) + 4;
-  const dh = `<div class="row" style="background:#2a1a12;border-radius:10px;padding:6px 10px"><span>⚠️ <b>危險度 ${dg}${dg > 10 ? ' <span style="color:#ff4a3a">煉獄</span>' : ''}</b>　<span class="dim">${dg ? `敵人 +${dg * 2} 級、傷害 +${dg * 10}%${dg > 5 ? `、生命再 +${(dg - 5) * 6}%` : ''}${dg > 10 ? `、速度 +${Math.round((dg - 10) * 2.5)}%` : ''}；傳說機率 ×${(1 + dg * 0.25).toFixed(2)}、材料 +${dg * 15}%` : '想更刺激就往上調'}${dg >= 5 ? '；<b style="color:#ff4a3a">會掉 🔥餘燼裝備</b>' : '；危險度 5 起會掉 🔥餘燼裝備'}</span>${easy ? '<br><span class="good">你比建議等級高很多，試試提高危險度</span>' : ''}</span><button class="btn mini" data-dg="-1" ${dg > 0 ? '' : 'disabled'}>－</button><button class="btn mini" data-dg="1" ${dg < 20 ? '' : 'disabled'}>＋</button></div>`;
+  const dh = `<div class="row" style="background:#2a1a12;border-radius:10px;padding:6px 10px"><span>⚠️ <b>危險度 ${dg}${dg > 10 ? ' <span style="color:#ff4a3a">煉獄</span>' : ''}</b>　<span class="dim">${dg ? `敵人 +${dg * 2} 級、傷害 +${dg * 10}%${dg > 5 ? `、生命再 +${(dg - 5) * 6}%` : ''}${dg > 10 ? `、速度 +${Math.round((dg - 10) * 2.5)}%、傷害再 +${(dg - 10) * 12}%` : ''}${dg > 5 ? `、<b style="color:#ff8a6a">回復 −${Math.round((1 - healK(dg)) * 100)}%</b>` : ''}；傳說機率 ×${(1 + dg * 0.25).toFixed(2)}、材料 +${dg * 15}%` : '想更刺激就往上調'}${dg >= 5 ? '；<b style="color:#ff4a3a">會掉 🔥餘燼裝備</b>' : '；危險度 5 起會掉 🔥餘燼裝備'}</span>${easy ? '<br><span class="good">你比建議等級高很多，試試提高危險度</span>' : ''}</span><button class="btn mini" data-dg="-1" ${dg > 0 ? '' : 'disabled'}>－</button><button class="btn mini" data-dg="1" ${dg < 20 ? '' : 'disabled'}>＋</button></div>`;
   const bh = `<h2 style="margin-top:4px">📜 今日懸賞 <span class="dim">每天換一批・獎勵 💎 ${R0.cry}、🦴 ${R0.bone}、💰 ${R0.gold}</span></h2>` + p.daily.list.map((b, i) => `<div class="row"><span>${b.claimed ? '✅' : b.done ? '🎁' : '▫️'} ${BOUNTY[b.k].d(b)}　<span class="dim">${b.n} / ${b.need}</span></span>${b.done && !b.claimed ? `<button class="btn" data-claim="${i}">領獎</button>` : ''}</div>`).join('')
     + (p.clears ? `<h2>🌀 每週挑戰：${wr.n} <span class="dim">${wr.d}</span></h2><div class="row"><span>無盡往下，能走多深就走多深；倒下不扣金幣。每 3 層 💎 +2<br><span class="dim">本週最佳：完成 ${p.weekly.best} 層</span></span><button class="btn" data-week="1">挑戰</button></div>` : '') + '<h2>遠征</h2>';
   $('boardList').innerHTML = dh + bh + p.board.map((o, i) => {
